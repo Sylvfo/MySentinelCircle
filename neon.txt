@@ -1,0 +1,21 @@
+SETUP NEON — A FAIRE DEMAIN
+=============================
+
+1. Aller sur neon.tech, creer un compte (ou se connecter) et un nouveau
+   projet, ex. nomme "mysentinelcircle".
+
+2. Dans le dashboard du projet : "Connect" (ou "Connection Details") ->
+   choisir le format "Prisma".
+
+3. Copier l'URL fournie (ressemble a :
+   postgresql://user:pass@ep-xxxx.region.aws.neon.tech/dbname?sslmode=require)
+
+4. Coller cette URL dans backend/.env, a la place de la ligne DATABASE_URL
+   actuelle (qui est un placeholder).
+
+5. Prevenir Claude une fois que c'est fait -> il lance la migration :
+     cd backend && npx prisma migrate dev --name init
+   (cree les tables a partir de prisma/schema.prisma)
+
+6. Etape suivante apres ca : coder le module Auth (signup/login
+   phone+OTP, email+password, Google OAuth, JWT) — voir backend/src/auth/.
