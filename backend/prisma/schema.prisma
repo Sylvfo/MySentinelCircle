@@ -1,0 +1,291 @@
+// Prisma schema — mirrors the DATA MODEL sketch in ../../plan.txt.
+// Fields still marked "a reconcilier" in ../../basedb.txt (billing, health,
+// minor/major, deceased, alert confirmation/usefulness, membership
+// expiration) are intentionally left out until those are decided in plan.txt.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SentinelType {
+  SENTINEL
+  SENTINEL_PLUS
+}
+
+enum MembershipStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum InitiatedBy {
+  ME
+  SENTINEL
+}
+
+enum OrgVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum OrgRole {
+  ADMIN
+  STAFF
+}
+
+enum AlertStatus {
+  ACTIVE
+  ESCALATED
+  RESOLVED
+}
+
+enum AlertOrigin {
+  SENTINEL_APP
+  SENTINEL_SMS
+  ORGANIZATION_APP
+}
+
+enum ResolvedByType {
+  TARGET_USER
+  CIRCLE_CONTACT
+}
+
+enum AlertChatType {
+  CIRCLE
+  SENTINEL_PLUS
+  ORGANIZATION
+}
+
+enum MessageType {
+  TEXT
+  PHOTO
+  LOCATION
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String?   @unique
+  passwordHash    String?
+  googleId        String?   @unique
+  phone           String    @unique
+  phoneVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  circles                  Circle[]
+  contactsOwned            Contact[]            @relation("ContactOwner")
+  contactRecordsAsSentinel Contact[]            @relation("ContactUser")
+  organizationMemberships  OrganizationMember[]
+  alertsRaised             Alert[]              @relation("AlertRaisedByUser")
+  alertsConcerningMe       Alert[]              @relation("AlertTarget")
+  alertsResolved           Alert[]              @relation("AlertResolvedByUser")
+  messagesSent             Message[]            @relation("MessageSenderUser")
+  escalationsTriggered     EscalationEvent[]
+}
+
+// A person known in someone's circles by phone number; optionally linked to
+// a User once they register (covers Sentinels without accounts). The same
+// real person can show up as several Contact rows — one per "Me" who added
+// them.
+model Contact {
+  id      String  @id @default(cuid())
+  ownerId String
+  owner   User    @relation("ContactOwner", fields: [ownerId], references: [id])
+  userId  String?
+  user    User?   @relation("ContactUser", fields: [userId], references: [id])
+
+  name      String?
+  phone     String
+  createdAt DateTime @default(now())
+
+  memberships            CircleMembership[]
+  alertsResolved         Alert[]             @relation("AlertResolvedByContact")
+  alertNotifications     AlertNotification[]
+  sentinelPlusChats      AlertChat[]         @relation("AlertChatSentinelContact")
+  messagesSent           Message[]           @relation("MessageSenderContact")
+  standaloneConversation Message[]           @relation("MessageConversationContact")
+}
+
+// Belongs to a User ("Me"), has a tier/rank and a label. Tier 1 is the
+// "close circle" — see plan.txt CIRCLES & PERMISSIONS.
+model Circle {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id])
+  label     String
+  tier      Int
+  createdAt DateTime @default(now())
+
+  memberships     CircleMembership[]
+  escalationsFrom EscalationEvent[]  @relation("EscalationFromCircle")
+  escalationsTo   EscalationEvent[]  @relation("EscalationToCircle")
+}
+
+// Links a Contact to a Circle. initiatedBy tracks whether "Me" sent the
+// invitation or the Sentinel requested the link, since the other party is
+// the one who must validate it.
+model CircleMembership {
+  id           String           @id @default(cuid())
+  circleId     String
+  circle       Circle           @relation(fields: [circleId], references: [id])
+  contactId    String
+  contact      Contact          @relation(fields: [contactId], references: [id])
+  sentinelType SentinelType     @default(SENTINEL)
+  canEscalate  Boolean          @default(false)
+  status       MembershipStatus @default(PENDING)
+  initiatedBy  InitiatedBy
+  createdAt    DateTime         @default(now())
+}
+
+// A vetted entity (hotel, school, police, business...) that can raise
+// phone-only alerts from within the app once verified.
+model Organization {
+  id                 String                @id @default(cuid())
+  name               String
+  verificationStatus OrgVerificationStatus @default(PENDING)
+  createdAt          DateTime              @default(now())
+
+  members OrganizationMember[]
+  alerts  Alert[]
+}
+
+// Links a User (staff) to an Organization, with an internal role governing
+// what they can do when acting on the Organization's behalf.
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  role           OrgRole      @default(STAFF)
+  createdAt      DateTime     @default(now())
+
+  alertsRaised Alert[]
+}
+
+// Raised for a target User. origin distinguishes a registered Sentinel
+// (app or SMS) from a verified Organization (always via the app — see
+// plan.txt Alert lifecycle). reason is required for every origin.
+model Alert {
+  id     String      @id @default(cuid())
+  origin AlertOrigin
+  reason String
+
+  targetUserId String
+  targetUser   User   @relation("AlertTarget", fields: [targetUserId], references: [id])
+
+  raisedByUserId String?
+  raisedByUser   User?   @relation("AlertRaisedByUser", fields: [raisedByUserId], references: [id])
+
+  raisedByOrgMemberId String?
+  raisedByOrgMember   OrganizationMember? @relation(fields: [raisedByOrgMemberId], references: [id])
+  organizationId      String?
+  organization        Organization?       @relation(fields: [organizationId], references: [id])
+
+  status              AlertStatus     @default(ACTIVE)
+  resolvedByType      ResolvedByType?
+  resolvedByUserId    String?
+  resolvedByUser      User?           @relation("AlertResolvedByUser", fields: [resolvedByUserId], references: [id])
+  resolvedByContactId String?
+  resolvedByContact   Contact?        @relation("AlertResolvedByContact", fields: [resolvedByContactId], references: [id])
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  notifications AlertNotification[]
+  chats         AlertChat[]
+  escalations   EscalationEvent[]
+}
+
+// One row per contact notified for a given alert. isTargetUser marks the
+// row for the target User themselves — they're always notified directly,
+// not only through their circle.
+model AlertNotification {
+  id      String @id @default(cuid())
+  alertId String
+  alert   Alert  @relation(fields: [alertId], references: [id])
+
+  contactId    String?
+  contact      Contact? @relation(fields: [contactId], references: [id])
+  isTargetUser Boolean  @default(false)
+
+  deliveryStatus NotificationDeliveryStatus @default(PENDING)
+  respondedAt    DateTime?
+  responseText   String?
+  createdAt      DateTime                   @default(now())
+}
+
+// A chat thread scoped to one alert. `circle` is the 1st circle's own
+// group chat (one per alert). `sentinel_plus` is one per Sentinel+ who
+// requests to talk (sentinelContactId identifies which one — several can
+// coexist per alert, each isolated). `organization` opens automatically
+// for Organization-raised alerts, at most one per alert.
+model AlertChat {
+  id      String        @id @default(cuid())
+  alertId String
+  alert   Alert         @relation(fields: [alertId], references: [id])
+  type    AlertChatType
+
+  sentinelContactId String?
+  sentinelContact   Contact? @relation("AlertChatSentinelContact", fields: [sentinelContactId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  messages Message[]
+}
+
+// Full message log. Tied either to a specific AlertChat (in-alert
+// conversation) or, when chatId is null, to a standalone Me<->Sentinel 1:1
+// conversation identified by conversationWithContactId. Base Sentinel
+// predefined replies during an active alert aren't stored as Messages —
+// see AlertNotification.responseText.
+model Message {
+  id     String     @id @default(cuid())
+  chatId String?
+  chat   AlertChat? @relation(fields: [chatId], references: [id])
+
+  conversationWithContactId String?
+  conversationWithContact   Contact? @relation("MessageConversationContact", fields: [conversationWithContactId], references: [id])
+
+  senderUserId String?
+  senderUser   User?   @relation("MessageSenderUser", fields: [senderUserId], references: [id])
+
+  senderContactId String?
+  senderContact   Contact? @relation("MessageSenderContact", fields: [senderContactId], references: [id])
+
+  type      MessageType @default(TEXT)
+  body      String?
+  mediaUrl  String?
+  createdAt DateTime    @default(now())
+}
+
+// Records each escalation: from circle -> to circle, who triggered it,
+// when.
+model EscalationEvent {
+  id      String @id @default(cuid())
+  alertId String
+  alert   Alert  @relation(fields: [alertId], references: [id])
+
+  fromCircleId String
+  fromCircle   Circle @relation("EscalationFromCircle", fields: [fromCircleId], references: [id])
+  toCircleId   String
+  toCircle     Circle @relation("EscalationToCircle", fields: [toCircleId], references: [id])
+
+  triggeredByUserId String?
+  triggeredByUser   User?   @relation(fields: [triggeredByUserId], references: [id])
+
+  createdAt DateTime @default(now())
+}

@@ -24,31 +24,34 @@ ROLES
                 chain, vacation camp, police, school, business, etc. —
                 subject to stricter verification than individual users
                 (method TBD). Has multiple staff accounts (OrganizationMember)
-                who can log in on its behalf under internal roles. Once
-                verified, can flag a concern about someone via SMS using
-                just that person's phone number, the same low-friction entry
-                point the earlier open-to-anyone "Reporter" concept had —
-                but restricted to vetted organizations to cut scam risk.
-                Logging in also opens the door to more rights beyond the
-                phone-only alert (exact scope TBD — see OPEN POINTS).
+                who log in on its behalf under internal roles. Once verified,
+                logged-in staff can flag a concern about someone with just
+                that person's phone number — identified via an authenticated
+                API call and restricted to vetted organizations to cut scam 
+                risk. Beyond that phone-only alert
+                trigger, logging in also opens the door to more rights
+                (exact scope TBD — see OPEN POINTS).
 
 CIRCLES & PERMISSIONS
 ----------------------
 - Each "Me" defines multiple circles (e.g. 1st circle/family, work,
   neighbors), ranked by tier. The 1st circle is the "close circle" — it's
   the one that receives the first alert, and only it can escalate outward
-  to the other circles.
+  to the other circles. Meant to stay small (roughly 1 to 5 people), since
+  during an active alert its members share one live group chat together
+  (see Alert lifecycle).
 - Independently of circle tier, each Sentinel has a type governing how much
   they can exchange, chosen by "Me" per Sentinel:
     - Sentinel   : quick predefined replies only ("ok vu tel jour",
                    "checker pas vu", etc.) — that's the extent of it, they
                    cannot otherwise communicate with the 1st circle; it's a
                    one-way signal, not a conversation.
-    - Sentinel+  : can write freely (text, photos, location/map) into a
-                   shared alert chat — visible only to the 1st circle and
-                   to whoever is currently responsible for handling the
-                   alert (exact definition of "responsible person" TBD —
-                   see OPEN POINTS).
+    - Sentinel+  : during an active alert, can request to open a dedicated
+                   group chat with the 1st circle (text, photos,
+                   location/map) instead of the base Sentinel's predefined
+                   replies. Each Sentinel+ who requests gets their own
+                   separate chat with the 1st circle — not one chat shared
+                   across every Sentinel+ (see Alert lifecycle).
   Circle tier (does this Sentinel sit in the 1st circle, and can they
   escalate?) and Sentinel type (Sentinel vs Sentinel+) are two separate
   settings — a Sentinel in the 1st circle isn't necessarily Sentinel+, and
@@ -59,8 +62,9 @@ CIRCLES & PERMISSIONS
   becomes active — invited Sentinels must accept "Me"'s invitation, and
   "Me" must approve incoming Sentinel requests. Only accepted links can
   receive alerts or count toward a circle.
-- Organizations bypass circle structure entirely when alerting via phone
-  number only — the alert always routes to the 1st circle first.
+- Organizations bypass circle structure entirely when alerting with just the
+  target's phone number, from within the app — the alert always routes to
+  the 1st circle first.
 
 CORE FEATURES (MVP)
 --------------------
@@ -88,22 +92,28 @@ CORE FEATURES (MVP)
      always belongs to exactly one circle from the moment the link exists.
 
 3. Alert lifecycle
-   - Registered Sentinel/Companion raises an alert in-app for a Companion.
-   - A verified Organization raises an alert via SMS with just a phone
-     number -> confirmation SMS sent back before it actually dispatches ->
-     1st circle notified. No prior link between the Organization and the
-     target person is required (e.g. a hotel reporting a guest they just
-     found injured). Anonymous, non-organization phone-only alerts are no
-     longer allowed — judged too easy to abuse for scams.
-     MVP scope: ship a small, minimal slice of this first (raise + confirm
-     + notify 1st circle) — the fuller Organization verification/dashboard
-     work (see OPEN POINTS) can follow later; Organizations stay in the
-     model even at this stage since they're a potential paying customer
-     segment (B2B), not just a nice-to-have.
-   - Organization flow: look up the target user by phone/email/username ->
-     notify the 1st circle. Beyond that initial contact, follow-up happens
-     outside the app's messaging (direct phone call, etc.) rather than
-     through an in-app chat with the Organization.
+   - A registered Sentinel raises an alert for the Companion they watch
+     over, either in-app or via SMS — never the other way around, a
+     Companion never raises an alert about themselves. Either way, a
+     reason message (free text describing why the alert is being raised)
+     is required before it dispatches.
+   - A verified Organization raises an alert from within the app: a logged-in
+     OrganizationMember, identified via an authenticated API call rather
+     than anonymous SMS, submits the target's phone number plus a reason ->
+     1st circle notified immediately -> an in-app chat opens between the
+     Organization and the 1st circle for follow-up (see DATA MODEL:
+     AlertChat). No prior link between the Organization and the target
+     person is required (e.g. a hotel reporting a guest they just found
+     injured). Anonymous, non-organization phone-only alerts are no longer
+     allowed — judged too easy to abuse for scams.
+     MVP scope: ship a small, minimal slice of this first (raise + notify
+     1st circle + open chat) — the fuller Organization verification/
+     dashboard work (see OPEN POINTS) can follow later; Organizations stay
+     in the model even at this stage since they're a potential paying
+     customer segment (B2B), not just a nice-to-have.
+   - Organization flow: look up the target user by phone number -> notify
+     the 1st circle -> open a dedicated Organization<->1st circle chat for
+     that alert.
    - The "Me" the alert concerns is also contacted directly (SMS/push) as
      soon as the alert is raised — not just their circle. "Me" can take
      control of the alert at any point (e.g. mark themselves safe / resolve
@@ -112,6 +122,13 @@ CORE FEATURES (MVP)
    - Only 1st circle members or "Me" can close an alert — other circles,
      once escalated to, can respond but not close it themselves. 1st circle
      can also escalate to the next circle if the person can't be reached.
+   - Once an alert is active, all 1st circle members share one live group
+     chat ("1st circle chat") — that's what keeps the 1st circle
+     intentionally small. Sentinels outside the 1st circle can't join this
+     chat. A pre-authorized Sentinel+ (see CIRCLES & PERMISSIONS) can
+     request, during the alert, to open a separate group chat with the 1st
+     circle — each requesting Sentinel+ gets their own isolated chat with
+     the 1st circle, not one chat shared across multiple Sentinel+.
    - Notifications go out via SMS (and push, for app users); replies parsed
      automatically (predefined keywords for base Sentinels, free text/media
      for Sentinel+). Predefined reply set for taking an alert:
@@ -128,10 +145,13 @@ CORE FEATURES (MVP)
      an active alert (predefined replies vs shared chat) — it doesn't apply
      to this everyday messaging.
    - This messaging is always Me<->Sentinel (1:1). Sentinels never message
-     each other directly, with one narrow exception: the Sentinel+ shared
-     chat during an active alert (see Alert lifecycle), which is scoped to
-     that specific alert and only visible to the Sentinels notified for it
-     — it doesn't exist outside of an active alert.
+     each other directly outside of an active alert. During an active
+     alert, several scoped group chats can exist instead (see Alert
+     lifecycle): the 1st circle's own group chat between its members; on
+     request, a separate chat between one pre-authorized Sentinel+ and the
+     1st circle; and, for Organization-raised alerts, a chat between the
+     Organization and the 1st circle. All are scoped to that specific
+     alert and don't exist outside of it.
 
 5. History / audit trail
    - Per user: full log of alerts raised, who was contacted, who responded
@@ -158,25 +178,41 @@ DATA MODEL (sketch)
                        internal role (e.g. admin, staff) governing what they
                        can do when acting on the Organization's behalf.
 - Alert              : raised for a target User, with status
-                       (active/escalated/resolved), origin (registered
-                       member vs Organization-by-phone), resolvedBy (target
-                       user themselves vs a circle contact).
+                       (active/escalated/resolved), origin (Sentinel via
+                       app | Sentinel via SMS | Organization via app), a
+                       required reason (free text, why the alert is being
+                       raised — collected up front at creation time for
+                       every origin), resolvedBy (target user themselves
+                       vs a circle contact).
 - AlertNotification  : one row per contact notified for a given alert,
                        including the target User themselves (they're
                        always notified directly, not only their circle);
                        delivery + response tracking.
+- AlertChat          : a chat thread scoped to one alert. Three kinds:
+                       `circle` (the 1st circle's own group chat — one per
+                       alert, open to all 1st circle members), `sentinel_
+                       plus` (one per Sentinel+ who requests to talk during
+                       the alert, scoped to just that Sentinel+ and the 1st
+                       circle), and `organization` (opened automatically
+                       when an Organization raises the alert, scoped to
+                       that Organization and the 1st circle — no separate
+                       request needed, since being a logged-in verified
+                       Organization is itself the authorization). Several
+                       `sentinel_plus` chats can coexist on the same alert,
+                       each isolated from the others; at most one
+                       `organization` chat exists per alert. Opening a
+                       `sentinel_plus` chat requires both the standing
+                       sentinelType = sentinel_plus permission and an
+                       in-the-moment request during the alert.
 - Message            : full message log (SMS/push), carries a type (text |
-                       photo | location); alertId is optional — a message
-                       is either tied to a specific alert (its chat/reply
-                       history) or a standalone Me<->Sentinel conversation
+                       photo | location); tied either to a specific
+                       AlertChat (in-alert conversation) or, when chatId is
+                       null, to a standalone Me<->Sentinel conversation
                        outside any alert. During an active alert, base
                        Sentinel replies are limited to a fixed set of
-                       predefined texts and aren't part of any shared
-                       thread, while Sentinel+ messages (any type) go into
-                       a shared alert chat visible only to the 1st circle
-                       and whoever is responsible for the alert. Outside of
-                       an alert, any Sentinel (base or +) can message "Me"
-                       freely.
+                       predefined texts and aren't part of any AlertChat.
+                       Outside of an alert, any Sentinel (base or +) can
+                       message "Me" freely.
 - EscalationEvent    : records each escalation: from circle -> to circle,
                        who triggered it, when.
 
@@ -193,14 +229,18 @@ BACKEND MODULES (NestJS, sketch)
 - Alert       : send alerts (app + SMS), respond to an alert, notify the
                 relevant circles, notify everyone once an alert is closed.
                 Enforces that only 1st circle members or "Me" can close it.
-- Organization : look up a user by phone/email/username, notify their 1st
-                circle; anything past that first contact happens outside
-                the app's messaging (direct phone call, etc.).
+- Organization : authenticate the OrganizationMember, look up a target user
+                by phone number, raise the alert (with reason), notify the
+                1st circle, and open the Organization<->1st circle
+                AlertChat for that alert.
 - Messaging   : everyday Me<->Sentinel conversations outside of any active
                 alert (open to any Sentinel, base or +); also backs the
-                in-alert chat used by Alert, but the two contexts enforce
-                different rules (free-form always here vs Sentinel-type-
-                gated during an alert).
+                in-alert AlertChats used by Alert (the 1st circle's own
+                chat, one isolated chat per requesting Sentinel+, and the
+                Organization chat for Organization-raised alerts), but the
+                two contexts enforce different rules (free-form always
+                here vs Sentinel-type-gated and request-based during an
+                alert).
 
 TECH STACK (confirmed)
 ------------------------
@@ -213,17 +253,16 @@ TECH STACK (confirmed)
 
 OPEN POINTS / TO REVISIT
 --------------------------
-- Who exactly counts as "responsible for the alert" (besides 1st circle
-  members) when it comes to who can see the Sentinel+ shared chat — is it
-  whoever escalated to, whoever "Me" designates, or something else? TBD.
+- Whether the 1st circle's small size (1 to 5 people) is an enforced hard
+  cap or just guidance — TBD.
 - Final name for the "Organization" category.
 - Organization verification mechanism (manual doc review, automated business
   registry check, professional email domain, etc.) — deferred.
 - Internal roles within an Organization (admin vs staff) and what each can
   do — TBD.
-- Exact scope of "more rights" an Organization unlocks once its staff log in,
-  beyond the phone-only alert trigger (e.g. dashboard, alert history,
-  managing multiple concurrent alerts) — TBD.
+- Exact scope of what an Organization's staff can do beyond raising
+  phone-only alerts (e.g. dashboard, alert history, managing multiple
+  concurrent alerts) — TBD.
 - Whether to add scheduled check-ins later (explicitly deferred — MVP is
   manual-trigger only).
 - Push notifications on top of SMS for registered app users (nice-to-have,

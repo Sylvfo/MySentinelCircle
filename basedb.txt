@@ -6,23 +6,22 @@ Ceci est une premiere passe de mise en forme des champs bruts. Rien n'est
 encore un schema Prisma final — objectif : lister les champs, les regrouper
 par entite, et flaguer ce qui est nouveau par rapport a plan.txt.
 
-CLIENT (compte / personne)
+USER (compte / personne)
 ---------------------------
 - id
+- is a ME (with a paid account + a son propre cercle en tant que "Me")
+- is only a sentinel with an account (can chat)
+- is only a sentinel without account (only name, number registred and agreement?)
+
 - nom, prenom
 - adresse
 - langue
 - donnees facturation                (abonnement/paiement — a definir)
 - assurances                          (police(s) d'assurance liee(s))
-- probleme(s) de sante                (donnee sensible — chiffrement +
-                                        acces restreint a prevoir)
-- ok partager son numero              (consentement explicite : peut-on
-                                        exposer son tel a d'autres via
-                                        l'appli, ex. aux Sentinels)
 - mineur ou majeur                    (impact legal : consentement parental
                                         pour un compte mineur ?)
-- si veilleur                         (agit comme Sentinel pour d'autres)
-- si protege                          (a son propre cercle en tant que "Me")
+-si mineur, responsable légal(parents...) plusieurs champs...
+
   -> un meme compte peut cumuler les deux, comme dans plan.txt (un
      Companion est le "Me" de quelqu'un d'autre).
 - mort                                (personne decedee — impact : que
@@ -33,7 +32,7 @@ CLIENT (compte / personne)
                                         Alerte)
 
 NOTE : correspond a peu pres a "User" + "Contact" dans plan.txt. A trancher :
-les champs sensibles (sante, assurance, mort) vont sur le compte User
+les champs sensibles (assurance, mort) vont sur le compte User
 directement, ou sur un profil separe avec acces plus restreint ?
 
 LIEN (Me <-> Sentinel, dans un Circle)
@@ -67,10 +66,12 @@ ALERTE
 - id
 - concerne qui                        (personne visee par l'alerte)
 - date / heure
-- lancee par qui                      (Sentinel/Companion enregistre, ou
-                                        Organization via tel)
-- pourquoi ??                         (NOUVEAU — motif/categorie de
-                                        l'alerte, pas encore dans plan.txt)
+- lancee par qui                      (toujours un Sentinel, jamais le
+                                        Companion lui-meme ; ou Organization,
+                                        authentifiee via l'app)
+- pourquoi                             (motif de l'alerte, texte libre —
+                                        deja integre dans plan.txt :
+                                        Alert.reason)
 - qui a ete contacte                   (inclut toujours le "Me" concerne
                                         directement, pas seulement son
                                         cercle — deja integre dans plan.txt)
@@ -92,20 +93,18 @@ ALERTE
 - messages envoyes
 
 NOTE : correspond a "Alert" + "AlertNotification" + "Message" dans
-plan.txt. Trois champs sont vraiment nouveaux et valent la peine d'etre
-portes dans plan.txt : le motif de l'alerte, la confirmation a posteriori
-de la personne concernee, et le retour d'utilite.
+plan.txt. Deux champs restent vraiment nouveaux et valent la peine d'etre
+portes dans plan.txt : la confirmation a posteriori de la personne
+concernee, et le retour d'utilite (le motif de l'alerte est deja integre).
 
 A RECONCILIER AVEC plan.txt
 ------------------------------
 - Nouveaux concepts a integrer dans la section DATA MODEL de plan.txt :
     - liens a duree limitee (expiration), notamment pour les Organizations
-    - motif de l'alerte ("pourquoi")
     - confirmation post-alerte par la personne concernee + note d'utilite
-    - consentement explicite de partage du numero
     - statut mineur/majeur (impact sur consentement/permissions)
     - statut "personne decedee" (impact sur le compte)
-- Donnees sensibles a identifier pour chiffrement/acces restreint : sante,
+- Donnees sensibles a identifier pour chiffrement/acces restreint :
   assurance, mineur/majeur.
 - Facturation/abonnement : pas encore mentionne dans plan.txt — modele
   economique a definir.
