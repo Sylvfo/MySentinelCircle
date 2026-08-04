@@ -1,0 +1,235 @@
+MY SENTINEL CIRCLE — PROJECT PLAN (draft, to be reviewed)
+===========================================================
+
+CONCEPT
+-------
+A mutual safety-net app: each user builds tiered "circles" of trusted people
+who watch over them. If a user goes silent, someone can raise an alert —
+starting with the closest circle, escalating outward if needed. Works in
+reverse too: a third party (e.g. hotel staff, coworker) can alert a person's
+circle if something happens to them. Designed to be usable in a real
+emergency by people who rarely open the app — SMS-first, minimal friction.
+
+ROLES
+-----
+- Me          : a registered user; manages their own circles and permissions.
+- Companion   : a person "Me" watches over; has an account (a Companion is
+                someone else's "Me").
+- Sentinel    : a registered person chosen by "Me" to be part of a circle.
+                Must explicitly accept the invitation before becoming active
+                — "Me" cannot add someone as a Sentinel without their
+                validation. Comes in two types (see CIRCLES & PERMISSIONS):
+                Sentinel (base) or Sentinel+.
+- Organization : (placeholder name, to be finalized) a vetted entity — hotel
+                chain, vacation camp, police, school, business, etc. —
+                subject to stricter verification than individual users
+                (method TBD). Has multiple staff accounts (OrganizationMember)
+                who can log in on its behalf under internal roles. Once
+                verified, can flag a concern about someone via SMS using
+                just that person's phone number, the same low-friction entry
+                point the earlier open-to-anyone "Reporter" concept had —
+                but restricted to vetted organizations to cut scam risk.
+                Logging in also opens the door to more rights beyond the
+                phone-only alert (exact scope TBD — see OPEN POINTS).
+
+CIRCLES & PERMISSIONS
+----------------------
+- Each "Me" defines multiple circles (e.g. 1st circle/family, work,
+  neighbors), ranked by tier. The 1st circle is the "close circle" — it's
+  the one that receives the first alert, and only it can escalate outward
+  to the other circles.
+- Independently of circle tier, each Sentinel has a type governing how much
+  they can exchange, chosen by "Me" per Sentinel:
+    - Sentinel   : quick predefined replies only ("ok vu tel jour",
+                   "checker pas vu", etc.) — that's the extent of it, they
+                   cannot otherwise communicate with the 1st circle; it's a
+                   one-way signal, not a conversation.
+    - Sentinel+  : can write freely (text, photos, location/map) into a
+                   shared alert chat — visible only to the 1st circle and
+                   to whoever is currently responsible for handling the
+                   alert (exact definition of "responsible person" TBD —
+                   see OPEN POINTS).
+  Circle tier (does this Sentinel sit in the 1st circle, and can they
+  escalate?) and Sentinel type (Sentinel vs Sentinel+) are two separate
+  settings — a Sentinel in the 1st circle isn't necessarily Sentinel+, and
+  vice versa.
+- The link can be initiated from either side: "Me" can invite someone as a
+  Sentinel, or someone can request to become a Sentinel for a given "Me".
+  Either way, the party who didn't initiate must validate before the link
+  becomes active — invited Sentinels must accept "Me"'s invitation, and
+  "Me" must approve incoming Sentinel requests. Only accepted links can
+  receive alerts or count toward a circle.
+- Organizations bypass circle structure entirely when alerting via phone
+  number only — the alert always routes to the 1st circle first.
+
+CORE FEATURES (MVP)
+--------------------
+1. Auth
+   - Every account requires BOTH an identity credential (email+password OR
+     Google account) AND a phone number at signup, verified via OTP. Phone
+     is never optional: it's the core assurance to users that the people in
+     their circles can actually be reached when an alert fires.
+   - Signup/login options: phone + SMS OTP (fast path), email + password,
+     or Google OAuth — phone verification is mandatory in all cases, even
+     when signing up via Google.
+   - Password reset via email link — does not depend on having the phone
+     (n/a for accounts that only use Google as their credential).
+   - If the phone number changes (lost/replaced device+SIM), the user logs
+     in via email+password and updates their phone number from account
+     settings; the new number is re-verified via OTP before use in alerts.
+
+2. Circle management
+   - Create circles, invite Sentinels/Companions, set per-member permissions
+     (escalation rights, Sentinel type).
+   - A Sentinel link can start from either side: "Me" invites someone, or
+     someone requests to become a Sentinel for a given "Me". Whichever side
+     didn't initiate must validate before the link becomes active.
+   - Every new Sentinel is assigned to a circle right away — a Sentinel
+     always belongs to exactly one circle from the moment the link exists.
+
+3. Alert lifecycle
+   - Registered Sentinel/Companion raises an alert in-app for a Companion.
+   - A verified Organization raises an alert via SMS with just a phone
+     number -> confirmation SMS sent back before it actually dispatches ->
+     1st circle notified. No prior link between the Organization and the
+     target person is required (e.g. a hotel reporting a guest they just
+     found injured). Anonymous, non-organization phone-only alerts are no
+     longer allowed — judged too easy to abuse for scams.
+     MVP scope: ship a small, minimal slice of this first (raise + confirm
+     + notify 1st circle) — the fuller Organization verification/dashboard
+     work (see OPEN POINTS) can follow later; Organizations stay in the
+     model even at this stage since they're a potential paying customer
+     segment (B2B), not just a nice-to-have.
+   - Organization flow: look up the target user by phone/email/username ->
+     notify the 1st circle. Beyond that initial contact, follow-up happens
+     outside the app's messaging (direct phone call, etc.) rather than
+     through an in-app chat with the Organization.
+   - The "Me" the alert concerns is also contacted directly (SMS/push) as
+     soon as the alert is raised — not just their circle. "Me" can take
+     control of the alert at any point (e.g. mark themselves safe / resolve
+     it directly), overriding whatever the circle is doing; the circle is
+     then notified the alert was closed by "Me".
+   - Only 1st circle members or "Me" can close an alert — other circles,
+     once escalated to, can respond but not close it themselves. 1st circle
+     can also escalate to the next circle if the person can't be reached.
+   - Notifications go out via SMS (and push, for app users); replies parsed
+     automatically (predefined keywords for base Sentinels, free text/media
+     for Sentinel+). Predefined reply set for taking an alert:
+       - "je vais voir tout de suite"
+       - "je peux aller voir à tel moment"
+       - "pas dispo, demandez-moi plus tard"
+       - "pas dispo"
+
+4. Messagerie Me <-> Sentinels
+   - Outside of any active alert, "Me" can message any of their Sentinels
+     directly, regardless of Sentinel type — this general messaging isn't
+     gated by the Sentinel/Sentinel+ split.
+   - The Sentinel/Sentinel+ distinction only restricts communication during
+     an active alert (predefined replies vs shared chat) — it doesn't apply
+     to this everyday messaging.
+   - This messaging is always Me<->Sentinel (1:1). Sentinels never message
+     each other directly, with one narrow exception: the Sentinel+ shared
+     chat during an active alert (see Alert lifecycle), which is scoped to
+     that specific alert and only visible to the Sentinels notified for it
+     — it doesn't exist outside of an active alert.
+
+5. History / audit trail
+   - Per user: full log of alerts raised, who was contacted, who responded
+     (and how), and the underlying message history.
+
+DATA MODEL (sketch)
+--------------------
+- User              : account holder (email, passwordHash, phone), dual auth.
+- Contact            : a person known in someone's circles by phone number;
+                       optionally linked to a User if they ever register
+                       (covers Sentinels without accounts).
+- Circle             : belongs to a User, has a tier/rank and a label.
+- CircleMembership   : links a Contact to a Circle, with canEscalate,
+                       sentinelType (sentinel | sentinel_plus), status
+                       (pending | accepted | declined), and initiatedBy
+                       (me | sentinel) — tracks whether "Me" sent the
+                       invitation or the Sentinel requested the link, since
+                       the other party is the one who must validate it.
+- Organization       : a vetted entity (hotel, school, police, business...)
+                       that can raise phone-only alerts once verified;
+                       verification status (pending/verified/rejected) and
+                       method TBD.
+- OrganizationMember : links a User (staff) to an Organization, with an
+                       internal role (e.g. admin, staff) governing what they
+                       can do when acting on the Organization's behalf.
+- Alert              : raised for a target User, with status
+                       (active/escalated/resolved), origin (registered
+                       member vs Organization-by-phone), resolvedBy (target
+                       user themselves vs a circle contact).
+- AlertNotification  : one row per contact notified for a given alert,
+                       including the target User themselves (they're
+                       always notified directly, not only their circle);
+                       delivery + response tracking.
+- Message            : full message log (SMS/push), carries a type (text |
+                       photo | location); alertId is optional — a message
+                       is either tied to a specific alert (its chat/reply
+                       history) or a standalone Me<->Sentinel conversation
+                       outside any alert. During an active alert, base
+                       Sentinel replies are limited to a fixed set of
+                       predefined texts and aren't part of any shared
+                       thread, while Sentinel+ messages (any type) go into
+                       a shared alert chat visible only to the 1st circle
+                       and whoever is responsible for the alert. Outside of
+                       an alert, any Sentinel (base or +) can message "Me"
+                       freely.
+- EscalationEvent    : records each escalation: from circle -> to circle,
+                       who triggered it, when.
+
+BACKEND MODULES (NestJS, sketch)
+----------------------------------
+- Auth        : login/signup itself — phone+OTP, email+password, Google
+                OAuth; issues sessions/JWT. Kept separate from User so auth
+                strategies can evolve independently of profile data.
+- User        : create/modify account info; read own data (incl. alert
+                history); accept/decline incoming Sentinel invitations.
+- Sentinel    : register Sentinels (either direction — invite or request),
+                define circles, set per-Sentinel rights (sentinelType,
+                canEscalate).
+- Alert       : send alerts (app + SMS), respond to an alert, notify the
+                relevant circles, notify everyone once an alert is closed.
+                Enforces that only 1st circle members or "Me" can close it.
+- Organization : look up a user by phone/email/username, notify their 1st
+                circle; anything past that first contact happens outside
+                the app's messaging (direct phone call, etc.).
+- Messaging   : everyday Me<->Sentinel conversations outside of any active
+                alert (open to any Sentinel, base or +); also backs the
+                in-alert chat used by Alert, but the two contexts enforce
+                different rules (free-form always here vs Sentinel-type-
+                gated during an alert).
+
+TECH STACK (confirmed)
+------------------------
+- Backend      : NestJS + TypeScript
+- Frontend web : React + TypeScript
+- Mobile       : React Native
+- ORM / DB     : Prisma + PostgreSQL, hosted on Neon (cloud, no local install)
+- SMS          : pluggable provider, decide later (Twilio likely default)
+- Infra        : no Docker/Nginx for now — run services directly in dev
+
+OPEN POINTS / TO REVISIT
+--------------------------
+- Who exactly counts as "responsible for the alert" (besides 1st circle
+  members) when it comes to who can see the Sentinel+ shared chat — is it
+  whoever escalated to, whoever "Me" designates, or something else? TBD.
+- Final name for the "Organization" category.
+- Organization verification mechanism (manual doc review, automated business
+  registry check, professional email domain, etc.) — deferred.
+- Internal roles within an Organization (admin vs staff) and what each can
+  do — TBD.
+- Exact scope of "more rights" an Organization unlocks once its staff log in,
+  beyond the phone-only alert trigger (e.g. dashboard, alert history,
+  managing multiple concurrent alerts) — TBD.
+- Whether to add scheduled check-ins later (explicitly deferred — MVP is
+  manual-trigger only).
+- Push notifications on top of SMS for registered app users (nice-to-have,
+  not blocking MVP).
+- SMS provider selection (Twilio vs alternatives) — deferred.
+
+STATUS
+------
+Draft — awaiting review before implementation starts.
