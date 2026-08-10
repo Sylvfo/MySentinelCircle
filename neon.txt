@@ -19,3 +19,8 @@ SETUP NEON — A FAIRE DEMAIN
 
 6. Etape suivante apres ca : coder le module Auth (signup/login
    phone+OTP, email+password, Google OAuth, JWT) — voir backend/src/auth/.
+
+
+
+accont with google
+my links:

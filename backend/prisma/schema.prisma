@@ -85,6 +85,12 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  // OTP verification (signup completion + phone-based login). Single slot
+  // per user — a new request overwrites the previous code.
+  otpCodeHash  String?
+  otpExpiresAt DateTime?
+  otpAttempts  Int       @default(0)
+
   circles                  Circle[]
   contactsOwned            Contact[]            @relation("ContactOwner")
   contactRecordsAsSentinel Contact[]            @relation("ContactUser")

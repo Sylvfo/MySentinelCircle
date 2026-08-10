@@ -1,0 +1,11 @@
+Frontend scaffolded et testé en conditions réelles (navigateur headless, pas juste compilé) :
+
+Signup → page OTP → dashboard → navigation entre pages : tout fonctionne, aucune erreur console.
+Structure : sidebar avec Dashboard / Cercles / Companions / Alertes / Messages, toutes déjà navigables.
+Dashboard : 4 cartes résumé (à 0 pour l'instant, branchées quand les modules backend existeront).
+Circles/Companions/Alerts/Messages : pages avec état vide, prêtes à recevoir la vraie logique.
+Login : bascule email+mot de passe / téléphone+OTP, bouton Google visible mais désactivé ("bientôt disponible").
+Style neutre (gris, pas de couleurs/police définitives) comme demandé.
+Les deux serveurs tournent toujours (backend :3000, frontend :5173) pour que tu puisses tester toi-même dans ton navigateur : ouvre http://localhost:5173, crée un compte, et regarde le terminal backend pour récupérer le code OTP à 6 chiffres (loggé en console, pas de vrai SMS pour l'instant).
+
+Prochaine étape : coder le module Sentinel (cercles) pour remplacer les placeholders — comme discuté juste avant.

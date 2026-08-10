@@ -1,0 +1,204 @@
+:root {
+  --text: #3a3a3a;
+  --text-muted: #767676;
+  --bg: #ffffff;
+  --bg-subtle: #f6f6f7;
+  --border: #dcdcdf;
+  --accent: #445566;
+  --danger: #b3261e;
+
+  font: 16px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1, h2, h3 {
+  margin: 0 0 0.5em;
+  font-weight: 600;
+}
+
+a {
+  color: var(--accent);
+}
+
+button, input {
+  font: inherit;
+}
+
+.page-loading {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* Auth pages */
+.auth-page {
+  max-width: 380px;
+  margin: 10vh auto 0;
+  padding: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.auth-page form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-page label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.auth-page input {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.auth-page button[type='submit'] {
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+.auth-page button[type='submit']:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth-page .switch-link {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.form-error {
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.google-btn-placeholder {
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  text-align: center;
+  cursor: not-allowed;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0.25rem 0;
+}
+.auth-divider::before, .auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* App shell */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-nav {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.app-nav .brand {
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+}
+
+.app-nav a {
+  display: block;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.app-nav a.active,
+.app-nav a:hover {
+  background: var(--bg-subtle);
+}
+
+.app-nav .logout-btn {
+  margin-top: auto;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-muted);
+}
+
+.app-content {
+  flex: 1;
+  padding: 2rem;
+  max-width: 900px;
+}
+
+/* Dashboard summary cards */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.summary-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.summary-card .value {
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.summary-card .label {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.empty-state {
+  margin-top: 1.5rem;
+  padding: 2rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  text-align: center;
+}
