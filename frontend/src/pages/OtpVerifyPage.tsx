@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { requestOtp, verifyOtp } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
@@ -14,6 +15,7 @@ export function OtpVerifyPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { applyToken } = useAuth();
+  const { t } = useTranslation();
   const state = location.state as LocationState | null;
 
   const [code, setCode] = useState('');
@@ -34,7 +36,7 @@ export function OtpVerifyPage() {
       await applyToken(accessToken);
       navigate('/dashboard');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Code invalide');
+      setError(err instanceof ApiError ? err.message : t('auth.errors.invalidCode'));
     } finally {
       setSubmitting(false);
     }
@@ -45,22 +47,23 @@ export function OtpVerifyPage() {
     setInfo(null);
     try {
       await requestOtp(state.phone);
-      setInfo('Nouveau code envoyé.');
+      setInfo(t('auth.resent'));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erreur');
+      setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
     }
   };
 
   return (
     <div className="auth-page">
-      <h1>Vérification</h1>
+      <h1>{t('auth.verifyTitle')}</h1>
       <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-        {state.justSignedUp ? 'Un code a été envoyé au ' : 'Code envoyé au '}
-        {state.phone}.
+        {state.justSignedUp
+          ? t('auth.otpSentSignup', { phone: state.phone })
+          : t('auth.otpSent', { phone: state.phone })}
       </p>
       <form onSubmit={handleSubmit}>
         <label>
-          Code à 6 chiffres
+          {t('auth.otpLabel')}
           <input
             type="text"
             inputMode="numeric"
@@ -73,7 +76,7 @@ export function OtpVerifyPage() {
         {error && <p className="form-error">{error}</p>}
         {info && <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{info}</p>}
         <button type="submit" disabled={submitting}>
-          Valider
+          {t('auth.validate')}
         </button>
       </form>
       <p className="switch-link">
@@ -82,7 +85,7 @@ export function OtpVerifyPage() {
           onClick={handleResend}
           style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer' }}
         >
-          Renvoyer le code
+          {t('auth.resend')}
         </button>
       </p>
     </div>

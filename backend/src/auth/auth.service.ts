@@ -46,7 +46,7 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.user.create({
-      data: { email: dto.email, passwordHash, phone: dto.phone },
+      data: { firstName: dto.firstName, email: dto.email, passwordHash, phone: dto.phone },
     });
     await this.sendOtp(user.id, user.phone);
     return { userId: user.id };
@@ -63,7 +63,7 @@ export class AuthService {
     if (phoneTaken) throw new ConflictException('Phone already in use');
 
     const user = await this.prisma.user.create({
-      data: { googleId, email, phone: dto.phone },
+      data: { firstName: dto.firstName, googleId, email, phone: dto.phone },
     });
     await this.sendOtp(user.id, user.phone);
     return { userId: user.id };

@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { loginEmail, requestOtp } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 export function LoginPage() {
   const [mode, setMode] = useState<'password' | 'phone'>('password');
@@ -13,6 +15,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const { applyToken } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const handlePasswordSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -23,7 +26,7 @@ export function LoginPage() {
       await applyToken(accessToken);
       navigate('/dashboard');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erreur de connexion');
+      setError(err instanceof ApiError ? err.message : t('auth.errors.login'));
     } finally {
       setSubmitting(false);
     }
@@ -37,7 +40,7 @@ export function LoginPage() {
       const { userId } = await requestOtp(phone);
       navigate('/otp', { state: { userId, phone } });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erreur');
+      setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
     } finally {
       setSubmitting(false);
     }
@@ -45,27 +48,30 @@ export function LoginPage() {
 
   return (
     <div className="auth-page">
-      <h1>Connexion</h1>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <LanguageSwitcher />
+      </div>
+      <h1>{t('auth.loginTitle')}</h1>
 
       {mode === 'password' ? (
         <form onSubmit={handlePasswordSubmit}>
           <label>
-            Email
+            {t('auth.email')}
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </label>
           <label>
-            Mot de passe
+            {t('auth.password')}
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
           {error && <p className="form-error">{error}</p>}
           <button type="submit" disabled={submitting}>
-            Se connecter
+            {t('auth.login')}
           </button>
         </form>
       ) : (
         <form onSubmit={handlePhoneSubmit}>
           <label>
-            Numéro de téléphone
+            {t('auth.phone')}
             <input
               type="tel"
               required
@@ -76,7 +82,7 @@ export function LoginPage() {
           </label>
           {error && <p className="form-error">{error}</p>}
           <button type="submit" disabled={submitting}>
-            Recevoir un code
+            {t('auth.requestCode')}
           </button>
         </form>
       )}
@@ -88,15 +94,15 @@ export function LoginPage() {
           style={{ width: '100%', border: 'none', marginBottom: '0.5rem' }}
           onClick={() => setMode(mode === 'password' ? 'phone' : 'password')}
         >
-          {mode === 'password' ? 'Se connecter par téléphone (OTP)' : 'Se connecter par email + mot de passe'}
+          {mode === 'password' ? t('auth.switchToPhone') : t('auth.switchToPassword')}
         </button>
       </p>
 
-      <div className="auth-divider">ou</div>
-      <p className="google-btn-placeholder">Google (bientôt disponible)</p>
+      <div className="auth-divider">{t('common.or')}</div>
+      <p className="google-btn-placeholder">{t('auth.googleLogin', { state: t('common.comingSoon') })}</p>
 
       <p className="switch-link">
-        Pas encore de compte ? <Link to="/signup">Créer un compte</Link>
+        {t('auth.noAccount')} <Link to="/signup">{t('auth.createAccount')}</Link>
       </p>
     </div>
   );

@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { SmsModule } from './sms/sms.module';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { SentinelModule } from './sentinel/sentinel.module';
@@ -14,6 +15,7 @@ import { MessagingModule } from './messaging/messaging.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    SmsModule,
     AuthModule,
     UserModule,
     SentinelModule,

@@ -164,6 +164,20 @@ button, input {
   color: var(--text-muted);
 }
 
+.lang-switcher select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.app-nav .lang-switcher {
+  margin-top: auto;
+}
+
 .app-content {
   flex: 1;
   padding: 2rem;
@@ -201,4 +215,106 @@ button, input {
   border-radius: 8px;
   color: var(--text-muted);
   text-align: center;
+}
+
+/* Sentinel / circle management */
+.panel {
+  margin-top: 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.panel h2 {
+  font-size: 1.1rem;
+}
+
+.panel h3 {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin-top: 1rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+}
+
+.row.wrap {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.member-row {
+  border-top: 1px solid var(--bg-subtle);
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.inline-form input {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.app-content button {
+  padding: 0.45rem 0.8rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+.app-content button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.app-content button.ghost {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+
+.badge.status-accepted {
+  color: #1a7f37;
+  border-color: #1a7f37;
+}
+
+.badge.status-pending {
+  color: #9a6700;
+  border-color: #9a6700;
+}
+
+.badge.status-declined {
+  color: var(--danger);
+  border-color: var(--danger);
 }

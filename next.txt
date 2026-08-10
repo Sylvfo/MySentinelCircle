@@ -1,11 +1,35 @@
-Frontend scaffolded et testé en conditions réelles (navigateur headless, pas juste compilé) :
+ETAT ACTUEL (2026-08-10)
+========================
 
-Signup → page OTP → dashboard → navigation entre pages : tout fonctionne, aucune erreur console.
-Structure : sidebar avec Dashboard / Cercles / Companions / Alertes / Messages, toutes déjà navigables.
-Dashboard : 4 cartes résumé (à 0 pour l'instant, branchées quand les modules backend existeront).
-Circles/Companions/Alerts/Messages : pages avec état vide, prêtes à recevoir la vraie logique.
-Login : bascule email+mot de passe / téléphone+OTP, bouton Google visible mais désactivé ("bientôt disponible").
-Style neutre (gris, pas de couleurs/police définitives) comme demandé.
-Les deux serveurs tournent toujours (backend :3000, frontend :5173) pour que tu puisses tester toi-même dans ton navigateur : ouvre http://localhost:5173, crée un compte, et regarde le terminal backend pour récupérer le code OTP à 6 chiffres (loggé en console, pas de vrai SMS pour l'instant).
+Fait cette session :
+- i18n FR/EN branche (react-i18next), defaut FR, selecteur de langue,
+  memorise dans localStorage. Textes dans frontend/src/i18n/locales/.
+- Module Sentinel backend complet (cercles + sentinelles bidirectionnel) :
+  - Cercles CRUD, inviter une sentinelle (site only).
+  - Demande sentinelle->Me, et invitation Me->sentinelle.
+  - Accept / refus / retrait par SMS (sans compte) ET depuis le site.
+  - Webhook SMS entrant : POST /sentinel/sms/inbound {from, body} (OUI/NON).
+  - Messages SMS rediges dans backend/src/sms/messages.ts.
+  - Modele de compte note dans plan.txt (section ACCOUNTS & BILLING) :
+    seuls les Me (payants) et les Organizations ont besoin d'un compte ;
+    les sentinelles non (SMS-first, compte optionnel).
+- Frontend Sentinel branche : pages Cercles et Companions completes
+  (creer cercle, inviter, gerer membres, demandes, invitations, retrait).
+- Backend build OK, frontend tsc + build OK.
 
-Prochaine étape : coder le module Sentinel (cercles) pour remplacer les placeholders — comme discuté juste avant.
+PAS ENCORE TESTE EN VRAI (a faire en priorite prochaine fois) :
+- Lancer make dev, creer 2 comptes, tester le flux complet dans le navigateur.
+- Verifier les SMS logges dans le terminal backend (invitation, reponses).
+- Tester le webhook d'acceptation par SMS :
+    curl -X POST localhost:3000/sentinel/sms/inbound \
+      -H 'Content-Type: application/json' \
+      -d '{"from":"+33612345678","body":"OUI"}'
+- Verifier accept/refus depuis le site + retrait (page Companions).
+
+
+PROCHAINE ETAPE
+===============
+1. Tester de bout en bout le module Sentinel (cercles + SMS) — voir ci-dessus.
+2. Puis coder le module ALERT (lever une alerte, notifier le 1er cercle,
+   reponses predefinies, cloture par Me/1er cercle, escalade). C'est le
+   coeur de l'app. Voir plan.txt section "Alert lifecycle".

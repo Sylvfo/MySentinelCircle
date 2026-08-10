@@ -29,7 +29,18 @@ Choses reportees pendant l'implementation, a rebrancher quand pretes.
      Postmark...) puis coder l'endpoint de demande de reset + lien a
      usage unique + page/flow de saisie du nouveau mot de passe.
 
-4. Divers (deja notes dans plan.txt sous OPEN POINTS, rappeles ici)
+4. Internationalisation (i18n) — site multilingue
+   - FAIT (front) : react-i18next branche, FR + EN, defaut FR, detection
+     navigateur + memorisation localStorage, selecteur de langue. Textes
+     UI dans frontend/src/i18n/locales/{fr,en}.json.
+   - RESTE : backend — messages d'erreur/validation renvoyes en dur (ex.
+     "Code invalide" cote API). Si on veut les afficher tels quels cote
+     client, les traduire via header Accept-Language. Pour l'instant le
+     front a ses propres messages de fallback traduits, donc non bloquant.
+   - Penser a ajouter les cles i18n au fur et a mesure des nouveaux
+     modules (Sentinel, Alert, Messaging) plutot que du texte en dur.
+
+5. Divers (deja notes dans plan.txt sous OPEN POINTS, rappeles ici)
    - Taille du 1er cercle (1 a 5 personnes) : cap dur ou juste indicatif ?
    - Nom final de la categorie "Organization".
    - Mecanisme de verification des Organizations (revue manuelle, check

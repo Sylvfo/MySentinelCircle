@@ -1,0 +1,123 @@
+{
+  "common": {
+    "or": "or",
+    "language": "Language",
+    "comingSoon": "coming soon",
+    "loading": "Loading…",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "remove": "Remove",
+    "delete": "Delete"
+  },
+  "sentinel": {
+    "status": {
+      "PENDING": "Pending",
+      "ACCEPTED": "Accepted",
+      "DECLINED": "Declined"
+    },
+    "type": {
+      "SENTINEL": "Sentinel",
+      "SENTINEL_PLUS": "Sentinel+"
+    },
+    "reference": "Reference"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "circles": "Circles",
+    "companions": "Companions",
+    "alerts": "Alerts",
+    "messages": "Messages",
+    "logout": "Log out"
+  },
+  "auth": {
+    "loginTitle": "Log in",
+    "signupTitle": "Create an account",
+    "verifyTitle": "Verification",
+    "firstName": "First name",
+    "email": "Email",
+    "password": "Password",
+    "phone": "Phone number",
+    "login": "Log in",
+    "requestCode": "Get a code",
+    "continue": "Continue",
+    "validate": "Confirm",
+    "switchToPhone": "Log in by phone (OTP)",
+    "switchToPassword": "Log in with email + password",
+    "googleLogin": "Google ({{state}})",
+    "googleSignup": "Sign up with Google ({{state}})",
+    "noAccount": "No account yet?",
+    "createAccount": "Create an account",
+    "haveAccount": "Already have an account?",
+    "signIn": "Log in",
+    "otpLabel": "6-digit code",
+    "otpSentSignup": "A code has been sent to {{phone}}.",
+    "otpSent": "Code sent to {{phone}}.",
+    "resend": "Resend code",
+    "resent": "New code sent.",
+    "errors": {
+      "login": "Login error",
+      "generic": "Error",
+      "signup": "Error while creating the account",
+      "invalidCode": "Invalid code"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "activeAlerts": "Active alerts",
+    "circles": "Circles",
+    "companions": "Companions",
+    "unreadMessages": "Unread messages",
+    "placeholder": "Summaries will be wired up once the Sentinel/Alert/Messaging modules are built."
+  },
+  "circles": {
+    "title": "Circles",
+    "intro": "Create your circles (first circle, family, work...) and manage the Sentinels watching over you.",
+    "empty": "No circle yet. Create one to get started.",
+    "newCircle": "New circle",
+    "namePlaceholder": "Circle name (e.g. Neighbors)",
+    "firstCircle": "1st circle",
+    "create": "Create circle",
+    "confirmDelete": "Delete this circle?",
+    "members": "Sentinels",
+    "noMembers": "No Sentinel in this circle.",
+    "invite": "Invite a Sentinel",
+    "invitePhone": "Phone (+33…)",
+    "inviteName": "First name",
+    "sendInvite": "Send invitation",
+    "requests": "Requests to approve",
+    "noRequests": "No pending request.",
+    "requestFrom": "{{who}} wants to become your Sentinel",
+    "approve": "Approve",
+    "decline": "Decline",
+    "removeMember": "Remove"
+  },
+  "companions": {
+    "title": "Companions",
+    "intro": "The people you are the Sentinel for — those you watch over.",
+    "empty": "You are not watching over anyone yet.",
+    "leave": "Leave",
+    "confirmLeave": "Stop being this person's Sentinel?",
+    "invitations": "Invitations received",
+    "noInvitations": "No pending invitation.",
+    "invitedBy": "{{who}} invites you as a Sentinel",
+    "inCircle": "Circle: {{label}}",
+    "accept": "Accept",
+    "decline": "Decline",
+    "requestTitle": "Become someone's Sentinel",
+    "requestIntro": "Enter the phone number of the person to watch over; they will receive your request.",
+    "targetPhone": "Person's phone (+33…)",
+    "sendRequest": "Send request",
+    "requestSent": "Request sent."
+  },
+  "alerts": {
+    "title": "Alerts",
+    "intro": "Active alerts and history.",
+    "empty": "No alert yet — the Alert module isn't built yet."
+  },
+  "messages": {
+    "title": "Messages",
+    "intro": "Conversations with your Sentinels and pending requests.",
+    "empty": "No message yet — the Messaging module isn't built yet."
+  }
+}

@@ -1,16 +1,19 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 const NAV_ITEMS = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/circles', label: 'Cercles' },
-  { to: '/companions', label: 'Companions' },
-  { to: '/alerts', label: 'Alertes' },
-  { to: '/messages', label: 'Messages' },
+  { to: '/dashboard', key: 'nav.dashboard' },
+  { to: '/circles', key: 'nav.circles' },
+  { to: '/companions', key: 'nav.companions' },
+  { to: '/alerts', key: 'nav.alerts' },
+  { to: '/messages', key: 'nav.messages' },
 ];
 
 export function AppShell() {
   const { logout } = useAuth();
+  const { t } = useTranslation();
 
   return (
     <div className="app-shell">
@@ -18,11 +21,12 @@ export function AppShell() {
         <div className="brand">MySentinelCircle</div>
         {NAV_ITEMS.map((item) => (
           <NavLink key={item.to} to={item.to} className={({ isActive }) => (isActive ? 'active' : '')}>
-            {item.label}
+            {t(item.key)}
           </NavLink>
         ))}
+        <LanguageSwitcher />
         <button className="logout-btn" onClick={logout}>
-          Déconnexion
+          {t('nav.logout')}
         </button>
       </nav>
       <div className="app-content">

@@ -15,11 +15,14 @@ ROLES
 - Me          : a registered user; manages their own circles and permissions.
 - Companion   : a person "Me" watches over; has an account (a Companion is
                 someone else's "Me").
-- Sentinel    : a registered person chosen by "Me" to be part of a circle.
-                Must explicitly accept the invitation before becoming active
-                — "Me" cannot add someone as a Sentinel without their
-                validation. Comes in two types (see CIRCLES & PERMISSIONS):
-                Sentinel (base) or Sentinel+.
+- Sentinel    : a person chosen by "Me" to be part of a circle. Does NOT need
+                an account — a Sentinel is reached and acts entirely by SMS
+                (accept an invitation, decline, or later opt out), identified
+                by phone number. May optionally create an account by choice
+                (e.g. to use the app UI / push), but it's never required.
+                Must explicitly accept before becoming active — "Me" cannot add
+                someone as a Sentinel without their validation. Comes in two
+                types (see CIRCLES & PERMISSIONS): Sentinel (base) or Sentinel+.
 - Organization : (placeholder name, to be finalized) a vetted entity — hotel
                 chain, vacation camp, police, school, business, etc. —
                 subject to stricter verification than individual users
@@ -32,14 +35,48 @@ ROLES
                 trigger, logging in also opens the door to more rights
                 (exact scope TBD — see OPEN POINTS).
 
+ACCOUNTS & BILLING
+------------------
+- Only "Me" accounts require registration, and they are the paying tier —
+  paying is what lets a user be watched over (i.e. be someone else's
+  Companion) and manage their own circles. Organizations will also require
+  accounts (later, B2B tier). Everyone else — plain Sentinels — needs no
+  account: they participate entirely by SMS.
+- A Sentinel may still choose to create an account (to use the app UI /
+  push), but it is optional and grants no extra obligation. Accepting,
+  declining, and opting out of a Sentinel link are all possible by SMS
+  reply, from either side of the link, with no login.
+- Billing mechanics (plans, what exactly is gated) still TBD — see
+  basedb.txt "a reconcilier".
+
 CIRCLES & PERMISSIONS
 ----------------------
 - Each "Me" defines multiple circles (e.g. 1st circle/family, work,
-  neighbors), ranked by tier. The 1st circle is the "close circle" — it's
-  the one that receives the first alert, and only it can escalate outward
-  to the other circles. Meant to stay small (roughly 1 to 5 people), since
-  during an active alert its members share one live group chat together
-  (see Alert lifecycle).
+  neighbors), ranked by tier. The 1st circle is the "close circle" and is
+  the hub: every other circle only ever interacts with the 1st circle, never
+  with each other. It's meant to stay small (advised 4-5 people max, but more
+  is allowed), since during an active alert its members share one live group
+  chat together (see Alert lifecycle).
+- The 1st circle exists by default for every "Me" and MUST contain at least
+  one "reference" Sentinel (a.k.a. the responsible). The reference Sentinel
+  is the person "Me" designates to make the real-life calls and drive alerts
+  — deciding what to do, coordinating the other 1st-circle Sentinels, sending
+  requests out to the other circles, and closing the alert. There can be more
+  than one reference; there must always be at least one. Plain (non-reference)
+  1st-circle Sentinels help the reference but the reference leads.
+- Role of the other circles (work, sport, neighbors, friends...): their
+  Sentinels can ONLY raise the initial alert to the 1st circle (e.g. "haven't
+  seen José at work for 5 days"). They never manage or close it. From there
+  the 1st circle runs the whole thing: it can send questions to a specific
+  outer circle ("is José home?") which its members answer yes/no by SMS or
+  by in-app messaging IF "Me" has pre-authorized that circle's messaging.
+  Only the 1st circle (or the concerned person themselves) can close an alert.
+- Having a first name (prénom) is mandatory for everyone in the system — the
+  "Me" account (set at signup) and every Sentinel (set when invited/linked).
+- Messaging authorization: "Me" chooses whether the 1st circle's Sentinels
+  may exchange in-app messages with the Sentinels of ALL other circles, or
+  only with certain designated ones. Outside that authorization, outer
+  circles answer the 1st circle by SMS only.
 - Independently of circle tier, each Sentinel has a type governing how much
   they can exchange, chosen by "Me" per Sentinel:
     - Sentinel   : quick predefined replies only ("ok vu tel jour",
@@ -52,10 +89,10 @@ CIRCLES & PERMISSIONS
                    replies. Each Sentinel+ who requests gets their own
                    separate chat with the 1st circle — not one chat shared
                    across every Sentinel+ (see Alert lifecycle).
-  Circle tier (does this Sentinel sit in the 1st circle, and can they
-  escalate?) and Sentinel type (Sentinel vs Sentinel+) are two separate
-  settings — a Sentinel in the 1st circle isn't necessarily Sentinel+, and
-  vice versa.
+  Circle tier (does this Sentinel sit in the 1st circle?) and Sentinel type
+  (Sentinel vs Sentinel+) are two separate settings — a Sentinel in the 1st
+  circle isn't necessarily Sentinel+, and vice versa. Being a "reference"
+  Sentinel is a third, separate flag, only meaningful inside the 1st circle.
 - The link can be initiated from either side: "Me" can invite someone as a
   Sentinel, or someone can request to become a Sentinel for a given "Me".
   Either way, the party who didn't initiate must validate before the link
@@ -83,8 +120,10 @@ CORE FEATURES (MVP)
      settings; the new number is re-verified via OTP before use in alerts.
 
 2. Circle management
-   - Create circles, invite Sentinels/Companions, set per-member permissions
-     (escalation rights, Sentinel type).
+   - Create circles, invite Sentinels/Companions, set per-member settings
+     (Sentinel type, and the reference/responsible flag for 1st-circle
+     members). Every "Me" starts with a default 1st circle that must keep
+     at least one reference Sentinel.
    - A Sentinel link can start from either side: "Me" invites someone, or
      someone requests to become a Sentinel for a given "Me". Whichever side
      didn't initiate must validate before the link becomes active.
@@ -119,9 +158,11 @@ CORE FEATURES (MVP)
      control of the alert at any point (e.g. mark themselves safe / resolve
      it directly), overriding whatever the circle is doing; the circle is
      then notified the alert was closed by "Me".
-   - Only 1st circle members or "Me" can close an alert — other circles,
-     once escalated to, can respond but not close it themselves. 1st circle
-     can also escalate to the next circle if the person can't be reached.
+   - Only 1st circle members or "Me" can close an alert — other circles can
+     only answer the 1st circle's requests, never manage or close the alert.
+     When the person can't be reached, the 1st circle involves the relevant
+     outer circle(s) by sending them a request (they reply yes/no); the
+     1st circle stays in charge throughout.
    - Once an alert is active, all 1st circle members share one live group
      chat ("1st circle chat") — that's what keeps the 1st circle
      intentionally small. Sentinels outside the 1st circle can't join this
@@ -159,12 +200,16 @@ CORE FEATURES (MVP)
 
 DATA MODEL (sketch)
 --------------------
-- User              : account holder (email, passwordHash, phone), dual auth.
-- Contact            : a person known in someone's circles by phone number;
-                       optionally linked to a User if they ever register
-                       (covers Sentinels without accounts).
+- User              : account holder (firstName, email, passwordHash,
+                       phone), dual auth. firstName is required (mandatory
+                       prénom for every account).
+- Contact            : a person known in someone's circles, with a required
+                       name (prénom) and phone number; optionally linked to a
+                       User if they ever register (covers Sentinels without
+                       accounts).
 - Circle             : belongs to a User, has a tier/rank and a label.
-- CircleMembership   : links a Contact to a Circle, with canEscalate,
+- CircleMembership   : links a Contact to a Circle, with isReference (the
+                       1st-circle responsible flag; only meaningful at tier 1),
                        sentinelType (sentinel | sentinel_plus), status
                        (pending | accepted | declined), and initiatedBy
                        (me | sentinel) — tracks whether "Me" sent the
@@ -224,8 +269,9 @@ BACKEND MODULES (NestJS, sketch)
 - User        : create/modify account info; read own data (incl. alert
                 history); accept/decline incoming Sentinel invitations.
 - Sentinel    : register Sentinels (either direction — invite or request),
-                define circles, set per-Sentinel rights (sentinelType,
-                canEscalate).
+                define circles, set per-Sentinel settings (sentinelType, and
+                the reference/responsible flag for 1st-circle members).
+                Keeps the default 1st circle with >=1 reference Sentinel.
 - Alert       : send alerts (app + SMS), respond to an alert, notify the
                 relevant circles, notify everyone once an alert is closed.
                 Enforces that only 1st circle members or "Me" can close it.
@@ -253,8 +299,8 @@ TECH STACK (confirmed)
 
 OPEN POINTS / TO REVISIT
 --------------------------
-- Whether the 1st circle's small size (1 to 5 people) is an enforced hard
-  cap or just guidance — TBD.
+- 1st circle size: DECIDED — advised 4-5 people max but NOT a hard cap
+  (more is allowed). Must always keep >=1 reference Sentinel.
 - Final name for the "Organization" category.
 - Organization verification mechanism (manual doc review, automated business
   registry check, professional email domain, etc.) — deferred.

@@ -31,6 +31,7 @@ export declare class AuthController {
     me(user: {
         userId: string;
     }): Promise<{
+        firstName: string;
         email: string | null;
         phone: string;
         id: string;

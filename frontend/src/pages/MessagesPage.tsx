@@ -1,9 +1,12 @@
+import { useTranslation } from 'react-i18next';
+
 export function MessagesPage() {
+  const { t } = useTranslation();
   return (
     <div>
-      <h1>Messages</h1>
-      <p style={{ color: 'var(--text-muted)' }}>Conversations avec vos Sentinels et requêtes en attente.</p>
-      <div className="empty-state">Aucun message pour l'instant — le module Messaging n'est pas encore codé.</div>
+      <h1>{t('messages.title')}</h1>
+      <p style={{ color: 'var(--text-muted)' }}>{t('messages.intro')}</p>
+      <div className="empty-state">{t('messages.empty')}</div>
     </div>
   );
 }

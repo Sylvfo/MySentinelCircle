@@ -77,6 +77,7 @@ enum NotificationDeliveryStatus {
 
 model User {
   id              String    @id @default(cuid())
+  firstName       String
   email           String?   @unique
   passwordHash    String?
   googleId        String?   @unique
@@ -113,7 +114,7 @@ model Contact {
   userId  String?
   user    User?   @relation("ContactUser", fields: [userId], references: [id])
 
-  name      String?
+  name      String
   phone     String
   createdAt DateTime @default(now())
 
@@ -125,14 +126,16 @@ model Contact {
   standaloneConversation Message[]           @relation("MessageConversationContact")
 }
 
-// Belongs to a User ("Me"), has a tier/rank and a label. Tier 1 is the
-// "close circle" — see plan.txt CIRCLES & PERMISSIONS.
+// Belongs to a User ("Me"), has a label. Exactly one circle per owner is the
+// "1st circle" (isPrimary) — the hub that drives alerts and must keep >=1
+// reference Sentinel. All other circles are a flat, unordered set (no tier).
+// See plan.txt CIRCLES & PERMISSIONS.
 model Circle {
   id        String   @id @default(cuid())
   ownerId   String
   owner     User     @relation(fields: [ownerId], references: [id])
   label     String
-  tier      Int
+  isPrimary Boolean  @default(false)
   createdAt DateTime @default(now())
 
   memberships     CircleMembership[]
@@ -150,7 +153,9 @@ model CircleMembership {
   contactId    String
   contact      Contact          @relation(fields: [contactId], references: [id])
   sentinelType SentinelType     @default(SENTINEL)
-  canEscalate  Boolean          @default(false)
+  // The 1st-circle "responsible" flag (see plan.txt CIRCLES & PERMISSIONS).
+  // Only meaningful at tier 1; a tier-1 circle must keep >=1 reference.
+  isReference  Boolean          @default(false)
   status       MembershipStatus @default(PENDING)
   initiatedBy  InitiatedBy
   createdAt    DateTime         @default(now())

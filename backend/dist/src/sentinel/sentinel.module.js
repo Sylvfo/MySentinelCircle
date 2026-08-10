@@ -10,13 +10,14 @@ exports.SentinelModule = void 0;
 const common_1 = require("@nestjs/common");
 const sentinel_service_1 = require("./sentinel.service");
 const sentinel_controller_1 = require("./sentinel.controller");
+const sentinel_sms_controller_1 = require("./sentinel-sms.controller");
 let SentinelModule = class SentinelModule {
 };
 exports.SentinelModule = SentinelModule;
 exports.SentinelModule = SentinelModule = __decorate([
     (0, common_1.Module)({
         providers: [sentinel_service_1.SentinelService],
-        controllers: [sentinel_controller_1.SentinelController]
+        controllers: [sentinel_controller_1.SentinelController, sentinel_sms_controller_1.SentinelSmsController],
     })
 ], SentinelModule);
 //# sourceMappingURL=sentinel.module.js.map

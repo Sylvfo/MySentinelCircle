@@ -1,25 +1,29 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { signupEmail } from '../api/auth';
 import { ApiError } from '../api/client';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 export function SignupPage() {
+  const [firstName, setFirstName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      const { userId } = await signupEmail(email, password, phone);
+      const { userId } = await signupEmail(firstName.trim(), email, password, phone);
       navigate('/otp', { state: { userId, phone, justSignedUp: true } });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erreur lors de la création du compte');
+      setError(err instanceof ApiError ? err.message : t('auth.errors.signup'));
     } finally {
       setSubmitting(false);
     }
@@ -27,14 +31,21 @@ export function SignupPage() {
 
   return (
     <div className="auth-page">
-      <h1>Créer un compte</h1>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <LanguageSwitcher />
+      </div>
+      <h1>{t('auth.signupTitle')}</h1>
       <form onSubmit={handleSubmit}>
         <label>
-          Email
+          {t('auth.firstName')}
+          <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        </label>
+        <label>
+          {t('auth.email')}
           <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
         <label>
-          Mot de passe
+          {t('auth.password')}
           <input
             type="password"
             required
@@ -44,7 +55,7 @@ export function SignupPage() {
           />
         </label>
         <label>
-          Numéro de téléphone
+          {t('auth.phone')}
           <input
             type="tel"
             required
@@ -55,15 +66,15 @@ export function SignupPage() {
         </label>
         {error && <p className="form-error">{error}</p>}
         <button type="submit" disabled={submitting}>
-          Continuer
+          {t('auth.continue')}
         </button>
       </form>
 
-      <div className="auth-divider">ou</div>
-      <p className="google-btn-placeholder">S'inscrire avec Google (bientôt disponible)</p>
+      <div className="auth-divider">{t('common.or')}</div>
+      <p className="google-btn-placeholder">{t('auth.googleSignup', { state: t('common.comingSoon') })}</p>
 
       <p className="switch-link">
-        Déjà un compte ? <Link to="/login">Se connecter</Link>
+        {t('auth.haveAccount')} <Link to="/login">{t('auth.signIn')}</Link>
       </p>
     </div>
   );

@@ -12,11 +12,18 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SignupEmailDto = void 0;
 const class_validator_1 = require("class-validator");
 class SignupEmailDto {
+    firstName;
     email;
     password;
     phone;
 }
 exports.SignupEmailDto = SignupEmailDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    (0, class_validator_1.MaxLength)(80),
+    __metadata("design:type", String)
+], SignupEmailDto.prototype, "firstName", void 0);
 __decorate([
     (0, class_validator_1.IsEmail)(),
     __metadata("design:type", String)

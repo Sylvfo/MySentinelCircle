@@ -12,10 +12,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SignupGoogleDto = void 0;
 const class_validator_1 = require("class-validator");
 class SignupGoogleDto {
+    firstName;
     idToken;
     phone;
 }
 exports.SignupGoogleDto = SignupGoogleDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    (0, class_validator_1.MaxLength)(80),
+    __metadata("design:type", String)
+], SignupGoogleDto.prototype, "firstName", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)

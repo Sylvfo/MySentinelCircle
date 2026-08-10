@@ -1,0 +1,123 @@
+{
+  "common": {
+    "or": "ou",
+    "language": "Langue",
+    "comingSoon": "bientôt disponible",
+    "loading": "Chargement…",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "edit": "Modifier",
+    "remove": "Retirer",
+    "delete": "Supprimer"
+  },
+  "sentinel": {
+    "status": {
+      "PENDING": "En attente",
+      "ACCEPTED": "Acceptée",
+      "DECLINED": "Refusée"
+    },
+    "type": {
+      "SENTINEL": "Sentinelle",
+      "SENTINEL_PLUS": "Sentinelle+"
+    },
+    "reference": "Référence"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "circles": "Cercles",
+    "companions": "Companions",
+    "alerts": "Alertes",
+    "messages": "Messages",
+    "logout": "Déconnexion"
+  },
+  "auth": {
+    "loginTitle": "Connexion",
+    "signupTitle": "Créer un compte",
+    "verifyTitle": "Vérification",
+    "firstName": "Prénom",
+    "email": "Email",
+    "password": "Mot de passe",
+    "phone": "Numéro de téléphone",
+    "login": "Se connecter",
+    "requestCode": "Recevoir un code",
+    "continue": "Continuer",
+    "validate": "Valider",
+    "switchToPhone": "Se connecter par téléphone (OTP)",
+    "switchToPassword": "Se connecter par email + mot de passe",
+    "googleLogin": "Google ({{state}})",
+    "googleSignup": "S'inscrire avec Google ({{state}})",
+    "noAccount": "Pas encore de compte ?",
+    "createAccount": "Créer un compte",
+    "haveAccount": "Déjà un compte ?",
+    "signIn": "Se connecter",
+    "otpLabel": "Code à 6 chiffres",
+    "otpSentSignup": "Un code a été envoyé au {{phone}}.",
+    "otpSent": "Code envoyé au {{phone}}.",
+    "resend": "Renvoyer le code",
+    "resent": "Nouveau code envoyé.",
+    "errors": {
+      "login": "Erreur de connexion",
+      "generic": "Erreur",
+      "signup": "Erreur lors de la création du compte",
+      "invalidCode": "Code invalide"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "activeAlerts": "Alertes en cours",
+    "circles": "Cercles",
+    "companions": "Companions",
+    "unreadMessages": "Messages non lus",
+    "placeholder": "Les résumés seront branchés une fois les modules Sentinel/Alert/Messaging codés."
+  },
+  "circles": {
+    "title": "Cercles",
+    "intro": "Créez vos cercles (1er cercle, famille, travail...) et gérez les sentinelles qui vous surveillent.",
+    "empty": "Aucun cercle pour l'instant. Créez-en un pour commencer.",
+    "newCircle": "Nouveau cercle",
+    "namePlaceholder": "Nom du cercle (ex. Voisins)",
+    "firstCircle": "1er cercle",
+    "create": "Créer le cercle",
+    "confirmDelete": "Supprimer ce cercle ?",
+    "members": "Sentinelles",
+    "noMembers": "Aucune sentinelle dans ce cercle.",
+    "invite": "Inviter une sentinelle",
+    "invitePhone": "Téléphone (+33…)",
+    "inviteName": "Prénom",
+    "sendInvite": "Envoyer l'invitation",
+    "requests": "Demandes à approuver",
+    "noRequests": "Aucune demande en attente.",
+    "requestFrom": "{{who}} souhaite devenir votre sentinelle",
+    "approve": "Approuver",
+    "decline": "Refuser",
+    "removeMember": "Retirer"
+  },
+  "companions": {
+    "title": "Companions",
+    "intro": "Les personnes dont vous êtes la sentinelle — celles que vous surveillez.",
+    "empty": "Vous ne surveillez personne pour l'instant.",
+    "leave": "Me retirer",
+    "confirmLeave": "Ne plus être la sentinelle de cette personne ?",
+    "invitations": "Invitations reçues",
+    "noInvitations": "Aucune invitation en attente.",
+    "invitedBy": "{{who}} vous invite comme sentinelle",
+    "inCircle": "Cercle : {{label}}",
+    "accept": "Accepter",
+    "decline": "Refuser",
+    "requestTitle": "Devenir la sentinelle de quelqu'un",
+    "requestIntro": "Entrez le numéro de la personne à surveiller ; elle recevra votre demande.",
+    "targetPhone": "Téléphone de la personne (+33…)",
+    "sendRequest": "Envoyer la demande",
+    "requestSent": "Demande envoyée."
+  },
+  "alerts": {
+    "title": "Alertes",
+    "intro": "Alertes en cours et historique.",
+    "empty": "Aucune alerte pour l'instant — le module Alert n'est pas encore codé."
+  },
+  "messages": {
+    "title": "Messages",
+    "intro": "Conversations avec vos Sentinels et requêtes en attente.",
+    "empty": "Aucun message pour l'instant — le module Messaging n'est pas encore codé."
+  }
+}
