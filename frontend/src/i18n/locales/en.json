@@ -82,6 +82,7 @@
     "members": "Sentinels",
     "noMembers": "No Sentinel in this circle.",
     "invite": "Invite a Sentinel",
+    "invitePrimaryHint": "A 1st-circle Sentinel must already have an account.",
     "invitePhone": "Phone (+33…)",
     "inviteName": "First name",
     "sendInvite": "Send invitation",

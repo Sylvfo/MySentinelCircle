@@ -71,6 +71,9 @@ let SentinelService = class SentinelService {
         if (linkedUser?.id === userId) {
             throw new common_1.BadRequestException('You cannot add yourself as a Sentinel');
         }
+        if (circle.isPrimary && !linkedUser) {
+            throw new common_1.BadRequestException('A 1st-circle Sentinel must already have an account');
+        }
         const contact = await this.upsertContact(userId, phone, dto.name, linkedUser?.id);
         await this.assertNoActiveMembership(contact.id);
         const membership = await this.prisma.circleMembership.create({
@@ -244,6 +247,9 @@ let SentinelService = class SentinelService {
             const target = await this.ensureCircleOwned(userId, dto.circleId);
             circleId = target.id;
             targetIsPrimary = target.isPrimary;
+            if (target.isPrimary && !membership.contact.userId) {
+                throw new common_1.BadRequestException('A 1st-circle Sentinel must already have an account');
+            }
         }
         let isReference = dto.isReference ?? membership.isReference;
         if (!targetIsPrimary) {
@@ -313,7 +319,10 @@ let SentinelService = class SentinelService {
     async getOwnedMembership(userId, membershipId) {
         const membership = await this.prisma.circleMembership.findUnique({
             where: { id: membershipId },
-            include: { circle: { select: { ownerId: true, isPrimary: true } } },
+            include: {
+                circle: { select: { ownerId: true, isPrimary: true } },
+                contact: { select: { userId: true } },
+            },
         });
         if (!membership)
             throw new common_1.NotFoundException('Membership not found');

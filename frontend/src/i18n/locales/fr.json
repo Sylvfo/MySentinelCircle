@@ -82,6 +82,7 @@
     "members": "Sentinelles",
     "noMembers": "Aucune sentinelle dans ce cercle.",
     "invite": "Inviter une sentinelle",
+    "invitePrimaryHint": "Une sentinelle du 1er cercle doit déjà avoir un compte.",
     "invitePhone": "Téléphone (+33…)",
     "inviteName": "Prénom",
     "sendInvite": "Envoyer l'invitation",
