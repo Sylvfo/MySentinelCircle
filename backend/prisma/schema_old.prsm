@@ -14,20 +14,17 @@ datasource db {
 
 enum SentinelType {
   SENTINEL
-  LEAD SENTINEL
-  1RST_CIRCLE_SENTINEL
-  SENTINEL_SMS
+  SENTINEL_PLUS
 }
 
 enum MembershipStatus {
   PENDING
   ACCEPTED
   DECLINED
-  BLOQUED
 }
 
 enum InitiatedBy {
-  COMPAGNON
+  ME
   SENTINEL
 }
 
@@ -35,7 +32,6 @@ enum OrgVerificationStatus {
   PENDING
   VERIFIED
   REJECTED
-  BLOQUED
 }
 
 enum OrgRole {
@@ -43,25 +39,10 @@ enum OrgRole {
   STAFF
 }
 
-//Ici il faudrait presque mettre: SENT= QQUN LA LANCE, LAUCHED QUAND C'EST PRIS EN CHARGE PAR LE 1ER CERCLE
 enum AlertStatus {
-  SENT
-  LAUCHED
   ACTIVE
-  CLOSING
+  ESCALATED
   RESOLVED
-}
-
-// MISSING IS FOR SENTINELS, INCIDENT IS FOR SENTINELS OR ORGA
-enum AlertType {
-  MISSING
-  INCIDENT
-}
-
-enum CircleType {
-  BASIC
-  FIRST
-  ORGANISATION
 }
 
 enum AlertOrigin {
@@ -120,6 +101,29 @@ model User {
   alertsResolved           Alert[]              @relation("AlertResolvedByUser")
   messagesSent             Message[]            @relation("MessageSenderUser")
   escalationsTriggered     EscalationEvent[]
+}
+
+// A person known in someone's circles by phone number; optionally linked to
+// a User once they register (covers Sentinels without accounts). The same
+// real person can show up as several Contact rows — one per "Me" who added
+// them.
+model Contact {
+  id      String  @id @default(cuid())
+  ownerId String
+  owner   User    @relation("ContactOwner", fields: [ownerId], references: [id])
+  userId  String?
+  user    User?   @relation("ContactUser", fields: [userId], references: [id])
+
+  name      String
+  phone     String
+  createdAt DateTime @default(now())
+
+  memberships            CircleMembership[]
+  alertsResolved         Alert[]             @relation("AlertResolvedByContact")
+  alertNotifications     AlertNotification[]
+  sentinelPlusChats      AlertChat[]         @relation("AlertChatSentinelContact")
+  messagesSent           Message[]           @relation("MessageSenderContact")
+  standaloneConversation Message[]           @relation("MessageConversationContact")
 }
 
 // Belongs to a User ("Me"), has a label. Exactly one circle per owner is the
@@ -277,4 +281,22 @@ model Message {
   body      String?
   mediaUrl  String?
   createdAt DateTime    @default(now())
+}
+
+// Records each escalation: from circle -> to circle, who triggered it,
+// when.
+model EscalationEvent {
+  id      String @id @default(cuid())
+  alertId String
+  alert   Alert  @relation(fields: [alertId], references: [id])
+
+  fromCircleId String
+  fromCircle   Circle @relation("EscalationFromCircle", fields: [fromCircleId], references: [id])
+  toCircleId   String
+  toCircle     Circle @relation("EscalationToCircle", fields: [toCircleId], references: [id])
+
+  triggeredByUserId String?
+  triggeredByUser   User?   @relation(fields: [triggeredByUserId], references: [id])
+
+  createdAt DateTime @default(now())
 }
