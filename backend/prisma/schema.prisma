@@ -1,21 +1,3 @@
-// En résumé : PK Primary Key= "je suis identifié par ça", 
-// FK Foreign Key    = "je pointe vers l'identifiant de quelqu'un d'autre".
-// @unique = UK = Unique Key
-
-
-//Many-to-many = jamais de FK directe, 
-//toujours une table de liaison avec ses propres FK des deux côtés.
-
-//LinkSentinels = état actuel (vivant, modifiable) 
-//de qui est sentinel de qui, dans quel circle.
-
-
-//LinkAlert = copie figée au moment de l'alerte (userId, circleId, 
-//rôle, statut de notification) — indépendante de LinkSentinels, pour ne jamais 
-//être faussée si le lien vivant change après coup.
-
-
-//companion reste une FK directe sur Alert (cardinalité 1, pas besoin de table de liaison).
 generator client {
   provider = "prisma-client-js"
 }
@@ -58,7 +40,7 @@ enum LinkStatus {
 
 enum AlertStatus {
   SENT
-  LAUCHED
+  LAUNCHED
   ACTIVE
   CLOSING
   RESOLVED
@@ -74,7 +56,12 @@ enum CircleType {
   BASIC
   FIRST
   ORGANISATION
-  EMPTY
+}
+
+enum CircleAlertStatus {
+  WAITINGFORANSWERS
+  ACTIVE
+  INACTIVE
   CLOSED
 }
 
@@ -84,34 +71,29 @@ enum EmergencyType {
     EMERGENCY
 }
 
+enum LinkInitiator {
+  COMPANION
+  SENTINEL
+}
+
 enum LeadSlot {
   LEAD_1
   LEAD_2
   LEAD_3
 }
 
+enum UserStatus {
+  ACTIVE
+  DELETED
+}
 
-//HORS ALERTE
-//Tout va être construit avec user, linkSentinel et Circle. C'est la base de donnée que le USer construit
-// messagerie entre Companion et ses sentinelles. + status
-
-// DURANT ALERTE
-//Quand une alerte va être déclanchée, ça va copier les liens entre les sentinelles et les circles...
-// disons ça copie les cerces et les sentinelles. A la fin de l'alerte, ça supprime les cercles et sentinelles non solicitées. 
-// ça va travailler dessus et garder un historique
-// Les messageries seront là. 
-
-// le compagnon peut envoyer des alertes??
-
-//Durée du vie d'une alerte?
-// Info A avoir si on veut pouvoir utiliser
-
-// ENTITY User/ Circle/ Alerte/
 model User {
   // IDENTITY
   id              String    @id @default(cuid())
   createdAt       DateTime @default(now())
   updatedAt       DateTime  @updatedAt
+  status    UserStatus @default(ACTIVE)
+  deletedAt DateTime?
 
   //info users
   firstName       String
@@ -120,14 +102,14 @@ model User {
   email           String?   @unique
   passwordHash    String?
   googleId        String?   @unique
-  phone           String?   @unique
+  phone           String   @unique
   phoneVerifiedAt DateTime?
   isMajor         Boolean @default(true)
-  status          String?
+  publicStatus    String?
   //photo
 
   //as customer
-  usertype        UserType? @default(ONLY_SMS)// ou only sms?
+  userType        UserType? @default(ONLY_SMS)// ou only sms?
   hasPaid         Boolean @default(false)
   confirmedByOwner  Boolean @default(false)
 
@@ -149,11 +131,15 @@ model User {
   mySentinels LinkSentinels[] @relation("SentinelCompanion")
 
   // As sentinel
-  LinkAsSentinel LinkSentinels[] @relation("LinkAsSentinel")
+  linkAsSentinel LinkSentinels[] @relation("LinkAsSentinel")
   sentinelAlerts LinkSentinelAlert[] @relation("SentinelAlerts")///????
 
+  alertByUser Alert [] @relation("AlertBy")
+  leadByUser Alert [] @relation("LeadBy")
+  closedByUser Alert [] @relation("ClosedBy")
+
   // Invitations / demandes créées par ce user A  voir
-  requestedLinks LinkSentinels[] @relation("RequestedLinks")
+  //requestedLinks LinkSentinels[] @relation("RequestedLinks")
 }
 
 //ici le plus d'info
@@ -163,6 +149,7 @@ model LinkSentinels{
     createdAt   DateTime @default(now())
     updatedAt   DateTime  @updatedAt
     sentinelType SentinelType @default(ONLY_SMS)
+    initiatedBy LinkInitiator
 
     status      LinkStatus @default(PENDING)
 //    isLead      Boolean  @default(false)//should accept
@@ -171,20 +158,24 @@ model LinkSentinels{
     leadSlot LeadSlot?
 
   //permissions
-  GroupChat     Boolean @default(false)
-  Chat          Boolean @default(false)
-  CanSendPhone          Boolean @default(false)
+  groupChat     Boolean @default(false)
+  chat          Boolean @default(false)
+  canSendPhone          Boolean @default(false)
 
   // LINKS
   sentinelId    String
   companionId   String
   circleId      String
-  requestById   String
+  //requestById   String?
 
-  circle Circle @relation(fields: [circleId, companionId],references: [id, companionId])
-  LinkAsSentinel User @relation("LinkAsSentinel",fields: [sentinelId], references: [id])
-  requestBy User @relation("RequestedLinks",fields: [requestById],references: [id])//???
-  companion User @relation("SentinelCompanion", fields: [companionId], references: [id])
+    //si on supprime le cercle, ca supprime les linksentinels.
+  circle Circle @relation(fields: [circleId, companionId],references: [id, companionId], onDelete: Cascade)
+  // si on supprime le user, ca suppprime ses linksentinel 
+  linkAsSentinel User @relation("LinkAsSentinel",fields: [sentinelId], references: [id], onDelete: Cascade)
+  // ah la requete peut être envoyeée par qqun d autre... Mais juste par le leadsentinel. 
+  //requestBy User? @relation("RequestedLinks",fields: [requestById],references: [id],onDelete: SetNull)
+  //restric car le linksentinel sera detruit par le cercle qui sera detruit par le user 
+  companion User @relation("SentinelCompanion", fields: [companionId], references: [id], onDelete: Restrict)
 
   // sentinel in only one circle
    @@unique([sentinelId, companionId])
@@ -200,15 +191,17 @@ model Circle {
   closedAt DateTime?
 
   label     String
-  Status    String?
+  status    String?
   circleType CircleType @default(BASIC)
 
   //DATA
-  GroupChat     Boolean @default(false)
-  CanSendPhone  Boolean @default(false)
+  groupChat     Boolean @default(false)
+  canSendPhone  Boolean @default(false)
   // LINKS
   companionId   String
-  companion     User     @relation("MyCirclesAsCompanion", fields: [companionId], references: [id])
+
+  //si on supprime le user, ca supprime le cercle et les liens
+  companion     User     @relation("MyCirclesAsCompanion", fields: [companionId], references: [id],  onDelete: Cascade)
 
   sentinelLinks LinkSentinels[]
 
@@ -216,39 +209,43 @@ model Circle {
   @@unique([id, companionId])
 }
 
-
-////////////////////////////////////////////////////////////////////
-///// ALERTES
+///// ALERTES////////////////////////////////////////////////////////////////////
 
 model Alert {
   // IDENTITY
   id     String      @id @default(cuid())
   createdAt DateTime @default(now())
-  updatedAt DateTime?  @updatedAt
+  updatedAt DateTime  @updatedAt
   closedAt DateTime?
   label String //trouver 1 string par defaut à mettre dans 
   emergencyType EmergencyType @default(LITTLEWORRY)
 
   // DATA
-  sentBy        String
-  leadBy        String?
-  closedBy      String?
+  alertById        String
+  leadById        String?
+  closedById      String?
   messageAlert  String
   alertStatus   AlertStatus @default(SENT)//???
   alertType     AlertType @default(UNKNOWN)
 
-  firstCircleId String
+  alertBy User @relation("AlertBy", fields: [alertById], references: [id])
+  leadBy User? @relation("LeadBy", fields: [leadById], references: [id])
+  closedBy User? @relation("ClosedBy", fields: [closedById], references: [id])
+
+  firstCircleId String @unique
   leadSentinel  String? //a determiner durant alerte
 
-  StatusByCompanion String?
-  StatusByFirstCircle String?
+  firstCircle CircleAlert @relation("FirstCircleAlert", fields: [firstCircleId], references: [id])
+
+  statusByCompanion String?
+  statusByFirstCircle String?
   // LINKS
-  //companion
+  //companion. On delete pas le liens car le user sera jamais delete et on garde une trace de l historique. 
   companionId   String
   companion     User     @relation("MyAlertsAsCompanion", fields: [companionId], references: [id])
 
   //circles
-  Mycircles CircleAlert [] @relation("MyCirclesduringAlerte")
+  myCircles CircleAlert [] @relation("MyCirclesDuringAlerte")
 }
 
 //copy data from circles, use it, at the end delete data non-used (all circles, sentinelle not contacted), store it as history
@@ -258,17 +255,18 @@ model CircleAlert {
   // IDENTITY
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
-  updatedAt DateTime?  @updatedAt
+  updatedAt DateTime  @updatedAt
   closedAt DateTime?
 
   //DATA COPIED FROM CIRCLE
   label     String
   isPrimary Boolean  @default(false)//PRENDS QUE BASIC ET FIRST
+  circleStatus CircleAlertStatus @default(INACTIVE)
   //  Status    String?
 
   //Permissions
-  GroupChat     Boolean @default(false)  
-  CanSendPhone          Boolean @default(false)
+  groupChat     Boolean @default(false)
+  canSendPhone          Boolean @default(false)
 
   //DATA
   //CHAT FIRST CIRCLE
@@ -288,7 +286,9 @@ model CircleAlert {
 
   // LINKS
   alertId   String
-  alert     Alert     @relation("MyCirclesduringAlerte", fields: [alertId], references: [id])
+  alert     Alert     @relation("MyCirclesDuringAlerte", fields: [alertId], references: [id],onDelete: Restrict)
+
+  firstCircle Alert? @relation("FirstCircleAlert")
 
   sentinels LinkSentinelAlert[]
   // on peut copier le cercle 1 seule fois
@@ -302,15 +302,15 @@ model LinkSentinelAlert {
   // IDENTITY
   id String   @id @default(cuid()) //clé primaire
   createdAt DateTime @default(now())
-  updatedAt DateTime?  @updatedAt
+  updatedAt DateTime  @updatedAt
   closedAt DateTime?
 
 
   //DATA COPIED FROM USER SENTINEL
-    FirstName String
+  firstName String
   lastName        String?
   userName        String?
-  email           String
+  email           String?
   phone           String
 
   phoneVerifiedAt DateTime?
@@ -319,15 +319,15 @@ model LinkSentinelAlert {
   //photo
 
   //DATA COPIED FROM LINK SENTINEL
-    isPending Boolean 
+    isPending Boolean @default(true)
     sentinelType SentinelType
     is1Circle   Boolean
     leadSlot LeadSlot?
 
   //permissions
-  GroupChat     Boolean @default(false)
-  Chat          Boolean @default(false)
-  CanSendPhone          Boolean @default(false)
+  groupChat     Boolean @default(false)
+  chat          Boolean @default(false)
+  canSendPhone          Boolean @default(false)
 
 
   // DATA DURING ALERT
@@ -349,14 +349,14 @@ model LinkSentinelAlert {
   @@index([sourceLinkSentinelsId])
 
   alertId          String
-  alertsentinelId    String
+  alertSentinelId    String
   circleAlertId      String
 
-  circle CircleAlert @relation(fields: [circleAlertId, alertId],references: [id, alertId])
-  LinkAsAlertSentinel User @relation("SentinelAlerts",fields: [alertsentinelId], references: [id])
+  circle CircleAlert @relation(fields: [circleAlertId, alertId],references: [id, alertId], onDelete: Cascade)
+  linkAsAlertSentinel User @relation("SentinelAlerts",fields: [alertSentinelId], references: [id])
 
   // pour qu une sentinelle soit pas copiée 2 fois la même alerte
-  @@unique([alertId, alertsentinelId])
+  @@unique([alertId, alertSentinelId])
 }
 
 
