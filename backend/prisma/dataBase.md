@@ -56,34 +56,22 @@ prisma.user.update({
 })
 
 
-est-ce que ça suffit les restriction onDelete?
-Read schema.prisma
-Non, il reste des trous. Voici ce que je vois dans schema.prisma :
+//regles IA:
+quels fichiers toucher et pas toucher??
+pas toucher db.
+dire à chaque session si bien enregistré les règles
 
-1. Conflit potentiel Circle vs LinkSentinels sur la suppression d'un companion
+rules backend:
 
-Circle.companion → onDelete: Cascade (schema.prisma:220)
-LinkSentinels.companion → onDelete: Restrict (schema.prisma:194)
-Le commentaire ligne 193 suppose que le Cascade sur Circle supprimera les LinkSentinels avant que le Restrict ne bloque — mais Postgres ne garantit pas cet ordre entre deux contraintes FK différentes pointant vers la même ligne User. C'est fragile, pas un vrai design.
+CircleAlert et LinkSentinelAlert utilisés ne doivent jamais être supprimés après CLOSING
 
-2. Relations sans onDelete explicite (défauts Prisma implicites)
-Aucun onDelete n'est écrit sur :
+fais des réponses courtes ok?
 
-Alert.alertBy, Alert.leadBy, Alert.closedBy, Alert.firstCircle, Alert.companion
-LinkSentinelAlert.linkAsAlertSentinel
-Ça retombe sur les défauts Prisma (Restrict si FK obligatoire, SetNull si optionnelle), ce qui donne un comportement globalement cohérent avec "on garde l'historique, jamais de vrai delete de User" — mais c'est implicite, pas écrit noir sur blanc, alors que le commentaire ligne 100-103 dit justement qu'aucune décision explicite n'a été prise. Ça mérite d'être explicité pour ne pas dépendre d'un défaut qu'on doit retenir par cœur.
+ne pas toucher à la db et constuire surla DB
 
-3. Commentaire ligne 90-103 obsolète — il dit "Aucun onDelete défini nulle part", ce qui n'est plus vrai (Cascade/Restrict sont déjà posés à plusieurs endroits).
+cercle reserve
 
-Tu veux que je corrige ces trois points directement dans le schéma ?
+mode manuel de claude pour validations.
 
-dataBase.md
-on regarde point par point. pour Alert.alertBy, Alert.leadBy, Alert.closedBy, Alert.firstCircle, Alert.companion il faudrait setNull?
-Ça dépend du champ — les FK obligatoires ne peuvent pas prendre SetNull en Prisma (le champ scalaire doit être optionnel pour ça).
 
-alertBy (alertById String, obligatoire) → SetNull impossible sans rendre alertById optionnel. Et le rendre optionnel casserait le sens : un Alert doit toujours savoir qui l'a déclenché. → garder Restrict (explicite).
-firstCircle (firstCircleId String, obligatoire) → même chose, un Alert doit toujours avoir son firstCircle. → Restrict.
-companion (companionId String, obligatoire) → idem, c'est le propriétaire de l'alerte. → Restrict.
-leadBy (leadById String?, optionnel) → SetNull possible et déjà le défaut. Logique : si le lead sentinel est supprimé, l'alerte garde son historique mais perd juste la référence. → SetNull (à expliciter).
-closedBy (closedById String?, optionnel) → même raisonnement → SetNull (à expliciter).
-Donc seulement leadBy et closedBy peuvent passer en SetNull ; les trois autres restent en Restrict par nécessité structurelle. Je les écris explicitement dans le schéma ?
+AlertNotification

@@ -170,26 +170,30 @@ CORE FEATURES (MVP)
      always belongs to exactly one circle from the moment the link exists.
    - Blocking has two levels: declining a single incoming request (link
      status -> DECLINED, that one request is refused but either side could
-     try again later) vs blocking a user outright (a standing block between
-     two accounts that prevents any future request between them in either
-     direction, e.g. after an unwanted repeated request). "Me" can also
-     block an existing Sentinel link at any time, ending it.
+     try again later) vs blocking a user outright (link status -> BLOCKED
+     on the existing Sentinel link, which — combined with the unique
+     sentinel+companion pair constraint — prevents any future request
+     between them; only possible after a first link already exists, and a
+     BLOCKED link must never be deleted). "Me" can also block an existing
+     Sentinel link at any time, ending it.
    - No circle/membership edits are possible while an alert is active for
      that "Me" — see CIRCLES & PERMISSIONS.
 
 3. Alert lifecycle
-   - Two alert types:
-       - Missing (on ne retrouve plus le/la compagnon.ne): raised by a
-         registered Sentinel for the Companion they watch over, either
-         in-app or via SMS — never the other way around, a Companion never
-         raises an alert about themselves.
-       - Incident (le/la compagnon.ne a eu un problème): a Sentinel or
-         Organization reports that something already happened, and leaves
-         their own callback phone number so the Lead Sentinel can call them
-         directly (in-app call/discussion, or an outside call once contact
-         has been made — see DATA MODEL: Alert.reporterPhone). The
-         Companion later sees, in their history, WHO called WHOM and when
-         for that alert, but not the call content.
+   - Alert types (AlertType, un seul enum plat — voir schema.prisma):
+     BYCOMPANION (le/la compagnon.ne appelle lui/elle-même à l'aide —
+     toujours urgent), LITTLEWORRY (petite inquiétude, pas d'urgence,
+     pas de recherche active), MISSING (on ne retrouve plus le/la
+     compagnon.ne — recherche active), INCIDENT (le/la compagnon.ne a
+     eu un problème), EMERGENCY, NOCONTACT (pas de nouvelles depuis un
+     moment, check-in manqué, sans être MISSING), UNKNOWN (defaut avant
+     classification).
+     Pour INCIDENT: a Sentinel or Organization reports that something
+     already happened, and leaves their own callback phone number so
+     the Lead Sentinel can call them directly (in-app call/discussion,
+     or an outside call once contact has been made — see DATA MODEL:
+     Alert.reporterPhone). The Companion later sees, in their history,
+     WHO called WHOM and when for that alert, but not the call content.
    Either way, a reason message (free text describing why the alert is
    being raised) is required before it dispatches.
    - A verified Organization raises an alert from within the app: a logged-in
@@ -197,7 +201,7 @@ CORE FEATURES (MVP)
      than anonymous SMS, submits the target's phone number plus a reason ->
      1st circle notified immediately -> an in-app chat opens between the
      Organization and the 1st circle for follow-up (see DATA MODEL:
-     AlertChat). No prior link between the Organization and the target
+     Conversation). No prior link between the Organization and the target
      person is required (e.g. a hotel reporting a guest they just found
      injured). Anonymous, non-organization phone-only alerts are no longer
      allowed — judged too easy to abuse for scams.
@@ -286,21 +290,14 @@ CORE FEATURES (MVP)
 DATA MODEL (sketch)
 --------------------
 - User              : account holder (firstName, username?, email,
-                       passwordHash, phone), dual auth. firstName is
-                       required (mandatory prénom for every account).
-                       username is optional, usable for invitations.
-- Contact            : a person known in someone's circles, with a required
-                       name (prénom) and phone number; optionally linked to a
-                       User if they ever register (covers Sentinels without
-                       accounts).
-- UserBlock          : a standing block between two Users, either direction
-                       (blockerId -> blockedId), preventing any future
-                       Sentinel-link request between them until removed.
-                       Distinct from a single link's DECLINED status, which
-                       only refuses that one request.
+                       passwordHash, phone), dual auth. firstName and
+                       phone are required for every User row — a
+                       Sentinel without an account is simply a User row
+                       with only firstName+phone filled in (no separate
+                       Contact model; matches schema.prisma).
 - Circle             : belongs to a User, has a label; exactly one circle
                        per owner is the 1st circle (isPrimary).
-- CircleMembership   : links a Contact to a Circle, with sentinelType
+- CircleMembership   : links a User to a Circle, with sentinelType
                        (lead_sentinel | first_circle_sentinel | sentinel |
                        sentinel_sms — lead_sentinel and first_circle_
                        sentinel only valid when circle.isPrimary), an
@@ -322,8 +319,11 @@ DATA MODEL (sketch)
 - OrganizationMember : links a User (staff) to an Organization, with an
                        internal role (e.g. admin, staff) governing what they
                        can do when acting on the Organization's behalf.
-- Alert              : raised for a target User, with type (missing |
-                       incident), status (active/escalated/resolved), origin
+- Alert              : raised for a target User, with type: one of
+                       BYCOMPANION | LITTLEWORRY | MISSING | INCIDENT |
+                       EMERGENCY | NOCONTACT | UNKNOWN (see
+                       schema.prisma AlertType), status
+                       (active/escalated/resolved), origin
                        (Sentinel via app | Sentinel via SMS | Organization
                        via app), a required reason (free text, why the alert
                        is being raised — collected up front at creation time
@@ -331,7 +331,7 @@ DATA MODEL (sketch)
                        vs a circle contact). For type=incident: reporterPhone
                        (the reporting Sentinel/Organization's callback
                        number for the Lead Sentinel to call). Also tracks
-                       currentLeadContactId (who actually took the lead for
+                       currentLeadUserId (who actually took the lead for
                        THIS alert — may differ from the 1st circle's
                        default-designated lead_sentinel(s) if unavailable,
                        see CIRCLES & PERMISSIONS). CompagnonStatut and
@@ -342,34 +342,34 @@ DATA MODEL (sketch)
                        always notified directly, not only their circle);
                        delivery status, availabilityCode (the 0-6/10 SMS
                        reply scale — see Alert lifecycle), respondedAt.
-- AlertChat          : a chat thread scoped to one alert, closes
-                       automatically when the alert resolves. Three kinds:
-                       `circle` (the 1st circle's own group chat — one per
-                       alert, open to all 1st circle members), `sentinel`
-                       (one per account-holding outer-circle Sentinel who
-                       requests to talk during the alert, scoped to just
-                       that Sentinel and the 1st circle), and `organization`
-                       (opened automatically when an Organization raises
-                       the alert, scoped to that Organization and the 1st
-                       circle — no separate request needed, since being a
-                       logged-in verified Organization is itself the
-                       authorization). Several `sentinel` chats can coexist
-                       on the same alert, each isolated from the others; at
-                       most one `organization` chat exists per alert.
-                       Opening a `sentinel` chat requires both that link's
-                       firstCircleMessagingMode != none and an in-the-moment
-                       request during the alert.
-- Message            : full message log (SMS/push), carries a type (text |
-                       photo | location); tied either to a specific
-                       AlertChat (in-alert conversation) or, when chatId is
-                       null, to a standalone Me<->Sentinel conversation
-                       outside any alert. During an active alert, Sentinel
-                       SMS replies are limited to the fixed availability
-                       code scale and aren't part of any AlertChat. Outside
-                       of an alert, any account-holding Sentinel can message
-                       "Me" freely.
-- EscalationEvent    : records each escalation: from circle -> to circle,
-                       who triggered it, when.
+- Conversation       : a generic thread, reused for all 3 messaging
+                       contexts instead of a separate AlertChat model.
+                       Attached via an optional unique conversationId on
+                       whichever parent it belongs to: LinkSentinels
+                       (Me<->Sentinel 1:1, outside any alert),
+                       CircleAlert (the 1st circle's own group chat
+                       during an alert — only meaningful when
+                       isPrimary), or LinkSentinelAlert (isolated chat
+                       between one requesting Sentinel and the 1st
+                       circle during an alert; requires that link's
+                       firstCircleMessagingMode != none). Created lazily
+                       — only when the first message is sent. No `type`
+                       field needed: which parent holds the
+                       conversationId already tells you the kind.
+                       Organization<->1st circle chat deferred until
+                       Organization is implemented (see OPEN POINTS).
+- Message            : id, body, type (see schema.prisma MessageType:
+                       text | image | system), senderId (always a
+                       User — the sender's identity doesn't need to
+                       survive as a snapshot, unlike Alert.alertBy/
+                       leadBy/closedBy, since Users are only ever
+                       soft-deleted), conversationId (required, onDelete
+                       Cascade — deleting a Conversation deletes its
+                       Messages). During an active alert, Sentinel SMS
+                       replies are limited to the fixed availability
+                       code scale and aren't stored as Messages. Outside
+                       of an alert, any account-holding Sentinel can
+                       message "Me" freely.
 
 BACKEND MODULES (NestJS, sketch)
 ----------------------------------
@@ -388,10 +388,10 @@ BACKEND MODULES (NestJS, sketch)
 - Organization : authenticate the OrganizationMember, look up a target user
                 by phone number, raise the alert (with reason), notify the
                 1st circle, and open the Organization<->1st circle
-                AlertChat for that alert.
+                Conversation for that alert.
 - Messaging   : everyday Me<->Sentinel conversations outside of any active
                 alert (open to any Sentinel, base or +); also backs the
-                in-alert AlertChats used by Alert (the 1st circle's own
+                in-alert Conversations used by Alert (the 1st circle's own
                 chat, one isolated chat per requesting Sentinel+, and the
                 Organization chat for Organization-raised alerts), but the
                 two contexts enforce different rules (free-form always
