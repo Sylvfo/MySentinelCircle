@@ -222,6 +222,7 @@ function InviteForm({
   return (
     <form className="inline-form invite-form" onSubmit={submit}>
       <h3>{t('circles.invite')}</h3>
+      {isPrimary && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 0.4rem' }}>{t('circles.invitePrimaryHint')}</p>}
       <div className="row wrap">
         <input type="tel" required placeholder={t('circles.invitePhone')} value={phone} onChange={(e) => setPhone(e.target.value)} />
         <input required placeholder={t('circles.inviteName')} value={name} onChange={(e) => setName(e.target.value)} />

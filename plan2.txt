@@ -1,0 +1,66 @@
+PLAN2 — ECARTS ENTRE plan.txt ET schema.prisma (etat actuel)
+===============================================================
+Objectif : lister ce qui diverge, a revoir un point a la fois.
+Rien n'est modifie dans schema.prisma.
+
+1. USER / CONTACT
+   - plan.txt separe User (compte) et Contact (personne sans compte).
+     schema.prisma n'a que User (email/password/googleId optionnels,
+     phone obligatoire) -> un Contact "sans compte" est juste un User
+     avec seulement phone+firstName. Ecart assume ou a confirmer ?
+   - UserBlock : RESOLU — pas besoin, LinkStatus.BLOCKED sur la ligne
+     LinkSentinels existante suffit (unique sentinelId+companionId
+     empeche tout nouveau lien tant que la ligne BLOCKED n'est pas
+     supprimee). Ne fonctionne que s'il y a deja eu un premier lien —
+     confirme comme acceptable. plan.txt mis a jour.
+
+2. CIRCLE / LINKSENTINELS
+   - plan.txt: CircleMembership.canMessageOwnCircle (bool) +
+     firstCircleMessagingMode (none|individual|group).
+   - schema.prisma: LinkSentinels a 3 bools separes (groupChat, chat,
+     canSendPhone) au lieu d'1 bool + 1 enum triple. A reconcilier —
+     lien direct avec le sujet messagerie qu'on va traiter.
+   - leadSuccessionOrder (int, plan.txt) vs leadSlot enum LEAD_1/2/3
+     (schema.prisma) — meme idee, forme differente.
+
+3. ALERT — classification
+   - RESOLU — Sylvie a supprime EmergencyType et fusionne tout dans un
+     seul AlertType plat: BYCOMPANION, LITTLEWORRY, MISSING, INCIDENT,
+     UNKNOWN, EMERGENCY, NOCONTACT. Une seule etiquette par alerte,
+     BYCOMPANION est deja implicitement urgent donc pas besoin d'un
+     champ severite separe. plan.txt mis a jour (section 3 + DATA
+     MODEL).
+
+4. ALERT — champs manquants vs plan.txt
+   - RESOLU — pas besoin de nouveaux champs. reporterPhone et origin
+     sont derivables via alertBy -> LinkSentinelAlert.phone /
+     .sentinelType (Organization pas encore implemente = pas de cas a
+     couvrir pour l'instant).
+   - En creusant ce point: alertById etait obligatoire alors que
+     AlertType.BYCOMPANION suppose une auto-alerte sans sentinel
+     declencheur. Corrige: alertById + alertBy sont maintenant
+     optionnels dans schema.prisma.
+
+5. ALERTNOTIFICATION
+   - DIFFERE — Sylvie a note ce point pour plus tard (deliveryStatus +
+     echelle de disponibilite 0-6/10 a rajouter). Pas traite ici.
+
+6. ESCALATIONEVENT
+   - SUPPRIME — concept abandonne, retire de plan.txt.
+
+7. ORGANIZATION / ORGANIZATIONMEMBER
+   - dans plan.txt (MVP scope reduit) mais seulement en commentaire
+     (bloc /* */) en bas de schema.prisma, pas actif. Coherent avec
+     "OPEN POINTS" de plan.txt (deferre) — pas un vrai ecart, juste
+     pas encore fait.
+
+8. MESSAGERIE
+   - RESOLU — pas de modele AlertChat separe. Un seul couple
+     Conversation/Message reutilise pour les 3 contextes, attache via
+     un conversationId optionnel unique sur LinkSentinels (1:1 hors
+     alerte), CircleAlert (groupe 1er cercle pendant alerte, si
+     isPrimary), LinkSentinelAlert (chat isole sentinel<->1er cercle).
+     Message.senderId pointe toujours vers User. schema.prisma et
+     plan.txt mis a jour.
+
+STATUT: brouillon pour revue point par point, rien d'applique.

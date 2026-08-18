@@ -99,6 +99,10 @@ export class SentinelService {
     if (linkedUser?.id === userId) {
       throw new BadRequestException('You cannot add yourself as a Sentinel');
     }
+    // 1st-circle Sentinels must have an account (plan.txt ACCOUNTS & BILLING).
+    if (circle.isPrimary && !linkedUser) {
+      throw new BadRequestException('A 1st-circle Sentinel must already have an account');
+    }
 
     const contact = await this.upsertContact(userId, phone, dto.name, linkedUser?.id);
     await this.assertNoActiveMembership(contact.id);
@@ -321,6 +325,10 @@ export class SentinelService {
       const target = await this.ensureCircleOwned(userId, dto.circleId); // my own circles only
       circleId = target.id;
       targetIsPrimary = target.isPrimary;
+      // Moving into the 1st circle requires the Sentinel to have an account.
+      if (target.isPrimary && !membership.contact.userId) {
+        throw new BadRequestException('A 1st-circle Sentinel must already have an account');
+      }
     }
 
     // Reference only lives in the 1st circle. Moving to an "other" circle
@@ -408,7 +416,10 @@ export class SentinelService {
   private async getOwnedMembership(userId: string, membershipId: string) {
     const membership = await this.prisma.circleMembership.findUnique({
       where: { id: membershipId },
-      include: { circle: { select: { ownerId: true, isPrimary: true } } },
+      include: {
+        circle: { select: { ownerId: true, isPrimary: true } },
+        contact: { select: { userId: true } },
+      },
     });
     if (!membership) throw new NotFoundException('Membership not found');
     if (membership.circle.ownerId !== userId) {
