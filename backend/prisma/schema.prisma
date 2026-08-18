@@ -189,9 +189,6 @@ model LinkSentinels{
   circle Circle @relation(fields: [circleId, companionId],references: [id, companionId], onDelete: Cascade)
   // si on supprime le user, ca suppprime ses linksentinel 
   linkAsSentinel User @relation("LinkAsSentinel",fields: [sentinelId], references: [id], onDelete: Cascade)
-  // ah la requete peut être envoyeée par qqun d autre... Mais juste par le leadsentinel. 
-  //requestBy User? @relation("RequestedLinks",fields: [requestById],references: [id],onDelete: SetNull)
-  //restric car le linksentinel sera detruit par le cercle qui sera detruit par le user 
   companion User @relation("SentinelCompanion", fields: [companionId], references: [id], onDelete: Restrict)
 
   // sentinel in only one circle
