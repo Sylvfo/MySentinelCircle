@@ -73,5 +73,16 @@ cercle reserve
 
 mode manuel de claude pour validations.
 
+écrit de façon courte et claire.
+
+si un élément d une to do liste à été fait, supprime là.
+
+faire  des tests. 
+
+Créer et tester.
+
+Pas à pas avec 
 
 AlertNotification
+
+permission claude dans 
