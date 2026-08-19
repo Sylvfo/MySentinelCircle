@@ -2,8 +2,8 @@
 
 > Reflète l'état actuel de `schema.prisma` (branche `data_base_definition`).
 
-Modèles actifs : `User`, `Circle`, `LinkSentinels`, `LinkSentinelsEvent`, `Alert`, `AlertParticipant`, `AlertEvent`, `Conversation`, `ConversationParticipant`, `Message`.
-Principe central : rien n'est jamais vraiment supprimé — `User`/`Circle`/`LinkSentinels` se ferment ou s'anonymisent, mais restent référençables pour toujours. Plus de tables-copies (`CircleAlert`/`LinkSentinelAlert` ont disparu).
+Modèles actifs : `User`, `Circle`, `LinkSentinels`, `LinkSentinelsEvent`, `Alert`, `AlertParticipant`, `Conversation`, `ConversationParticipant`, `Message`.
+Principe central : rien n'est jamais vraiment supprimé — `User`/`Circle`/`LinkSentinels` se ferment ou s'anonymisent, mais restent référençables pour toujours. Pas de tables-copies (`CircleAlert`/`LinkSentinelAlert` n'existent plus), pas de journal d'événements séparé (`AlertEvent` a été remplacé par des timestamps d'étape directement sur `Alert`).
 
 ```mermaid
 erDiagram
@@ -12,22 +12,17 @@ erDiagram
   User               ||--o{ LinkSentinels            : "sentinel (LinkAsSentinel)"
   User               ||--o{ Alert                    : "companion (MyAlertsAsCompanion)"
   User               ||--o{ Alert                    : "launchedBy? / closedBy?"
-  User               ||--o{ AlertEvent               : "actor?"
   User               ||--o{ ConversationParticipant  : "user"
   User               ||--o{ Message                  : "sender"
   Circle             ||--o{ LinkSentinels             : "circle"
   Circle             ||--o{ Alert                     : "firstCircle"
+  Circle             ||--o{ AlertParticipant           : "circle (figé)"
   LinkSentinels      ||--o{ LinkSentinelsEvent        : "events"
   LinkSentinels      ||--o{ AlertParticipant          : "alertParticipations"
-  LinkSentinels      |o--o| Conversation              : "conversation?"
   Alert              ||--o{ AlertParticipant          : "participants"
-  Alert              ||--o{ AlertEvent                : "events"
   Alert              ||--o{ Conversation              : "conversations"
-  AlertParticipant   |o--o| Conversation              : "privateConversation?"
-  AlertParticipant   ||--o{ AlertEvent                : "events"
   Conversation        ||--o{ ConversationParticipant  : "participants"
   Conversation        ||--o{ Message                  : "messages"
-  Conversation        ||--o{ AlertEvent               : "events"
 
   User {
     string id PK
@@ -70,6 +65,10 @@ erDiagram
     string messageAlert
     enum   alertStatus
     enum   alertType
+    datetime launchedAt
+    datetime activatedAt
+    datetime closingAt
+    datetime closedAt
     string companionId FK
     string firstCircleId FK
     string launchedById FK "optional"
@@ -80,26 +79,16 @@ erDiagram
     string id PK
     string alertId FK
     string linkSentinelsId FK
+    string circleId FK
+    string circleName "figé"
     enum   status
     boolean isLead
     boolean canSendPhoneAtAlert
   }
 
-  AlertEvent {
-    string id PK
-    string alertId FK
-    enum   type
-    string actorId FK "optional"
-    string participantId FK "optional"
-    string conversationId FK "optional"
-  }
-
   Conversation {
     string id PK
-    enum   type
-    string linkSentinelsId FK "optional, UK"
     string alertId FK "optional"
-    string alertParticipantId FK "optional, UK"
   }
 
   ConversationParticipant {
@@ -130,11 +119,9 @@ erDiagram
   User              ||--o{ LinkSentinels      : "sentinel (LinkAsSentinel)"
   LinkSentinels     }o--||  Circle            : "circle"
   LinkSentinels     ||--o{ LinkSentinelsEvent : "events"
-  LinkSentinels     |o--o| Conversation       : "conversation?"
   LinkSentinels     ||--o{ AlertParticipant   : "alertParticipations"
   AlertParticipant  }o--||  Alert             : "alert"
-  AlertParticipant  |o--o| Conversation       : "privateConversation?"
-  Conversation      ||--o{ Message            : "messages"
+  AlertParticipant  }o--||  Circle            : "circle (figé)"
 
   User {
     string id PK
@@ -159,6 +146,8 @@ erDiagram
   AlertParticipant {
     string id PK
     string alertId FK
+    string circleId FK
+    string circleName
     enum   status
     boolean isLead
   }
@@ -166,18 +155,10 @@ erDiagram
     string id PK
     string companionId FK
   }
-  Conversation {
-    string id PK
-    enum   type
-  }
-  Message {
-    string id PK
-    string senderId FK
-  }
 ```
 
 - `LinkAsSentinel` : les cercles où ce `User` est enregistré comme sentinelle.
-- `alertParticipations` : l'historique de toutes les alertes où ce `User` a été sollicité — via son `LinkSentinels`, sans copier son identité.
+- `alertParticipations` : l'historique de toutes les alertes où ce `User` a été sollicité — via son `LinkSentinels`, sans copier son identité. `circleId`/`circleName` figent le cercle tel qu'il était à ce moment, car `LinkSentinels.circleId` peut changer après coup.
 
 ## Vue "Companion"
 
@@ -191,10 +172,8 @@ erDiagram
   User          ||--o{ Alert              : "launchedBy? / closedBy?"
   Circle        ||--o{ LinkSentinels      : "circle"
   Circle        ||--o{ Alert              : "firstCircle"
-  LinkSentinels |o--o| Conversation       : "conversation?"
   Alert         ||--o{ AlertParticipant   : "participants"
   Alert         ||--o{ Conversation       : "conversations"
-  Alert         ||--o{ AlertEvent         : "events"
   Conversation  ||--o{ Message            : "messages"
 
   User {
@@ -217,6 +196,8 @@ erDiagram
     string messageAlert
     enum   alertStatus
     enum   alertType
+    datetime launchedAt
+    datetime closedAt
     string companionId FK
     string firstCircleId FK
   }
@@ -225,13 +206,9 @@ erDiagram
     string linkSentinelsId FK
     enum   status
   }
-  AlertEvent {
-    string id PK
-    enum   type
-  }
   Conversation {
     string id PK
-    enum   type
+    string alertId FK "optional"
   }
   Message {
     string id PK
@@ -242,6 +219,7 @@ erDiagram
 - `MyCirclesAsCompanion` : les cercles que ce `User` possède.
 - `MyAlertsAsCompanion` : les alertes que ce `User` a déclenchées.
 - `firstCircle` sur `Alert` pointe directement sur `Circle` (permanent) — plus besoin de snapshot.
+- `Alert.launchedBy`/`closedBy` pointent directement sur `User` — couvre aussi bien le cas où c'est le companion lui-même (`AlertType.BYCOMPANION`) que le cas où c'est une sentinelle.
 
 ---
 
@@ -256,7 +234,8 @@ erDiagram
   User          ||--o{ LinkSentinels       : "sentinel (LinkAsSentinel)"
   Circle        ||--o{ LinkSentinels       : "circle"
   LinkSentinels ||--o{ LinkSentinelsEvent  : "events"
-  LinkSentinels |o--o| Conversation        : "conversation?"
+  User          ||--o{ ConversationParticipant : "user"
+  ConversationParticipant }o--|| Conversation  : "conversation"
   Conversation  ||--o{ Message             : "messages"
   User          ||--o{ Message             : "sender"
 
@@ -287,9 +266,13 @@ erDiagram
     enum   toStatus
     datetime occurredAt
   }
+  ConversationParticipant {
+    string id PK
+    string userId FK
+  }
   Conversation {
     string id PK
-    enum   type "DIRECT"
+    string alertId FK "null ici"
   }
   Message {
     string id PK
@@ -298,23 +281,21 @@ erDiagram
   }
 ```
 
-Chaque transition de statut (`PENDING→ACCEPTED`, `ACCEPTED→REMOVED`...) crée une ligne `LinkSentinelsEvent` — c'est la seule trace d'historique hors alerte, et elle sert aussi de déclencheur de notification ("Anna a quitté ton 1er cercle").
+Chaque transition de statut (`PENDING→ACCEPTED`, `ACCEPTED→REMOVED`...) crée une ligne `LinkSentinelsEvent` — seule trace d'historique hors alerte, et elle sert aussi de déclencheur de notification ("Anna a quitté ton 1er cercle"). Une conversation hors alerte a `alertId = null` ; on la retrouve en cherchant, via `ConversationParticipant`, une conversation sans alerte partagée par exactement ces 2 users.
 
 ## Schéma "pendant alerte"
 
-Ce qui se déclenche une fois une alerte lancée : qui a participé (référence directe au lien permanent, pas de copie), la timeline, et les chats scopés à l'alerte.
+Ce qui se déclenche une fois une alerte lancée : qui a participé (référence directe au lien permanent, pas de copie), les étapes franchies, et les conversations scopées à l'alerte.
 
 ```mermaid
 erDiagram
   User               ||--o{ Alert              : "companion (MyAlertsAsCompanion)"
   User               ||--o{ Alert              : "launchedBy? / closedBy?"
   Circle             ||--o{ Alert              : "firstCircle"
+  Circle             ||--o{ AlertParticipant   : "circle (figé)"
   Alert              ||--o{ AlertParticipant   : "participants"
-  Alert              ||--o{ AlertEvent         : "events"
   Alert              ||--o{ Conversation       : "conversations"
   LinkSentinels      ||--o{ AlertParticipant   : "alertParticipations"
-  AlertParticipant   |o--o| Conversation       : "privateConversation?"
-  AlertParticipant   ||--o{ AlertEvent         : "events"
   Conversation        ||--o{ ConversationParticipant : "participants"
   Conversation        ||--o{ Message           : "messages"
 
@@ -330,6 +311,10 @@ erDiagram
     string messageAlert
     enum   alertStatus
     enum   alertType
+    datetime launchedAt
+    datetime activatedAt
+    datetime closingAt
+    datetime closedAt
     string companionId FK
     string firstCircleId FK
     string launchedById FK "optional"
@@ -342,18 +327,15 @@ erDiagram
     string id PK
     string alertId FK
     string linkSentinelsId FK
+    string circleId FK
+    string circleName
     enum   status
     boolean isLead
     boolean canSendPhoneAtAlert
   }
-  AlertEvent {
-    string id PK
-    enum   type
-    datetime createdAt
-  }
   Conversation {
     string id PK
-    enum   type "FIRST_CIRCLE_GROUP / CIRCLE_TO_CIRCLE / FIRST_CIRCLE_SENTINEL"
+    string alertId FK
   }
   ConversationParticipant {
     string id PK
@@ -365,7 +347,7 @@ erDiagram
   }
 ```
 
-`AlertParticipant.linkSentinelsId` est obligatoire — il pointe toujours sur le lien vivant, jamais une copie. Le cas "companion s'auto-alerte" (`AlertType.BYCOMPANION`) n'a pas besoin de `AlertParticipant` : `Alert.launchedBy` pointe directement sur `User`.
+`AlertParticipant.linkSentinelsId` est obligatoire — il pointe toujours sur le lien vivant, jamais une copie. Le cas "companion s'auto-alerte" (`AlertType.BYCOMPANION`) n'a pas besoin de `AlertParticipant` : `Alert.launchedBy` pointe directement sur `User`. Les 3 "genres" de conversation pendant une alerte (groupe du 1er cercle, 1er cercle ↔ un autre cercle, 1er cercle ↔ une sentinelle) ne sont plus typés en DB — ils se distinguent uniquement par leurs `ConversationParticipant`, une question de logique backend, pas de schéma.
 
 ---
 
@@ -373,12 +355,8 @@ erDiagram
 
 - **`LinkSentinels`** : lien vivant User↔Circle, une seule ligne par paire, jamais supprimée — juste son `status` change (`PENDING`/`ACCEPTED`/`REMOVED`/`BLOCKED`...).
 - **`LinkSentinelsEvent`** : journal append-only de chaque transition de statut — trace minimale de qui est entré/sorti d'un cercle, indépendamment de toute alerte.
-- **`AlertParticipant`** : ce qui s'est passé pour un `LinkSentinels` donné pendant une alerte donnée (contacté, répondu, lead, réglages de messagerie au moment T) — remplace l'ancien `LinkSentinelAlert`, sans jamais copier l'identité (nom/téléphone restent uniquement dans `User`).
-- **`AlertEvent`** : timeline chronologique de l'alerte elle-même (lancement, contact, réponse, lead assigné, changement de statut, clôture...), typée (`AlertEventType`) et distincte des messages.
-- **`Conversation` / `ConversationParticipant` / `Message`** : fil générique et réutilisé pour les 4 types (`ConversationType`) :
-  - `DIRECT` : companion ↔ un sentinel, permanent, toujours exactement 2 participants (jamais de groupe, pour protéger la personne) — ancré via `LinkSentinels.conversation` (1-1).
-  - `FIRST_CIRCLE_GROUP` : le groupe du 1er cercle pendant une alerte.
-  - `CIRCLE_TO_CIRCLE` : le 1er cercle interroge un autre cercle.
-  - `FIRST_CIRCLE_SENTINEL` : chat isolé entre le 1er cercle et une sentinelle active — ancré via `AlertParticipant.privateConversation` (1-1).
+- **`AlertParticipant`** : ce qui s'est passé pour un `LinkSentinels` donné pendant une alerte donnée (contacté, répondu, lead, réglages de messagerie au moment T, cercle figé via `circleId`/`circleName`) — remplace l'ancien `LinkSentinelAlert`, sans jamais copier l'identité (nom/téléphone restent uniquement dans `User`).
+- **Étapes de l'alerte** : `Alert.launchedAt`/`activatedAt`/`closingAt`/`closedAt` — un timestamp par étape franchie, directement sur `Alert` (pas de table d'événements séparée ; ne garde que le dernier passage si une étape est revisitée).
+- **`Conversation` / `ConversationParticipant` / `Message`** : fil générique, réutilisable pour n'importe quel groupe de `User` à n'importe quel moment. `alertId` (optionnel) dit juste si elle est scopée à une alerte ou pas — le "genre" de conversation (1:1 permanent, groupe 1er cercle, cercle à cercle, sentinelle isolée) n'est pas stocké : il se déduit des participants, côté backend.
 
 Anonymisation : quand un `User` supprime son compte, `status → DELETED` + ses champs identifiants sont vidés/anonymisés, mais son `id` reste — `Message.senderId`, `AlertParticipant`, `ConversationParticipant` continuent de fonctionner sans casser l'historique.

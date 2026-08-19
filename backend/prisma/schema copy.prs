@@ -54,6 +54,7 @@ enum AlertType {
   UNKNOWN
   EMERGENCY
   NOCONTACT
+  ADVENTURE
 }
 
 enum CircleType { 

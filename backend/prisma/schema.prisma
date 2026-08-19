@@ -86,29 +86,10 @@ enum AlertParticipantStatus {
   CLOSED
 }
 
-enum ConversationType {
-  DIRECT
-  FIRST_CIRCLE_GROUP
-  CIRCLE_TO_CIRCLE
-  FIRST_CIRCLE_SENTINEL
-}
-
 enum MessageType {
   TEXT
   IMAGE
   SYSTEM
-}
-
-enum AlertEventType {
-  ALERT_LAUNCHED
-  STATUS_CHANGED
-  SENTINEL_CONTACTED
-  SENTINEL_RESPONDED
-  LEAD_ASSIGNED
-  PARTICIPANT_JOINED
-  PARTICIPANT_LEFT
-  CONVERSATION_OPENED
-  ALERT_CLOSED
 }
 
 model User {
@@ -141,14 +122,13 @@ model User {
   otpAttempts  Int       @default(0)
 
   myCircles   Circle[]        @relation("MyCirclesAsCompanion")
-  mySentinels LinkSentinels[] @relation("SentinelCompanion")
+  myUserSentinels LinkSentinels[] @relation("SentinelCompanion")
   myAlerts    Alert[]         @relation("MyAlertsAsCompanion")
 
   linksAsSentinel LinkSentinels[] @relation("LinkAsSentinel")
 
   launchedAlerts Alert[]      @relation("AlertLaunchedBy")
   closedAlerts   Alert[]      @relation("AlertClosedBy")
-  alertEvents    AlertEvent[] @relation("AlertEventActor")
 
   conversationMemberships ConversationParticipant[]
   sentMessages            Message[]
@@ -167,15 +147,15 @@ model Circle {
   groupChat    Boolean @default(false)
   canSendPhone Boolean @default(false)
 
-  companionId String
-  companion   User   @relation("MyCirclesAsCompanion", fields: [companionId], references: [id], onDelete: Restrict)
+  userCompanionId String
+  userCompanion   User   @relation("MyCirclesAsCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
 
-  sentinelLinks       LinkSentinels[]
-  alertsAsFirstCircle Alert[]         @relation("AlertFirstCircle")
+  userSentinels       LinkSentinels[]
+  alertsAsFirstCircle Alert[]            @relation("AlertFirstCircle")
   alertParticipations AlertParticipant[]
 
-  @@unique([id, companionId])
-  @@index([companionId, status])
+  @@unique([id, userCompanionId])
+  @@index([userCompanionId, status])
 }
 
 model LinkSentinels {
@@ -194,40 +174,42 @@ model LinkSentinels {
   chat         Boolean @default(false)
   canSendPhone Boolean @default(false)
 
-  sentinelId  String
-  companionId String
+  userSentinelId  String
+  userCompanionId String
   circleId    String
 
-  linkAsSentinel User   @relation("LinkAsSentinel", fields: [sentinelId], references: [id], onDelete: Restrict)
-  companion      User   @relation("SentinelCompanion", fields: [companionId], references: [id], onDelete: Restrict)
-  circle         Circle @relation(fields: [circleId, companionId], references: [id, companionId], onDelete: Restrict)
+  linkAsSentinel User   @relation("LinkAsSentinel", fields: [userSentinelId], references: [id], onDelete: Restrict)
+  userCompanion      User   @relation("SentinelCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
+  circle         Circle @relation(fields: [circleId, userCompanionId], references: [id, userCompanionId], onDelete: Restrict)
 
   events              LinkSentinelsEvent[]
   alertParticipations AlertParticipant[]
-  conversation        Conversation?
 
-  @@unique([sentinelId, companionId])
+  @@unique([userSentinelId, userCompanionId])
   @@unique([circleId, leadSlot])
-  @@index([companionId, status])
+  @@index([userCompanionId, status])
 }
 
 model LinkSentinelsEvent {
   id              String        @id @default(cuid())
-  linkSentinelsId String
-  linkSentinels   LinkSentinels @relation(fields: [linkSentinelsId], references: [id], onDelete: Restrict)
+  userSentinelsId String
+  userSentinels   LinkSentinels @relation(fields: [userSentinelsId], references: [id], onDelete: Restrict)
 
   fromStatus LinkStatus?
   toStatus   LinkStatus
   occurredAt DateTime    @default(now())
 
-  @@index([linkSentinelsId, occurredAt])
+  @@index([userSentinelsId, occurredAt])
 }
 
 model Alert {
-  id        String    @id @default(cuid())
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  closedAt  DateTime?
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  launchedAt  DateTime?
+  activatedAt DateTime?
+  closingAt   DateTime?
+  closedAt    DateTime?
 
   label        String
   messageAlert String
@@ -237,8 +219,8 @@ model Alert {
   statusByCompanion   String?
   statusByFirstCircle String?
 
-  companionId String
-  companion   User @relation("MyAlertsAsCompanion", fields: [companionId], references: [id], onDelete: Restrict)
+  userCompanionId String
+  userCompanion   User @relation("MyAlertsAsCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
 
   firstCircleId String
   firstCircle   Circle @relation("AlertFirstCircle", fields: [firstCircleId], references: [id], onDelete: Restrict)
@@ -251,9 +233,8 @@ model Alert {
 
   participants  AlertParticipant[]
   conversations Conversation[]
-  events        AlertEvent[]
 
-  @@index([companionId, createdAt])
+  @@index([userCompanionId, createdAt])
   @@index([alertStatus])
 }
 
@@ -271,9 +252,9 @@ model AlertParticipant {
 
   isLead         Boolean   @default(false)
   leadAssignedAt DateTime?
-  circleId   String
-  circle     Circle @relation(fields: [circleId], references: [id], onDelete: Restrict)
-  circleName String
+  circleId       String
+  circle         Circle    @relation(fields: [circleId], references: [id], onDelete: Restrict)
+  circleName     String
 
   canSendPhoneAtAlert Boolean?
   chatAtAlert         Boolean?
@@ -282,35 +263,11 @@ model AlertParticipant {
   alertId String
   alert   Alert  @relation(fields: [alertId], references: [id], onDelete: Restrict)
 
-  linkSentinelsId String
-  linkSentinels   LinkSentinels @relation(fields: [linkSentinelsId], references: [id], onDelete: Restrict)
+  userSentinelsId String
+  userSentinels   LinkSentinels @relation(fields: [userSentinelsId], references: [id], onDelete: Restrict)
 
-  privateConversation Conversation?
-  events              AlertEvent[]
-
-  @@unique([alertId, linkSentinelsId])
+  @@unique([alertId, userSentinelsId])
   @@index([alertId, status])
-}
-
-model AlertEvent {
-  id        String         @id @default(cuid())
-  createdAt DateTime       @default(now())
-  type      AlertEventType
-  data      Json?
-
-  alertId String
-  alert   Alert  @relation(fields: [alertId], references: [id], onDelete: Restrict)
-
-  actorId String?
-  actor   User?   @relation("AlertEventActor", fields: [actorId], references: [id], onDelete: Restrict)
-
-  participantId String?
-  participant   AlertParticipant? @relation(fields: [participantId], references: [id], onDelete: Restrict)
-
-  conversationId String?
-  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Restrict)
-
-  @@index([alertId, createdAt])
 }
 
 model Conversation {
@@ -319,20 +276,11 @@ model Conversation {
   updatedAt DateTime  @updatedAt
   closedAt  DateTime?
 
-  type ConversationType
-
-  linkSentinelsId String?        @unique
-  linkSentinels   LinkSentinels? @relation(fields: [linkSentinelsId], references: [id], onDelete: Restrict)
-
   alertId String?
   alert   Alert?  @relation(fields: [alertId], references: [id], onDelete: Restrict)
 
-  alertParticipantId String?           @unique
-  alertParticipant   AlertParticipant? @relation(fields: [alertParticipantId], references: [id], onDelete: Restrict)
-
   participants ConversationParticipant[]
   messages     Message[]
-  events       AlertEvent[]
 
   @@index([alertId])
 }
