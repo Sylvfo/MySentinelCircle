@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth status)",
+      "Bash(gh issue list *)",
+      "Bash(gh issue view *)",
+      "Bash(gh label list)",
+      "Bash(git status)",
+      "Bash(git log)",
+      "Bash(git branch)",
+      "Bash(git diff)",
+      "Bash(ls)"
+    ],
+    "ask": [ 
+       "Write(backend)",
+       "Edit(backend)",
+       "Edit(procedures.txt)",
+        "Edit(.claude/**)",
+        "Write(.claude/**)"
+    ],
+    "deny": [
+      "Edit(backend/prisma/schema.prisma)",
+      "Write(backend/prisma/schema.prisma)",
+      "Edit(.claude/settings.json)",
+      "Write(.claude/settings.json)",
+      "Bash(gh issue create *)",
+      "Bash(gh issue comment *)",
+      "Bash(gh issue edit *)",
+      "Bash(gh issue close *)",
+      "Bash(gh issue reopen *)",
+      "Bash(gh label create *)",
+      "Bash(gh label edit *)",
+      "Bash(gh label delete *)"
+    ]
+  }
+}
