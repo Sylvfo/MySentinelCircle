@@ -70,7 +70,36 @@ scope past specific conventions into rules so that they load only when they appl
 6modes: manuel (reads only without prompting), acceptEdits, plan(read only), auto(accept everything with a classified model reviewing each action before it runs), dontAsk(only pre approved tools allowed, great for CI pipeline) bypassPermissions (dangerous)
 choose: auto or dont ask
 
-::hook::
+
+quels fichiers toucher et pas toucher??
+pas toucher db.
+dire à chaque session si bien enregistré les règles
+
+rules backend:
+
+CircleAlert et LinkSentinelAlert utilisés ne doivent jamais être supprimés après CLOSING
+
+fais des réponses courtes ok?
+
+ne pas toucher à la db et constuire surla DB
+
+cercle reserve
+
+mode manuel de claude pour validations.
+
+écrit de façon courte et claire.
+
+si un élément d une to do liste à été fait, supprime là.
+
+faire  des tests. 
+
+Créer et tester.
+
+Pas à pas avec 
+
+AlertNotification
+
+permission claude dans 
 
 autre commandes
 /compact + instructions:
@@ -81,10 +110,7 @@ ca peut enlever des trucs
 rembobiner aux derniers prompts
 
 à voir plus tard:
-/loop and /goal ça veut dire vas y jusqu'à avoir atteind un but
-worktree for multiple agent
 
-::verification skills::
-ca fait des tests automatisé
-pas aussi solid que les rules.
+règles:
+quand demande de commande mettre si c'est que read ou si il veut modifier qqch et explique ce que ça fait. 
 
