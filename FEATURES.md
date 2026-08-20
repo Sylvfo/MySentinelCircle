@@ -1,5 +1,16 @@
 # Features
 
+## Project phases
+
+The project as a whole moves through these macro phases, in order — the database is treated as the immutable foundation everything else builds on top of, not something casually reopened:
+
+1. Plan
+2. Database (build on top of it, don't modify once set)
+3. Backend, with a light frontend alongside
+4. Build out the modules and API routes
+5. Security
+6. Work on the frontend
+7. Security (pass again, frontend-side)
 
 ## Product features
 

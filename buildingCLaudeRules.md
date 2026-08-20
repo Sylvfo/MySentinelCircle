@@ -1,4 +1,3 @@
-non on fera après.Je veux déjà réfléchir à comment je veux organiser les choses. Maintenant j'ai une autre question.J'aimerai que chaque fois qu on fait une nouvelle issue on fait une marche à suivre (à mieux déterminer après) dans le genre: 
 
 CLAUDE.md — chargé automatiquement à chaque session, pour les règles générales du projet (architecture, conventions), mémoire du projet. 
 on peut aussi mettre où en en est et un petit point à la fin de chaque session pour la prochaine fois?
@@ -19,17 +18,6 @@ mettre à jour avancement sur projet
 avancement de la tache actuelle: plan+scope, coding, testing, debug, notes pour la prochaine fois. PR, en prod/dev/branch
 
 Skills (.claude/skills/) — pour une "marche à suivre" réutilisable, comme ta demande sur les nouvelles features : je peux créer une skill "nouvelle-feature" qui, à chaque fois qu'on commence une feature, me fait suivre les mêmes étapes (relire plan.txt, passer en mode plan, structure du module, tests...).
-
-start session/ end session
-
-plan.txt
-
-
-FICHIER À JOINDRE À CLAUDE.md
-
-lastupdate.md
-
-preferencesSyl.md
 
 
 ==Notes Claude in action==
@@ -54,13 +42,6 @@ choose: auto or dont ask
 
 
 
-
-écrit de façon courte et claire.
-
-communiquer en français mais écrire en anglais dans le projet
-
-ne pas toucher à la db et constuire surla DB
-
 cercle reserve
 
 
@@ -80,9 +61,6 @@ rembobiner aux derniers prompts
 à voir plus tard:
 
 règles:
-quand demande de commande mettre si c'est que read ou si il veut modifier qqch et explique ce que ça fait. 
-
-
 principe de constructions
 
 contrainte / vérifier / corriger.
@@ -93,34 +71,14 @@ librean/coder = spec / pluggé par branches testables /
 
 design sous slp iA / debug de façon scientifique
 
-documenter
-
 routines. quelles sont les features
 qu’on peut gérer après ?
 
 tableau avec api et info back-front
-
-web 6 skills + leur in action
 
 Claude
 principes et bonnes pratiques.
 sites où chercher doc.
 
 mémoire
-→ de projet
-→ des règles
-→ du travail en cours.
 
-mode plan actif.
-
-
-
-
-phases projet
-1 plan
-2 db
-3 back + répond front + testing
-4 concept front
-5 ajouter les features.
-
-claude doit pas pouvoir modifier ses propres règles. 
