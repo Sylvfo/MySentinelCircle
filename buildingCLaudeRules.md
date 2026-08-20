@@ -79,6 +79,3 @@ tableau avec api et info back-front
 Claude
 principes et bonnes pratiques.
 sites où chercher doc.
-
-mémoire
-
