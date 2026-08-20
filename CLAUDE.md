@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+@.claude/lastupdate.md
+
 ## Project
 
 MySentinelCircle: a mutual safety-net app. Each user ("Me") builds tiered circles of trusted people ("Sentinels") who watch over them; alerts escalate outward through circles if the closest one can't resolve them. Full product spec is in `plan.txt` at the repo root — read it before working on any feature that touches circles, sentinel roles, or the alert lifecycle, since the DB schema encodes that spec's rules.
@@ -44,5 +46,9 @@ npm run lint     # oxlint
 ## Working on `schema.prisma`
 
 Sylvie edits `backend/prisma/schema.prisma` by hand herself. Propose schema changes as Prisma code in the conversation for her to apply — don't write to that file directly.
+
+## Working on `.claude/settings.json`
+
+Same rule as `schema.prisma`: Sylvie edits `.claude/settings.json` by hand herself. Propose permission changes as JSON in the conversation for her to apply — don't write to that file directly, even for a change she's already approved verbally.
 
 Destructive Prisma commands against the Neon dev database (`prisma migrate reset`, or anything that would drop/recreate data) require Sylvie's fresh, explicit confirmation in that same turn before running, even if she approved a similar action earlier in the conversation — Prisma's own safety guard blocks these for AI agents without it.

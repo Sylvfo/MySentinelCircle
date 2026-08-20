@@ -1,0 +1,83 @@
+PROCEDURES
+
+==PROJET==
+
+Grandes étapes
+Projet basé sur la data base (en principe immuable) et le plan
+
+plan
+Data Base (construire sur db pas modifier)
+Back avec lightFront
+construire les modules et les routes api
+sécurité
+
+Travailler Front
+sécurité
+
+
+
+
+
+
+
+quand on fait le mode plan?
+
+
+en cours de plan/en construction/en tester
+/test sécurité
+
+une fois que c'est testé et sécurisé, on lock la feature module backend
+
+
+/ locked testé donc modifié que après aked
+/en prod
+
+quelles sont les parties déjà construites à ne pas modifier ou ask??
+
+
+
+FEATURE
+
+1 besoins 
+mode plan
+
+ 
+2 cadre
+
+adre product requirement document 
+
+pour qui et pour quoi ce produit?
+
+pas technique
+
+3 planifier par tranches testables
+
+prend le prd et le découpe
+
+comment arriver à ce que le prd veut, dans quel ordre et par quelle étape vérifiable
+
+technique
+
+4 coder
+
+5debug scientifique
+5.1 localiser et reproduire le bug
+
+5.2 poser 3 hypothèses avec test sur la cause racine
+
+5.3 ajouter des logs ciblés temporaires
+
+5.4 descriptif qui explique la cause racine
+
+5.5 voir si c’est un bug où un problème d’architecture
+
+6 documenter
+
+SESSION 
+0 pull depuis repos + regarder si bonne branche
+1 regarder features en cours @.claude/lastupdate.md
+2 à faire et si une feature en pause depuis la dernière fois
+3 si pas feature en pause, choisir prochaine issue. 
+4 travailler les features/issues
+5 mettre notes pour la prochaine fois 
+6 push pull
