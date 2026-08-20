@@ -51,14 +51,3 @@ Choses reportees pendant l'implementation, a rebrancher quand pretes.
      en cours...).
    - Check-ins programmes (explicitement hors MVP).
    - Notifications push en plus des SMS pour les users de l'app.
-
-
-
-Machine à états absente. Tu as active/escalated/resolved mais aucune transition écrite. Qui déclenche escalated, quand ? C'est le cœur du module.
-Aucun timing. Personne ne répond dans le 1er cercle pendant 3 h — que se passe-t-il ? Rien ? Relance ? C'est la question la plus importante d'une app de sécurité.
-Doublons d'alerte. Deux sentinelles alertent pour José à 10 min d'intervalle → une alerte ou deux ?
-Numéro inconnu. Une Organization alerte sur un numéro qui n'existe pas dans le système → ?
-Retrait pendant une alerte. Une sentinelle de référence se retire alors qu'une alerte est active → ?
-Fusion Contact/User. Une sentinelle SMS crée un compte plus tard avec le même numéro → deux entités ou une ?
-Consentement et purge. Tu stockes des numéros de gens sans compte. Il faut une trace du consentement et une suppression automatique après retrait (LPD/RGPD).
-Anti-abus. Rien n'empêche d'inviter en boucle un numéro pour le harceler.

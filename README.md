@@ -1,18 +1,33 @@
 # MySentinelCircle
 
-how to run it
+## How to run it
 makefile
 
-documentation
+# documentation
 
-schéma:
+## schéma:
 backend/prisma/DB_schema.md
 
-todo list:
+## todo list:
 issues github
 
-claude setup
+# Claude setup
+## 
 CLAUDE.md
 
-permission (hard rules)
+## permission (hard rules)
 ./claude/settings.json
+
+## loops
+
+## hooks
+
+## verification
+
+# tech slack and tools
+
+## database
+neon
+
+## server
+
