@@ -14,7 +14,7 @@ const class_validator_1 = require("class-validator");
 const client_1 = require("@prisma/client");
 class UpdateMembershipDto {
     sentinelType;
-    isReference;
+    requestedAsLead;
     circleId;
 }
 exports.UpdateMembershipDto = UpdateMembershipDto;
@@ -27,7 +27,7 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
-], UpdateMembershipDto.prototype, "isReference", void 0);
+], UpdateMembershipDto.prototype, "requestedAsLead", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),

@@ -1,4 +1,10 @@
-import { IsEmail, IsPhoneNumber, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsPhoneNumber,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class SignupEmailDto {
   // Mandatory prénom for every account (see plan.txt CIRCLES & PERMISSIONS).

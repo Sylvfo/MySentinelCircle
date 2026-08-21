@@ -16,7 +16,7 @@ class InviteSentinelDto {
     phone;
     name;
     sentinelType;
-    isReference;
+    requestedAsLead;
 }
 exports.InviteSentinelDto = InviteSentinelDto;
 __decorate([
@@ -38,5 +38,5 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
-], InviteSentinelDto.prototype, "isReference", void 0);
+], InviteSentinelDto.prototype, "requestedAsLead", void 0);
 //# sourceMappingURL=invite-sentinel.dto.js.map

@@ -1,4 +1,12 @@
-import { IsBoolean, IsEnum, IsOptional, IsPhoneNumber, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsPhoneNumber,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { SentinelType } from '@prisma/client';
 
 // "Me" invites someone (by phone) into one of their circles as a Sentinel.
@@ -17,8 +25,8 @@ export class InviteSentinelDto {
   @IsEnum(SentinelType)
   sentinelType?: SentinelType;
 
-  // Reference/responsible flag — only honoured for a tier-1 (1st) circle.
+  // Lead-slot request — only honoured for a tier-1 (1st) circle.
   @IsOptional()
   @IsBoolean()
-  isReference?: boolean;
+  requestedAsLead?: boolean;
 }

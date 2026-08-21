@@ -50,7 +50,7 @@ export function CompanionsPage() {
       ) : (
         <section className="panel">
           {companions.map((c) => (
-            <div key={c.membershipId} className="row member-row">
+            <div key={c.linkId} className="row member-row">
               <span>
                 {c.companion.email || c.companion.phone}
                 <span className="badge">{t('companions.inCircle', { label: c.circle.label })}</span>
@@ -59,7 +59,7 @@ export function CompanionsPage() {
               <button
                 className="ghost"
                 onClick={() => {
-                  if (window.confirm(t('companions.confirmLeave'))) leaveMembership(c.membershipId).then(reload);
+                  if (window.confirm(t('companions.confirmLeave'))) leaveMembership(c.linkId).then(reload);
                 }}
               >
                 {t('companions.leave')}
@@ -82,7 +82,7 @@ function InvitationsInbox({ invitations, onChange }: { invitations: Invitation[]
       {invitations.map((inv) => (
         <div key={inv.id} className="row">
           <span>
-            {t('companions.invitedBy', { who: inv.circle.owner.email || inv.circle.owner.phone })} — {inv.circle.label}
+            {t('companions.invitedBy', { who: inv.circle.userCompanion.email || inv.circle.userCompanion.phone })} — {inv.circle.label}
           </span>
           <span className="row-actions">
             <button onClick={() => acceptMembership(inv.id).then(onChange)}>{t('companions.accept')}</button>

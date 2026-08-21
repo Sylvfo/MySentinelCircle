@@ -47,14 +47,20 @@ export function sentinelLeaveConfirmSms(ownerLabel: string): string {
 }
 
 // Sent to the inviter "Me" once their invited Sentinel answers.
-export function invitationAnsweredSms(sentinelLabel: string, accepted: boolean): string {
+export function invitationAnsweredSms(
+  sentinelLabel: string,
+  accepted: boolean,
+): string {
   return accepted
     ? `${sentinelLabel} a accepte votre invitation Sentinel sur ${APP}.`
     : `${sentinelLabel} a refuse votre invitation Sentinel sur ${APP}.`;
 }
 
 // Sent to the requester once the target "Me" answers their Sentinel request.
-export function requestAnsweredSms(targetLabel: string, accepted: boolean): string {
+export function requestAnsweredSms(
+  targetLabel: string,
+  accepted: boolean,
+): string {
   return accepted
     ? `${targetLabel} a accepte votre demande : vous etes desormais son Sentinel sur ${APP}.`
     : `${targetLabel} a refuse votre demande de Sentinel sur ${APP}.`;
@@ -65,7 +71,15 @@ export function requestAnsweredSms(targetLabel: string, accepted: boolean): stri
 export const ACCEPT_KEYWORDS = ['oui', 'ok', 'accepte', 'yes', 'y', 'o'];
 // STOP / QUITTER double as "leave" for an already-accepted Sentinel — see
 // SentinelService.handleInboundSms.
-export const DECLINE_KEYWORDS = ['non', 'no', 'refuse', 'stop', 'quitter', 'arreter', 'n'];
+export const DECLINE_KEYWORDS = [
+  'non',
+  'no',
+  'refuse',
+  'stop',
+  'quitter',
+  'arreter',
+  'n',
+];
 
 export type SmsReplyIntent = 'accept' | 'decline' | 'unknown';
 

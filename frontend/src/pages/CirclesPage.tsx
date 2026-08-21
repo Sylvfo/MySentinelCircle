@@ -67,7 +67,7 @@ function RequestsInbox({ requests, onChange }: { requests: IncomingRequest[]; on
       {requests.map((r) => (
         <div key={r.id} className="row">
           <span>
-            {t('circles.requestFrom', { who: r.contact.name || r.contact.phone })} — {r.circle.label}
+            {t('circles.requestFrom', { who: r.linkAsSentinel.firstName })} — {r.circle.label}
           </span>
           <span className="row-actions">
             <button onClick={() => acceptMembership(r.id).then(onChange)}>{t('circles.approve')}</button>
@@ -126,14 +126,16 @@ function CircleCard({ circle, onChange, onError }: { circle: Circle; onChange: (
     }
   };
 
+  const isPrimary = circle.circleType === 'FIRST';
+
   return (
     <section className="panel">
       <div className="row">
         <h2>
           {circle.label}{' '}
-          {circle.isPrimary && <span className="badge status-accepted">{t('circles.firstCircle')}</span>}
+          {isPrimary && <span className="badge status-accepted">{t('circles.firstCircle')}</span>}
         </h2>
-        {!circle.isPrimary && (
+        {!isPrimary && (
           <button className="ghost" onClick={del}>
             {t('common.delete')}
           </button>
@@ -141,13 +143,13 @@ function CircleCard({ circle, onChange, onError }: { circle: Circle; onChange: (
       </div>
 
       <h3>{t('circles.members')}</h3>
-      {circle.memberships.length === 0 ? (
+      {circle.userSentinels.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>{t('circles.noMembers')}</p>
       ) : (
-        circle.memberships.map((m) => <MemberRow key={m.id} m={m} onChange={onChange} onError={onError} />)
+        circle.userSentinels.map((m) => <MemberRow key={m.id} m={m} onChange={onChange} onError={onError} />)
       )}
 
-      <InviteForm circleId={circle.id} isPrimary={circle.isPrimary} onChange={onChange} onError={onError} />
+      <InviteForm circleId={circle.id} isPrimary={isPrimary} onChange={onChange} onError={onError} />
     </section>
   );
 }
@@ -167,10 +169,10 @@ function MemberRow({ m, onChange, onError }: { m: Membership; onChange: () => vo
   return (
     <div className="row member-row">
       <span>
-        {m.contact.name || m.contact.phone}
+        {m.linkAsSentinel.firstName}
         <span className={`badge status-${m.status.toLowerCase()}`}>{t(`sentinel.status.${m.status}`)}</span>
         <span className="badge">{t(`sentinel.type.${m.sentinelType}`)}</span>
-        {m.isReference && <span className="badge">{t('sentinel.reference')}</span>}
+        {m.leadSlot && <span className="badge">{t('sentinel.reference')}</span>}
       </span>
       <button className="ghost" onClick={remove}>
         {t('circles.removeMember')}
@@ -193,8 +195,7 @@ function InviteForm({
   const { t } = useTranslation();
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
-  const [plus, setPlus] = useState(false);
-  const [isReference, setIsReference] = useState(false);
+  const [requestedAsLead, setRequestedAsLead] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (e: FormEvent) => {
@@ -204,13 +205,11 @@ function InviteForm({
       await inviteSentinel(circleId, {
         phone: phone.trim(),
         name: name.trim(),
-        sentinelType: plus ? 'SENTINEL_PLUS' : 'SENTINEL',
-        isReference: isPrimary ? isReference : undefined,
+        requestedAsLead: isPrimary ? requestedAsLead : undefined,
       });
       setPhone('');
       setName('');
-      setPlus(false);
-      setIsReference(false);
+      setRequestedAsLead(false);
       onChange();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
@@ -226,13 +225,13 @@ function InviteForm({
       <div className="row wrap">
         <input type="tel" required placeholder={t('circles.invitePhone')} value={phone} onChange={(e) => setPhone(e.target.value)} />
         <input required placeholder={t('circles.inviteName')} value={name} onChange={(e) => setName(e.target.value)} />
-        <label className="check">
-          <input type="checkbox" checked={plus} onChange={(e) => setPlus(e.target.checked)} />
-          {t('sentinel.type.SENTINEL_PLUS')}
-        </label>
         {isPrimary && (
           <label className="check">
-            <input type="checkbox" checked={isReference} onChange={(e) => setIsReference(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={requestedAsLead}
+              onChange={(e) => setRequestedAsLead(e.target.checked)}
+            />
             {t('sentinel.reference')}
           </label>
         )}

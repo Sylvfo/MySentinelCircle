@@ -1,4 +1,6 @@
 
+Updated: 2026-08-21
+
 CLAUDE.md — chargé automatiquement à chaque session, pour les règles générales du projet (architecture, conventions), mémoire du projet. 
 on peut aussi mettre où en en est et un petit point à la fin de chaque session pour la prochaine fois?
 et des routines de sessions sur quoi commencer?
