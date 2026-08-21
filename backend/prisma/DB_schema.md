@@ -1,8 +1,8 @@
 ## Database Schema
 
-Updated: 2026-08-21
+Updated: 2026-08-21 16:21
 
-> Reflète l'état actuel de `schema.prisma` (branche `data_base_definition`).
+> Reflète l'état actuel de `schema.prisma` (branche `define_architecture_and_stack`).
 
 Modèles actifs : `User`, `Circle`, `LinkSentinels`, `LinkSentinelsEvent`, `Alert`, `AlertParticipant`, `Conversation`, `ConversationParticipant`, `Message`.
 Principe central : rien n'est jamais vraiment supprimé — `User`/`Circle`/`LinkSentinels` se ferment ou s'anonymisent, mais restent référençables pour toujours. Pas de tables-copies (`CircleAlert`/`LinkSentinelAlert` n'existent plus), pas de journal d'événements séparé (`AlertEvent` a été remplacé par des timestamps d'étape directement sur `Alert`).

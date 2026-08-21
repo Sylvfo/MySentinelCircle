@@ -53,7 +53,11 @@ Sylvie edits `backend/prisma/schema.prisma` by hand herself. Propose schema chan
 
 Same rule as `schema.prisma`: Sylvie edits `.claude/settings.json` by hand herself. Propose permission changes as JSON in the conversation for her to apply — don't write to that file directly, even for a change she's already approved verbally.
 
-Destructive Prisma commands against the Neon dev database (`prisma migrate reset`, or anything that would drop/recreate data) require Sylvie's fresh, explicit confirmation in that same turn before running, even if she approved a similar action earlier in the conversation — Prisma's own safety guard blocks these for AI agents without it.
+Destructive Prisma commands against the dev database (`prisma migrate reset`, or anything that would drop/recreate data) require Sylvie's fresh, explicit confirmation in that same turn before running, even if she approved a similar action earlier in the conversation — Prisma's own safety guard blocks these for AI agents without it.
+
+## Working on infra files (`docker-compose.yml`, `nginx/`, Dockerfiles)
+
+These are locked with `deny` in `.claude/settings.json`, not just convention — see `PERMISSIONSCLAUDE.md` for the full list and the procedure to follow when a change is genuinely needed.
 
 ## Linkds
 - @.claud/convention/code-style.md

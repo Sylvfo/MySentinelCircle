@@ -1,6 +1,6 @@
 # Stack schema
 
-Updated: 2026-08-21
+Updated: 2026-08-21 16:21
 
 Conceptual overview of the whole MySentinelCircle stack — how the pieces fit together. For DB entities/relations see `backend/prisma/DB_schema.md`; for route-by-route detail see `API.md`.
 
@@ -14,11 +14,12 @@ domain name: mysentinelscircles.com.
 - **ORM / DB**: Prisma + MariaDB, containerized (self-hosted, not a managed provider like Neon)
 - **SMS**: pluggable provider behind an interface (console sender in dev; Twilio likely default in prod)
 - **Real-time**: hybrid REST + WebSocket. WebSocket (NestJS gateway) for alerts, notifications, and messages — everything else stays REST. One WS gateway with rooms keyed by `conversationId`, reusing the single `Conversation`/`Message` model; alerts fan out to WS (connected users) and SMS (everyone else) in parallel. WS auth reuses the existing JWT, verified on socket connection.
-- **Rate limiting**: `@nestjs/throttler`. Pattern: `@UseGuards(RateLimitGuard, AuthGuard)` + `@Throttle({ default: { limit, ttl } })` per controller, custom Swagger decorators kept in a separate `*.documentation.ts` file. Priority targets: OTP and alert routes.
-  Lesson from transcendance: behind nginx, the backend saw every client as the same IP, so concurrent signups all shared one throttle bucket and got blocked. Fix: nginx must set `X-Forwarded-For`/`X-Real-IP`, NestJS must `app.set('trust proxy', 1)`, and OTP/signup throttling must key on the target identifier (phone/account), not IP alone — several real users can legitimately share one IP (school network, hotel Organization Sentinels).
-- **Infra**: Docker, `docker-compose` (pattern reused from the transcendance project) — backend, frontend, nginx (reverse proxy + HTTPS), and a MariaDB container, all on one host
-- **Hosting**: 42 Lausanne VM (`vod.42lausanne.ch`) for first tests with real users; planned migration to Infomaniak (Node.js hosting) for the stable public launch — same containerized MariaDB carries over unchanged, Infomaniak includes MariaDB free in that plan
-- **Local dev**: runs locally for now (not yet deployed to the VM). MariaDB container must use a named Docker volume so data survives `docker-compose down`/restarts — the dev DB should persist across sessions, not reset every time.
+- **Rate limiting**: `@nestjs/throttler`. Pattern: `@UseGuards(RateLimitGuard, AuthGuard)` + `@Throttle({ default: { limit, ttl } })` per controller, custom Swagger decorators kept in a separate `*.documentation.ts` file. Priority targets: OTP and alert routes. **Not implemented yet** — `@nestjs/throttler` isn't installed, `RateLimitGuard` doesn't exist. The `trust proxy` half below is done; this half is still to do.
+  Lesson from transcendance: behind nginx, the backend saw every client as the same IP, so concurrent signups all shared one throttle bucket and got blocked. Fix: nginx must set `X-Forwarded-For`/`X-Real-IP` (done, every `nginx/nginx.conf` location block sets it), NestJS must `app.set('trust proxy', 1)` (done, in `main.ts`), and OTP/signup throttling must key on the target identifier (phone/account), not IP alone — several real users can legitimately share one IP (school network, hotel Organization Sentinels).
+- **Infra**: Docker + `docker-compose` (pattern reused from the transcendance project, adapted — see `PERMISSIONSCLAUDE.md`, these files are now `deny`-locked). Root `docker-compose.yml` runs 4 services: `mariadb` (named volume, persists across restarts), `backend`, `frontend`, `nginx` (reverse proxy, self-signed HTTPS). Two ways to run locally:
+  - **Host mode** (`make dev`): backend on `:3000`, frontend on `:5173`, both on the bare host — the original simple flow, still works unchanged.
+  - **Docker mode** (`make docker-up`, after `make certs` once): full stack in containers, reachable through nginx at `https://localhost:4444` (HTTP `:8081` redirects to it). `backend`/`frontend` containers publish no ports — only reachable via nginx — so both modes can run at once without colliding, sharing only the `mariadb` container/volume. nginx routes one location block per backend module prefix (`/auth/`, `/user/`, `/sentinel/`, `/alert/`, `/organization/`, `/messaging/`, plus a forward-looking `/socket.io/`) straight through to `backend:3000`, no `/api` prefix. The frontend's `VITE_API_URL` is overridden to `""` in Docker mode so every API call becomes same-origin relative through nginx — no frontend code change needed. Cert is self-signed (`make certs`, gitignored) — browsers show a "not private" warning, expected until a real domain is involved.
+- **Hosting**: 42 Lausanne VM (`vod.42lausanne.ch`) for first tests with real users; planned migration to Infomaniak (Node.js hosting) for the stable public launch — same containerized MariaDB carries over unchanged, Infomaniak includes MariaDB free in that plan.
 
 ## High-level diagram
 
@@ -91,7 +92,7 @@ Skeleton = empty controller/service, module wired into `app.module.ts` but no lo
 
 ## How frontend and backend connect
 
-- Frontend calls the backend over REST at `VITE_API_URL` (defaults to `http://localhost:3000`); backend CORS is locked to `FRONTEND_URL` (defaults to `http://localhost:5173`).
+- Frontend calls the backend over REST at `VITE_API_URL` (defaults to `http://localhost:3000` in host mode; overridden to `""` in Docker mode so calls are same-origin through nginx). Backend CORS is locked to `FRONTEND_URL` (defaults to `http://localhost:5173`; only exercised in host mode — same-origin requests through nginx don't trigger CORS at all).
 - Auth: OTP/email/Google flows hit `auth` endpoints, get back a JWT, stored in `localStorage` and attached as a bearer token on every subsequent call; `JwtAuthGuard` + `JwtStrategy` protect routes backend-side, `ProtectedRoute` gates pages frontend-side.
 - Real-time: alerts, notifications, and messages go over WebSocket instead of REST — the same JWT is reused to authenticate the socket on connect. Everything outside an active alert (except messages) stays REST. Rooms are keyed by `conversationId`, so one gateway serves every conversation context (1:1 companion↔sentinel, 1st-circle group, per-alert isolated chat, organization chat).
 - Each backend module a page needs gets its own `api/<module>.ts` file frontend-side — `api/sentinel.ts` exists because `CirclesPage`/`CompanionsPage` need it; `api/alert.ts`, `api/user.ts`, `api/messaging.ts` will follow once those backend modules stop being skeletons.
