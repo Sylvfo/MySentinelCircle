@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { SmsModule } from './sms/sms.module';
+import { EmailModule } from './email/email.module';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { SentinelModule } from './sentinel/sentinel.module';
@@ -16,6 +17,7 @@ import { MessagingModule } from './messaging/messaging.module';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     SmsModule,
+    EmailModule,
     AuthModule,
     UserModule,
     SentinelModule,

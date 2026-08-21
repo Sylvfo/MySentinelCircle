@@ -13,6 +13,7 @@ const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
 const prisma_module_1 = require("./prisma/prisma.module");
 const sms_module_1 = require("./sms/sms.module");
+const email_module_1 = require("./email/email.module");
 const auth_module_1 = require("./auth/auth.module");
 const user_module_1 = require("./user/user.module");
 const sentinel_module_1 = require("./sentinel/sentinel.module");
@@ -28,6 +29,7 @@ exports.AppModule = AppModule = __decorate([
             config_1.ConfigModule.forRoot({ isGlobal: true }),
             prisma_module_1.PrismaModule,
             sms_module_1.SmsModule,
+            email_module_1.EmailModule,
             auth_module_1.AuthModule,
             user_module_1.UserModule,
             sentinel_module_1.SentinelModule,

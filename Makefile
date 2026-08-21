@@ -1,4 +1,4 @@
-.PHONY: all install back front dev db-up db-down db-logs certs docker-up docker-down
+.PHONY: all install back front dev db-up db-down db-logs certs docker-up docker-down nosmsnow
 
 # Default target — `make` alone runs this
 all: dev
@@ -41,3 +41,8 @@ docker-up: certs
 
 docker-down:
 	docker compose down
+
+# Optional, opt-in — terminal stand-in for a real SMS/email provider.
+# Not wired into dev/all; run it in its own terminal when you want it.
+nosmsnow:
+	cd nosmsnow && node server.js

@@ -3,10 +3,13 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SignupEmailDto } from './dto/signup-email.dto';
 import { SignupGoogleDto } from './dto/signup-google.dto';
+import { SignupPhoneDto } from './dto/signup-phone.dto';
 import { LoginEmailDto } from './dto/login-email.dto';
 import { LoginGoogleDto } from './dto/login-google.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
+import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 
@@ -25,6 +28,13 @@ export class AuthController {
   @Post('signup/google')
   signupGoogle(@Body() dto: SignupGoogleDto) {
     return this.authService.signupGoogle(dto);
+  }
+
+  // Full, permanent account from just a phone number — no email/Google
+  // ever required. Login afterwards: otp/request + otp/verify.
+  @Post('signup/phone')
+  signupPhone(@Body() dto: SignupPhoneDto) {
+    return this.authService.signupPhone(dto);
   }
 
   @Post('login/email')
@@ -47,6 +57,16 @@ export class AuthController {
   @Post('otp/verify')
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtp(dto);
+  }
+
+  @Post('password-reset/request')
+  requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    return this.authService.requestPasswordReset(dto);
+  }
+
+  @Post('password-reset/confirm')
+  confirmPasswordReset(@Body() dto: ConfirmPasswordResetDto) {
+    return this.authService.confirmPasswordReset(dto);
   }
 
   @UseGuards(JwtAuthGuard)

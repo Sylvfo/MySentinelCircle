@@ -51,57 +51,55 @@ const config_1 = require("@nestjs/config");
 const jwt_1 = require("@nestjs/jwt");
 const google_auth_library_1 = require("google-auth-library");
 const bcrypt = __importStar(require("bcryptjs"));
+const crypto_1 = require("crypto");
+const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const otp_sender_interface_1 = require("./otp/otp-sender.interface");
+const email_sender_interface_1 = require("../email/email-sender.interface");
 const OTP_TTL_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
+const PASSWORD_RESET_TTL_MINUTES = 60;
 let AuthService = class AuthService {
     prisma;
     jwt;
     config;
     otpSender;
+    emailSender;
     googleClient;
-    constructor(prisma, jwt, config, otpSender) {
+    constructor(prisma, jwt, config, otpSender, emailSender) {
         this.prisma = prisma;
         this.jwt = jwt;
         this.config = config;
         this.otpSender = otpSender;
+        this.emailSender = emailSender;
         this.googleClient = new google_auth_library_1.OAuth2Client(this.config.get('GOOGLE_CLIENT_ID'));
     }
     async signupEmail(dto) {
-        const [emailTaken, phoneTaken] = await Promise.all([
-            this.prisma.user.findUnique({ where: { email: dto.email } }),
-            this.prisma.user.findUnique({ where: { phone: dto.phone } }),
-        ]);
+        const emailTaken = await this.prisma.user.findUnique({ where: { email: dto.email } });
         if (emailTaken)
             throw new common_1.ConflictException('Email already in use');
-        if (phoneTaken)
-            throw new common_1.ConflictException('Phone already in use');
         const passwordHash = await bcrypt.hash(dto.password, 10);
-        const user = await this.prisma.user.create({
-            data: {
-                firstName: dto.firstName,
-                email: dto.email,
-                passwordHash,
-                phone: dto.phone,
-            },
-        });
+        const user = await this.claimOrCreateByPhone(dto.phone, { firstName: dto.firstName, email: dto.email, passwordHash }, client_1.UserType.ACCOUNT);
         await this.sendOtp(user.id, dto.phone);
         return { userId: user.id };
     }
     async signupGoogle(dto) {
         const { googleId, email } = await this.verifyGoogleIdToken(dto.idToken);
-        const [googleTaken, phoneTaken] = await Promise.all([
+        const [googleTaken, emailTaken] = await Promise.all([
             this.prisma.user.findUnique({ where: { googleId } }),
-            this.prisma.user.findUnique({ where: { phone: dto.phone } }),
+            this.prisma.user.findUnique({ where: { email } }),
         ]);
         if (googleTaken)
             throw new common_1.ConflictException('Google account already linked to a user');
-        if (phoneTaken)
-            throw new common_1.ConflictException('Phone already in use');
-        const user = await this.prisma.user.create({
-            data: { firstName: dto.firstName, googleId, email, phone: dto.phone },
-        });
+        if (emailTaken) {
+            throw new common_1.ConflictException('An account already exists for this email — log in with your password, or use password reset.');
+        }
+        const user = await this.claimOrCreateByPhone(dto.phone, { firstName: dto.firstName, googleId, email }, client_1.UserType.ACCOUNT);
+        await this.sendOtp(user.id, dto.phone);
+        return { userId: user.id };
+    }
+    async signupPhone(dto) {
+        const user = await this.claimOrCreateByPhone(dto.phone, { firstName: dto.firstName }, client_1.UserType.ACCOUNT);
         await this.sendOtp(user.id, dto.phone);
         return { userId: user.id };
     }
@@ -166,6 +164,46 @@ let AuthService = class AuthService {
         });
         return { accessToken: this.issueToken(user.id) };
     }
+    async requestPasswordReset(dto) {
+        const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+        if (user?.passwordHash) {
+            const rawToken = (0, crypto_1.randomBytes)(32).toString('hex');
+            const tokenHash = (0, crypto_1.createHash)('sha256').update(rawToken).digest('hex');
+            await this.prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    passwordResetTokenHash: tokenHash,
+                    passwordResetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60_000),
+                },
+            });
+            const link = `${this.config.get('FRONTEND_URL')}/reset-password?token=${rawToken}`;
+            await this.emailSender.send(user.email, 'Réinitialisation de mot de passe', link);
+        }
+        return { message: 'If an account exists for this email, a reset link has been sent.' };
+    }
+    async confirmPasswordReset(dto) {
+        const tokenHash = (0, crypto_1.createHash)('sha256').update(dto.token).digest('hex');
+        const user = await this.prisma.user.findUnique({ where: { passwordResetTokenHash: tokenHash } });
+        if (!user?.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) {
+            throw new common_1.UnauthorizedException('Invalid or expired reset token');
+        }
+        const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+        await this.prisma.user.update({
+            where: { id: user.id },
+            data: { passwordHash, passwordResetTokenHash: null, passwordResetExpiresAt: null },
+        });
+        return { message: 'Password updated' };
+    }
+    async claimOrCreateByPhone(phone, credentials, userType) {
+        const existing = await this.prisma.user.findUnique({ where: { phone } });
+        if (!existing) {
+            return this.prisma.user.create({ data: { phone, userType, ...credentials } });
+        }
+        if (existing.userType !== client_1.UserType.ONLY_SMS) {
+            throw new common_1.ConflictException('Phone already in use');
+        }
+        return this.prisma.user.update({ where: { id: existing.id }, data: { userType, ...credentials } });
+    }
     async sendOtp(userId, phone) {
         const code = String(Math.floor(100000 + Math.random() * 900000));
         const otpCodeHash = await bcrypt.hash(code, 10);
@@ -203,8 +241,9 @@ exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
     __param(3, (0, common_1.Inject)(otp_sender_interface_1.OTP_SENDER)),
+    __param(4, (0, common_1.Inject)(email_sender_interface_1.EMAIL_SENDER)),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         jwt_1.JwtService,
-        config_1.ConfigService, Object])
+        config_1.ConfigService, Object, Object])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

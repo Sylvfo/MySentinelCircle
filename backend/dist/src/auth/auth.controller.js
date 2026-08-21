@@ -18,10 +18,13 @@ const auth_service_1 = require("./auth.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const signup_email_dto_1 = require("./dto/signup-email.dto");
 const signup_google_dto_1 = require("./dto/signup-google.dto");
+const signup_phone_dto_1 = require("./dto/signup-phone.dto");
 const login_email_dto_1 = require("./dto/login-email.dto");
 const login_google_dto_1 = require("./dto/login-google.dto");
 const request_otp_dto_1 = require("./dto/request-otp.dto");
 const verify_otp_dto_1 = require("./dto/verify-otp.dto");
+const request_password_reset_dto_1 = require("./dto/request-password-reset.dto");
+const confirm_password_reset_dto_1 = require("./dto/confirm-password-reset.dto");
 const jwt_auth_guard_1 = require("./guards/jwt-auth.guard");
 const current_user_decorator_1 = require("./decorators/current-user.decorator");
 let AuthController = class AuthController {
@@ -37,6 +40,9 @@ let AuthController = class AuthController {
     signupGoogle(dto) {
         return this.authService.signupGoogle(dto);
     }
+    signupPhone(dto) {
+        return this.authService.signupPhone(dto);
+    }
     loginEmail(dto) {
         return this.authService.loginEmail(dto);
     }
@@ -48,6 +54,12 @@ let AuthController = class AuthController {
     }
     verifyOtp(dto) {
         return this.authService.verifyOtp(dto);
+    }
+    requestPasswordReset(dto) {
+        return this.authService.requestPasswordReset(dto);
+    }
+    confirmPasswordReset(dto) {
+        return this.authService.confirmPasswordReset(dto);
     }
     async me(user) {
         const record = await this.prisma.user.findUnique({
@@ -80,6 +92,13 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "signupGoogle", null);
 __decorate([
+    (0, common_1.Post)('signup/phone'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [signup_phone_dto_1.SignupPhoneDto]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "signupPhone", null);
+__decorate([
     (0, common_1.Post)('login/email'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -107,6 +126,20 @@ __decorate([
     __metadata("design:paramtypes", [verify_otp_dto_1.VerifyOtpDto]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "verifyOtp", null);
+__decorate([
+    (0, common_1.Post)('password-reset/request'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [request_password_reset_dto_1.RequestPasswordResetDto]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "requestPasswordReset", null);
+__decorate([
+    (0, common_1.Post)('password-reset/confirm'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [confirm_password_reset_dto_1.ConfirmPasswordResetDto]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "confirmPasswordReset", null);
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Get)('me'),
