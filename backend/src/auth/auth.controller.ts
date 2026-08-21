@@ -54,7 +54,14 @@ export class AuthController {
   async me(@CurrentUser() user: { userId: string }) {
     const record = await this.prisma.user.findUnique({
       where: { id: user.userId },
-      select: { id: true, firstName: true, email: true, phone: true, phoneVerifiedAt: true, createdAt: true },
+      select: {
+        id: true,
+        firstName: true,
+        email: true,
+        phone: true,
+        phoneVerifiedAt: true,
+        createdAt: true,
+      },
     });
     return record;
   }

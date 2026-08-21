@@ -1,5 +1,7 @@
 # MySentinelCircle
 
+Updated: 2026-08-21
+
 ## How to run it
 makefile
 

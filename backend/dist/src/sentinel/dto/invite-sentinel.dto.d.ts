@@ -3,5 +3,5 @@ export declare class InviteSentinelDto {
     phone: string;
     name: string;
     sentinelType?: SentinelType;
-    isReference?: boolean;
+    requestedAsLead?: boolean;
 }

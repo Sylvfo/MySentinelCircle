@@ -1,0 +1,116 @@
+Bonjour! Aujourd'hui on va parler des  points suivants pour avoir une bonne base et définision sur quoi on va partir. wich stack?
+
+websockets or api?
+
+Build https instead of http.
+
+thing about nginx server, database,... rate limits?
+
+EFFACER BACK AND FRONT?
+
+MAKE
+
+ARCHITECTURE GENERALE
+PRINCIPES BACK AND FRONT ET MODULES
+
+LISTER LES MODULES et ce que ça fait
+
+QUELS MODULES DANS QUEL ORDRE
+
+CREER UN PLAN DE QUOI FAIRE
+
+SEPARER LES MODULES EN TACHES
+FRONT TRES SIMPLE
+LES TACHES A FAIRE EN PRIORITES
+
+different languages
+
+do we use containers?
+
+comment sms?
+
+API ROUTE
+
+LANDING PAGE. On commence par discuter et ensuite on mettera les fichiers à jour. On commence par bien définir la stack? Pour moi dans ce projet le plus important c'est que on va construire en partant de la db. on avait déjà fait une partie du back et front, mais à mon avis on peut recommencer car il y a eu beaucoup de changements. tu en dis quoi?
+
+
+-----------------
+
+ok. Ensuite on écrira nos décisions en mettant à jour STACK:SCHEMA.md et FEATURES.md---------------------
+
+Bien. Point 1 — Stack, sujet par sujet (je marque ce qui est déjà tranché dans plan.txt vs ce qui reste ouvert) :
+
+Déjà décidé (plan.txt) :
+
+DB : Prisma + PostgreSQL/Neon ✓
+Pas de Docker/Nginx en dev — services lancés directement ✓
+i18n : déjà en place (i18next, locales en/fr) ✓
+À trancher :
+
+REST vs WebSockets — Mon avis : REST pour tout en MVP. Les alertes passent déjà par SMS (donc pas besoin de temps réel pour être fiable), et le plan dit explicitement que les push notifications app sont "nice-to-have, pas bloquant MVP". WebSockets pour le chat/alertes en live peut venir après, une fois le CRUD REST posé. Tradeoff : sans WS, l'utilisateur en appli doit rafraîchir/poller pour voir un nouveau message ou une alerte — acceptable pour un MVP.
+
+HTTPS / nginx / hébergement — ça dépend d'où ça sera déployé (PaaS type Render/Fly/Railway qui gère HTTPS tout seul, vs VM auto-gérée qui a besoin de nginx+certbot). Tu vises quoi comme hébergement pour la prod ?
+
+Rate limiting — je recommande @nestjs/throttler dès maintenant sur les routes OTP et alertes (ça coûte de l'argent par SMS et c'est un vecteur d'abus facile). Simple à ajouter, pas de raison d'attendre.
+
+SMS provider — encore ouvert dans plan.txt (Twilio pressenti). Le sender console (dev) existe déjà derrière une interface pluggable. Tu veux trancher Twilio maintenant, ou on reste sur l'interface pluggable et on décide au moment du déploiement ?
+
+Containers — plan.txt dit "pas de Docker pour l'instant". Ça tient toujours, ou tu veux revisiter vu les changements récents ?
+
+Dis-moi tes réponses sur hébergement / SMS / containers, et si REST-only + throttler te va, et on écrit les décisions dans STACK_SCHEMA.md/FEATURES.md ensuite.
+
+-------------------------------------
+
+Alors, Rate limiting  ok pour @nestjs/throttler. j'aimais bien cette façon de faire qu'on a eu dans transcendance: import { Controller, Post, Get, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { FriendsService } from './friends.service';
+import { AuthGuard } from '../auth/guards/auth.guards';
+import { Throttle } from '@nestjs/throttler';
+import { RateLimitGuard } from '../auth/guards/rate-limit.guard';
+import {
+  FriendsControllerDocs,
+  SendFriendRequestDocs,
+  ListFriendsDocs,
+  ListFriendsRequestDocs,
+  AcceptFriendRequestDocs,
+  RejectFriendRequestDocs,
+} from './friends.documentation';
+
+@FriendsControllerDocs()
+@Controller('friends')
+@UseGuards(RateLimitGuard, AuthGuard)
+@Throttle({ default: { limit: 30, ttl: 60_000 } })
+export class FriendsController {. Concernant les sms on peut décider après. pour les 3 autres points il faut qu'on discute
+
+-----------------------------
+
+Rate limiting : noté, on suit ce pattern — RateLimitGuard + AuthGuard combinés, @Throttle(...) par contrôleur, et un fichier *.documentation.ts séparé pour les décorateurs Swagger custom. On réutilisera cette structure quand on codera les contrôleurs.
+
+SMS : mis de côté, on tranche plus tard.
+
+Pour les 3 restants, mon état d'esprit actuel :
+
+Hébergement (conditionne HTTPS/nginx) — tu as déjà une cible en tête (PaaS type Fly/Render/Railway qui gère HTTPS tout seul, VPS auto-géré, autre), ou c'est encore complètement ouvert ?
+
+REST vs WebSockets — je reste sur REST-only pour le MVP (les alertes passent par SMS, donc le vrai besoin temps-réel critique est déjà couvert hors app). Est-ce qu'il y a un scénario où le temps réel dans l'appli te semble indispensable dès le MVP, ou c'est plutôt confort pour plus tard ?
+
+Docker — plan.txt dit pas de Docker en dev. Ça te va toujours, ou les changements récents (nouveau schéma, etc.) te font pencher pour l'ajouter maintenant, histoire d'avoir dev/prod alignés dès le départ ?
+
+---------------------------------
+
+je pense que c'est important que les notifications, les alarmes et les messages soient vus rapidement par les users même en mvp. Donc on peut partir sur websocket pour ces trois éléments et le reste en restful API. En vrai pour tout ce qui est de la phase hors alerte (sauf les messages), tout peut être en Rest API. Et ce qui se passe durant une alerte en websocket comme ça c'est plus dynamique. Tu en penses quoi?
+
+
+--------------------------------
+
+Oui, ça tient bien avec l'architecture existante :
+
+Le modèle Conversation/Message est déjà unique et réutilisé partout (1:1 permanent, groupe 1er cercle, chat isolé pendant alerte, chat organisation) — donc un seul gateway WS avec des "rooms" par conversationId couvre tout, pas besoin de logique séparée par contexte.
+Pour les alertes, il faudra une couche d'événements interne qui fan-out vers WS (users connectés dans l'app) et SMS (les autres) en parallèle — ça correspond déjà à ce que dit plan.txt ("send alerts app + SMS"), donc pas un changement de design, juste où on branche le WS.
+Auth sur le WS : réutiliser le JWT existant (vérifié à la connexion du socket), pas besoin d'un système d'auth séparé.
+Côté module skeletons actuels (alert, messaging sont vides) — bon timing, pas de code REST-only à migrer.
+
+Ça me va. Il reste hébergement et Docker à trancher avant qu'on écrive tout dans STACK_SCHEMA.md/FEATURES.md — tu veux qu'on les fasse maintenant ou on note "REST+WS" tout de suite et on revient sur les deux autres ensuite ?
+
+
+-------------------------------
+

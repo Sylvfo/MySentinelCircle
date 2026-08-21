@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Updated: 2026-08-21
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 @.claude/lastupdate.md
@@ -8,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MySentinelCircle: a mutual safety-net app. Each user ("Me") builds tiered circles of trusted people ("Sentinels") who watch over them; alerts escalate outward through circles if the closest one can't resolve them. Full product spec is in `plan.txt` at the repo root — read it before working on any feature that touches circles, sentinel roles, or the alert lifecycle, since the DB schema encodes that spec's rules.
 
-Monorepo: `backend/` (NestJS + Prisma + PostgreSQL on Neon) and `frontend/` (React + Vite + i18next).
+Monorepo: `backend/` (NestJS + Prisma + MariaDB, containerized) and `frontend/` (React + Vite + i18next). Full stack decisions (hosting, real-time, rate limiting, infra) are in `STACK_SCHEMA.md` at the repo root — read it before working on deployment, WebSocket, or infra-related changes.
 
 ## Commands
 
@@ -24,7 +26,7 @@ npx jest path/to/file.spec.ts                  # single spec
 npm run test:e2e
 npm run build
 ```
-`DATABASE_URL` (Neon connection string) must be set in `backend/.env` before the app boots past `PrismaService.onModuleInit`.
+`DATABASE_URL` (MariaDB connection string) must be set in `backend/.env` before the app boots past `PrismaService.onModuleInit`.
 
 ### Frontend (`frontend/`)
 ```bash

@@ -1,5 +1,7 @@
 # Features
 
+Updated: 2026-08-21
+
 ## Project phases
 
 The project as a whole moves through these macro phases, in order — the database is treated as the immutable foundation everything else builds on top of, not something casually reopened:

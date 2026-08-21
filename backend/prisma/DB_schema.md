@@ -1,5 +1,7 @@
 ## Database Schema
 
+Updated: 2026-08-21
+
 > Reflète l'état actuel de `schema.prisma` (branche `data_base_definition`).
 
 Modèles actifs : `User`, `Circle`, `LinkSentinels`, `LinkSentinelsEvent`, `Alert`, `AlertParticipant`, `Conversation`, `ConversationParticipant`, `Message`.

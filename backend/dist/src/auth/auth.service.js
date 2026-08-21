@@ -79,9 +79,14 @@ let AuthService = class AuthService {
             throw new common_1.ConflictException('Phone already in use');
         const passwordHash = await bcrypt.hash(dto.password, 10);
         const user = await this.prisma.user.create({
-            data: { firstName: dto.firstName, email: dto.email, passwordHash, phone: dto.phone },
+            data: {
+                firstName: dto.firstName,
+                email: dto.email,
+                passwordHash,
+                phone: dto.phone,
+            },
         });
-        await this.sendOtp(user.id, user.phone);
+        await this.sendOtp(user.id, dto.phone);
         return { userId: user.id };
     }
     async signupGoogle(dto) {
@@ -97,11 +102,13 @@ let AuthService = class AuthService {
         const user = await this.prisma.user.create({
             data: { firstName: dto.firstName, googleId, email, phone: dto.phone },
         });
-        await this.sendOtp(user.id, user.phone);
+        await this.sendOtp(user.id, dto.phone);
         return { userId: user.id };
     }
     async loginEmail(dto) {
-        const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+        const user = await this.prisma.user.findUnique({
+            where: { email: dto.email },
+        });
         if (!user || !user.passwordHash)
             throw new common_1.UnauthorizedException('Invalid credentials');
         const valid = await bcrypt.compare(dto.password, user.passwordHash);
@@ -119,14 +126,18 @@ let AuthService = class AuthService {
         return { accessToken: this.issueToken(user.id) };
     }
     async requestOtp(dto) {
-        const user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+        const user = await this.prisma.user.findUnique({
+            where: { phone: dto.phone },
+        });
         if (!user)
             throw new common_1.NotFoundException('No account with this phone number');
-        await this.sendOtp(user.id, user.phone);
+        await this.sendOtp(user.id, dto.phone);
         return { userId: user.id };
     }
     async verifyOtp(dto) {
-        const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+        const user = await this.prisma.user.findUnique({
+            where: { id: dto.userId },
+        });
         if (!user || !user.otpCodeHash || !user.otpExpiresAt) {
             throw new common_1.UnauthorizedException('No pending OTP for this account');
         }

@@ -13,41 +13,61 @@ export declare class SentinelService {
     createCircle(userId: string, dto: CreateCircleDto): Prisma.Prisma__CircleClient<{
         id: string;
         createdAt: Date;
+        updatedAt: Date;
+        status: import("@prisma/client").$Enums.CircleStatus;
         label: string;
-        isPrimary: boolean;
-        ownerId: string;
+        groupChat: boolean;
+        canSendPhone: boolean;
+        userCompanionId: string;
+        closedAt: Date | null;
+        circleType: import("@prisma/client").$Enums.CircleType;
     }, never, import("@prisma/client/runtime/library").DefaultArgs, Prisma.PrismaClientOptions>;
     listCircles(userId: string): Promise<({
-        memberships: ({
-            contact: {
-                name: string;
-                phone: string;
-                userId: string | null;
+        userSentinels: ({
+            linkAsSentinel: {
+                firstName: string;
+                phone: string | null;
                 id: string;
             };
         } & {
             id: string;
             createdAt: Date;
+            updatedAt: Date;
+            status: import("@prisma/client").$Enums.LinkStatus;
             sentinelType: import("@prisma/client").$Enums.SentinelType;
-            isReference: boolean;
+            requestedAsLead: boolean;
             circleId: string;
-            contactId: string;
-            status: import("@prisma/client").$Enums.MembershipStatus;
-            initiatedBy: import("@prisma/client").$Enums.InitiatedBy;
+            initiatedBy: import("@prisma/client").$Enums.LinkInitiator;
+            leadSlot: import("@prisma/client").$Enums.LeadSlot | null;
+            groupChat: boolean;
+            chat: boolean;
+            canSendPhone: boolean;
+            userSentinelId: string;
+            userCompanionId: string;
         })[];
     } & {
         id: string;
         createdAt: Date;
+        updatedAt: Date;
+        status: import("@prisma/client").$Enums.CircleStatus;
         label: string;
-        isPrimary: boolean;
-        ownerId: string;
+        groupChat: boolean;
+        canSendPhone: boolean;
+        userCompanionId: string;
+        closedAt: Date | null;
+        circleType: import("@prisma/client").$Enums.CircleType;
     })[]>;
     updateCircle(userId: string, circleId: string, dto: UpdateCircleDto): Promise<{
         id: string;
         createdAt: Date;
+        updatedAt: Date;
+        status: import("@prisma/client").$Enums.CircleStatus;
         label: string;
-        isPrimary: boolean;
-        ownerId: string;
+        groupChat: boolean;
+        canSendPhone: boolean;
+        userCompanionId: string;
+        closedAt: Date | null;
+        circleType: import("@prisma/client").$Enums.CircleType;
     }>;
     deleteCircle(userId: string, circleId: string): Promise<{
         deleted: boolean;
@@ -55,73 +75,102 @@ export declare class SentinelService {
     inviteSentinel(userId: string, circleId: string, dto: InviteSentinelDto): Promise<{
         id: string;
         createdAt: Date;
+        updatedAt: Date;
+        status: import("@prisma/client").$Enums.LinkStatus;
         sentinelType: import("@prisma/client").$Enums.SentinelType;
-        isReference: boolean;
+        requestedAsLead: boolean;
         circleId: string;
-        contactId: string;
-        status: import("@prisma/client").$Enums.MembershipStatus;
-        initiatedBy: import("@prisma/client").$Enums.InitiatedBy;
+        initiatedBy: import("@prisma/client").$Enums.LinkInitiator;
+        leadSlot: import("@prisma/client").$Enums.LeadSlot | null;
+        groupChat: boolean;
+        chat: boolean;
+        canSendPhone: boolean;
+        userSentinelId: string;
+        userCompanionId: string;
     }>;
     requestToBeSentinel(requesterId: string, dto: RequestSentinelDto): Promise<{
         id: string;
         createdAt: Date;
+        updatedAt: Date;
+        status: import("@prisma/client").$Enums.LinkStatus;
         sentinelType: import("@prisma/client").$Enums.SentinelType;
-        isReference: boolean;
+        requestedAsLead: boolean;
         circleId: string;
-        contactId: string;
-        status: import("@prisma/client").$Enums.MembershipStatus;
-        initiatedBy: import("@prisma/client").$Enums.InitiatedBy;
+        initiatedBy: import("@prisma/client").$Enums.LinkInitiator;
+        leadSlot: import("@prisma/client").$Enums.LeadSlot | null;
+        groupChat: boolean;
+        chat: boolean;
+        canSendPhone: boolean;
+        userSentinelId: string;
+        userCompanionId: string;
     }>;
     listMyInvitations(userId: string): Prisma.PrismaPromise<({
         circle: {
             id: string;
             label: string;
-            owner: {
+            userCompanion: {
                 email: string | null;
-                phone: string;
+                phone: string | null;
                 id: string;
             };
         };
     } & {
         id: string;
         createdAt: Date;
+        updatedAt: Date;
+        status: import("@prisma/client").$Enums.LinkStatus;
         sentinelType: import("@prisma/client").$Enums.SentinelType;
-        isReference: boolean;
+        requestedAsLead: boolean;
         circleId: string;
-        contactId: string;
-        status: import("@prisma/client").$Enums.MembershipStatus;
-        initiatedBy: import("@prisma/client").$Enums.InitiatedBy;
+        initiatedBy: import("@prisma/client").$Enums.LinkInitiator;
+        leadSlot: import("@prisma/client").$Enums.LeadSlot | null;
+        groupChat: boolean;
+        chat: boolean;
+        canSendPhone: boolean;
+        userSentinelId: string;
+        userCompanionId: string;
     })[]>;
     listIncomingRequests(userId: string): Prisma.PrismaPromise<({
-        contact: {
-            name: string;
-            phone: string;
-            userId: string | null;
-            id: string;
-        };
         circle: {
             id: string;
             label: string;
         };
+        linkAsSentinel: {
+            firstName: string;
+            phone: string | null;
+            id: string;
+        };
     } & {
         id: string;
         createdAt: Date;
+        updatedAt: Date;
+        status: import("@prisma/client").$Enums.LinkStatus;
         sentinelType: import("@prisma/client").$Enums.SentinelType;
-        isReference: boolean;
+        requestedAsLead: boolean;
         circleId: string;
-        contactId: string;
-        status: import("@prisma/client").$Enums.MembershipStatus;
-        initiatedBy: import("@prisma/client").$Enums.InitiatedBy;
+        initiatedBy: import("@prisma/client").$Enums.LinkInitiator;
+        leadSlot: import("@prisma/client").$Enums.LeadSlot | null;
+        groupChat: boolean;
+        chat: boolean;
+        canSendPhone: boolean;
+        userSentinelId: string;
+        userCompanionId: string;
     })[]>;
-    respondToMembership(userId: string, membershipId: string, accept: boolean): Promise<{
+    respondToMembership(userId: string, linkId: string, accept: boolean): Promise<{
         id: string;
         createdAt: Date;
+        updatedAt: Date;
+        status: import("@prisma/client").$Enums.LinkStatus;
         sentinelType: import("@prisma/client").$Enums.SentinelType;
-        isReference: boolean;
+        requestedAsLead: boolean;
         circleId: string;
-        contactId: string;
-        status: import("@prisma/client").$Enums.MembershipStatus;
-        initiatedBy: import("@prisma/client").$Enums.InitiatedBy;
+        initiatedBy: import("@prisma/client").$Enums.LinkInitiator;
+        leadSlot: import("@prisma/client").$Enums.LeadSlot | null;
+        groupChat: boolean;
+        chat: boolean;
+        canSendPhone: boolean;
+        userSentinelId: string;
+        userCompanionId: string;
     }>;
     handleInboundSms(from: string, body: string): Promise<{
         matched: false;
@@ -132,20 +181,26 @@ export declare class SentinelService {
         action: string;
         reason?: undefined;
     }>;
-    leaveMembershipAsSentinel(userId: string, membershipId: string): Promise<{
+    leaveMembershipAsSentinel(userId: string, linkId: string): Promise<{
         id: string;
         createdAt: Date;
+        updatedAt: Date;
+        status: import("@prisma/client").$Enums.LinkStatus;
         sentinelType: import("@prisma/client").$Enums.SentinelType;
-        isReference: boolean;
+        requestedAsLead: boolean;
         circleId: string;
-        contactId: string;
-        status: import("@prisma/client").$Enums.MembershipStatus;
-        initiatedBy: import("@prisma/client").$Enums.InitiatedBy;
+        initiatedBy: import("@prisma/client").$Enums.LinkInitiator;
+        leadSlot: import("@prisma/client").$Enums.LeadSlot | null;
+        groupChat: boolean;
+        chat: boolean;
+        canSendPhone: boolean;
+        userSentinelId: string;
+        userCompanionId: string;
     }>;
     listCompanions(userId: string): Promise<{
-        membershipId: string;
+        linkId: string;
         sentinelType: import("@prisma/client").$Enums.SentinelType;
-        isReference: boolean;
+        leadSlot: import("@prisma/client").$Enums.LeadSlot | null;
         circle: {
             id: string;
             label: string;
@@ -153,32 +208,39 @@ export declare class SentinelService {
         };
         companion: {
             email: string | null;
-            phone: string;
+            phone: string | null;
             id: string;
         };
     }[]>;
-    updateMembership(userId: string, membershipId: string, dto: UpdateMembershipDto): Promise<{
+    updateMembership(userId: string, linkId: string, dto: UpdateMembershipDto): Promise<{
         id: string;
         createdAt: Date;
+        updatedAt: Date;
+        status: import("@prisma/client").$Enums.LinkStatus;
         sentinelType: import("@prisma/client").$Enums.SentinelType;
-        isReference: boolean;
+        requestedAsLead: boolean;
         circleId: string;
-        contactId: string;
-        status: import("@prisma/client").$Enums.MembershipStatus;
-        initiatedBy: import("@prisma/client").$Enums.InitiatedBy;
+        initiatedBy: import("@prisma/client").$Enums.LinkInitiator;
+        leadSlot: import("@prisma/client").$Enums.LeadSlot | null;
+        groupChat: boolean;
+        chat: boolean;
+        canSendPhone: boolean;
+        userSentinelId: string;
+        userCompanionId: string;
     }>;
-    removeMembership(userId: string, membershipId: string): Promise<{
+    removeMembership(userId: string, linkId: string): Promise<{
         deleted: boolean;
     }>;
-    private leaveMembership;
+    private findOrCreateUserByPhone;
+    private createOrReactivateLink;
+    private leaveLink;
     private applyResponse;
     private ensureCircleOwned;
-    private getOwnedMembership;
-    private resolveIsReference;
-    private assertReferencePreserved;
+    private getOwnedLink;
+    private resolveLeadSlot;
+    private assertLeadPreserved;
     private ensurePrimaryCircle;
-    private upsertContact;
-    private assertNoActiveMembership;
     private getUser;
     private label;
+    private sendSms;
 }
