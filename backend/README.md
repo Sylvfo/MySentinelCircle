@@ -1,5 +1,7 @@
 # MySentinelCircle — backend
 
+Updated: 2026-08-21
+
 NestJS + Prisma/PostgreSQL (Neon). See `../plan.txt` for the product design
 and `prisma/schema.prisma` for the data model (mirrors plan.txt's DATA MODEL
 sketch).

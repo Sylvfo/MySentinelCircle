@@ -46,9 +46,14 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.user.create({
-      data: { firstName: dto.firstName, email: dto.email, passwordHash, phone: dto.phone },
+      data: {
+        firstName: dto.firstName,
+        email: dto.email,
+        passwordHash,
+        phone: dto.phone,
+      },
     });
-    await this.sendOtp(user.id, user.phone);
+    await this.sendOtp(user.id, dto.phone);
     return { userId: user.id };
   }
 
@@ -59,19 +64,23 @@ export class AuthService {
       this.prisma.user.findUnique({ where: { googleId } }),
       this.prisma.user.findUnique({ where: { phone: dto.phone } }),
     ]);
-    if (googleTaken) throw new ConflictException('Google account already linked to a user');
+    if (googleTaken)
+      throw new ConflictException('Google account already linked to a user');
     if (phoneTaken) throw new ConflictException('Phone already in use');
 
     const user = await this.prisma.user.create({
       data: { firstName: dto.firstName, googleId, email, phone: dto.phone },
     });
-    await this.sendOtp(user.id, user.phone);
+    await this.sendOtp(user.id, dto.phone);
     return { userId: user.id };
   }
 
   async loginEmail(dto: LoginEmailDto) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (!user || !user.passwordHash) throw new UnauthorizedException('Invalid credentials');
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (!user || !user.passwordHash)
+      throw new UnauthorizedException('Invalid credentials');
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
@@ -83,7 +92,8 @@ export class AuthService {
   async loginGoogle(dto: LoginGoogleDto) {
     const { googleId } = await this.verifyGoogleIdToken(dto.idToken);
     const user = await this.prisma.user.findUnique({ where: { googleId } });
-    if (!user) throw new NotFoundException('No account linked to this Google identity');
+    if (!user)
+      throw new NotFoundException('No account linked to this Google identity');
 
     this.assertPhoneVerified(user.phoneVerifiedAt);
     return { accessToken: this.issueToken(user.id) };
@@ -92,15 +102,19 @@ export class AuthService {
   // Fast-path phone+OTP login for an already-verified user, and OTP resend
   // for a user mid-signup whose phone isn't verified yet.
   async requestOtp(dto: RequestOtpDto) {
-    const user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+    const user = await this.prisma.user.findUnique({
+      where: { phone: dto.phone },
+    });
     if (!user) throw new NotFoundException('No account with this phone number');
 
-    await this.sendOtp(user.id, user.phone);
+    await this.sendOtp(user.id, dto.phone);
     return { userId: user.id };
   }
 
   async verifyOtp(dto: VerifyOtpDto) {
-    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+    });
     if (!user || !user.otpCodeHash || !user.otpExpiresAt) {
       throw new UnauthorizedException('No pending OTP for this account');
     }
@@ -148,7 +162,9 @@ export class AuthService {
 
   private assertPhoneVerified(phoneVerifiedAt: Date | null) {
     if (!phoneVerifiedAt) {
-      throw new ForbiddenException('Phone verification is not complete for this account');
+      throw new ForbiddenException(
+        'Phone verification is not complete for this account',
+      );
     }
   }
 
@@ -156,7 +172,9 @@ export class AuthService {
     return this.jwt.sign({ sub: userId });
   }
 
-  private async verifyGoogleIdToken(idToken: string): Promise<{ googleId: string; email: string }> {
+  private async verifyGoogleIdToken(
+    idToken: string,
+  ): Promise<{ googleId: string; email: string }> {
     const ticket = await this.googleClient.verifyIdToken({
       idToken,
       audience: this.config.get('GOOGLE_CLIENT_ID'),

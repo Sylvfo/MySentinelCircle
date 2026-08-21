@@ -16,7 +16,7 @@ exports.AlertModule = AlertModule;
 exports.AlertModule = AlertModule = __decorate([
     (0, common_1.Module)({
         providers: [alert_service_1.AlertService],
-        controllers: [alert_controller_1.AlertController]
+        controllers: [alert_controller_1.AlertController],
     })
 ], AlertModule);
 //# sourceMappingURL=alert.module.js.map

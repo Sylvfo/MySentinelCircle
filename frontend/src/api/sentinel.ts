@@ -1,67 +1,69 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from './client';
 
-export type SentinelType = 'SENTINEL' | 'SENTINEL_PLUS';
-export type MembershipStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED';
-export type InitiatedBy = 'ME' | 'SENTINEL';
+export type SentinelType = 'ONLY_SMS' | 'SENTINEL' | 'LEAD' | 'FIRSTCIRCLE' | 'UNCOMPLETE';
+export type LinkStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'REMOVED' | 'BLOCKED';
+export type LinkInitiator = 'COMPANION' | 'SENTINEL';
+export type LeadSlot = 'LEAD_1' | 'LEAD_2' | 'LEAD_3';
+export type CircleType = 'BASIC' | 'FIRST' | 'ORGANISATION';
 
-export interface CircleContact {
+export interface SentinelRef {
   id: string;
-  name: string | null;
+  firstName: string;
   phone: string;
-  userId: string | null;
 }
 
 export interface Membership {
   id: string;
   circleId: string;
   sentinelType: SentinelType;
-  isReference: boolean;
-  status: MembershipStatus;
-  initiatedBy: InitiatedBy;
+  requestedAsLead: boolean;
+  leadSlot: LeadSlot | null;
+  status: LinkStatus;
+  initiatedBy: LinkInitiator;
   createdAt: string;
-  contact: CircleContact;
+  linkAsSentinel: SentinelRef;
 }
 
 export interface Circle {
   id: string;
   label: string;
-  isPrimary: boolean;
+  circleType: CircleType;
   createdAt: string;
-  memberships: Membership[];
+  userSentinels: Membership[];
 }
 
 export interface PersonRef {
   id: string;
   email: string | null;
-  phone: string;
+  phone: string | null;
 }
 
 export interface IncomingRequest {
   id: string;
   sentinelType: SentinelType;
-  isReference: boolean;
+  requestedAsLead: boolean;
   createdAt: string;
   circle: { id: string; label: string };
-  contact: CircleContact;
+  linkAsSentinel: SentinelRef;
 }
 
 export interface Invitation {
   id: string;
   sentinelType: SentinelType;
-  isReference: boolean;
+  requestedAsLead: boolean;
   createdAt: string;
-  circle: { id: string; label: string; owner: PersonRef };
+  circle: { id: string; label: string; userCompanion: PersonRef };
 }
 
 export interface Companion {
-  membershipId: string;
+  linkId: string;
   sentinelType: SentinelType;
-  isReference: boolean;
+  leadSlot: LeadSlot | null;
   circle: { id: string; label: string; isPrimary: boolean };
   companion: PersonRef;
 }
 
-// ---- Circles (owner side) ---------------------------------------------------
+// ---- Circles (companion side) -----------------------------------------------
 
 export const listCircles = () => apiGet<Circle[]>('/sentinel/circles');
 
@@ -76,17 +78,17 @@ export interface InvitePayload {
   phone: string;
   name: string;
   sentinelType?: SentinelType;
-  isReference?: boolean;
+  requestedAsLead?: boolean;
 }
 
 export const inviteSentinel = (circleId: string, data: InvitePayload) =>
   apiPost<Membership>(`/sentinel/circles/${circleId}/invite`, data);
 
-// ---- Memberships ------------------------------------------------------------
+// ---- Memberships --------------------------------------------------------------
 
 export const updateMembership = (
   id: string,
-  data: { sentinelType?: SentinelType; isReference?: boolean; circleId?: string },
+  data: { sentinelType?: SentinelType; requestedAsLead?: boolean; circleId?: string },
 ) => apiPatch<Membership>(`/sentinel/memberships/${id}`, data);
 
 export const removeMembership = (id: string) =>
@@ -101,7 +103,7 @@ export const declineMembership = (id: string) =>
 export const leaveMembership = (id: string) =>
   apiPost<Membership>(`/sentinel/memberships/${id}/leave`, {});
 
-// ---- Inboxes & reverse views ------------------------------------------------
+// ---- Inboxes & reverse views --------------------------------------------------
 
 export const listIncomingRequests = () => apiGet<IncomingRequest[]>('/sentinel/requests');
 

@@ -16,7 +16,9 @@ import { ConsoleOtpSenderService } from './otp/console-otp-sender.service';
       inject: [ConfigService],
       useFactory: (config: ConfigService): JwtModuleOptions => ({
         secret: config.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '30d' } as JwtModuleOptions['signOptions'],
+        signOptions: {
+          expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '30d',
+        } as JwtModuleOptions['signOptions'],
       }),
     }),
   ],

@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { SentinelService } from './sentinel.service';
@@ -16,7 +25,10 @@ export class SentinelController {
   // ---- Circles --------------------------------------------------------------
 
   @Post('circles')
-  createCircle(@CurrentUser() user: { userId: string }, @Body() dto: CreateCircleDto) {
+  createCircle(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: CreateCircleDto,
+  ) {
     return this.sentinel.createCircle(user.userId, dto);
   }
 
@@ -35,7 +47,10 @@ export class SentinelController {
   }
 
   @Delete('circles/:id')
-  deleteCircle(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+  deleteCircle(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
     return this.sentinel.deleteCircle(user.userId, id);
   }
 
@@ -53,7 +68,10 @@ export class SentinelController {
 
   // I ask to become a Sentinel for the "Me" at targetPhone (site only).
   @Post('requests')
-  request(@CurrentUser() user: { userId: string }, @Body() dto: RequestSentinelDto) {
+  request(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: RequestSentinelDto,
+  ) {
     return this.sentinel.requestToBeSentinel(user.userId, dto);
   }
 
@@ -99,7 +117,10 @@ export class SentinelController {
   }
 
   @Delete('memberships/:id')
-  removeMembership(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+  removeMembership(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
     return this.sentinel.removeMembership(user.userId, id);
   }
 

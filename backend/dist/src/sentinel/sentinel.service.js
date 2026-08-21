@@ -18,11 +18,17 @@ const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const sms_sender_interface_1 = require("../sms/sms-sender.interface");
 const messages_1 = require("../sms/messages");
-const MEMBERSHIP_WITH_PARTIES = {
-    circle: { include: { owner: true } },
-    contact: true,
+const ACTIVE_STATUSES = [client_1.LinkStatus.PENDING, client_1.LinkStatus.ACCEPTED];
+const LEAD_SLOTS = [
+    client_1.LeadSlot.LEAD_1,
+    client_1.LeadSlot.LEAD_2,
+    client_1.LeadSlot.LEAD_3,
+];
+const LINK_WITH_PARTIES = {
+    linkAsSentinel: true,
+    userCompanion: true,
+    circle: true,
 };
-const ACTIVE_STATUSES = [client_1.MembershipStatus.PENDING, client_1.MembershipStatus.ACCEPTED];
 let SentinelService = class SentinelService {
     prisma;
     sms;
@@ -32,21 +38,34 @@ let SentinelService = class SentinelService {
     }
     createCircle(userId, dto) {
         return this.prisma.circle.create({
-            data: { ownerId: userId, label: dto.label, isPrimary: false },
+            data: {
+                userCompanionId: userId,
+                label: dto.label,
+                circleType: client_1.CircleType.BASIC,
+            },
         });
     }
     async listCircles(userId) {
         await this.ensurePrimaryCircle(userId);
-        return this.prisma.circle.findMany({
-            where: { ownerId: userId },
-            orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+        const circles = await this.prisma.circle.findMany({
+            where: { userCompanionId: userId },
+            orderBy: { createdAt: 'asc' },
             include: {
-                memberships: {
-                    include: { contact: { select: { id: true, name: true, phone: true, userId: true } } },
+                userSentinels: {
+                    include: {
+                        linkAsSentinel: {
+                            select: { id: true, firstName: true, phone: true },
+                        },
+                    },
                     orderBy: { createdAt: 'asc' },
                 },
             },
         });
+        return circles.sort((a, b) => a.circleType === client_1.CircleType.FIRST
+            ? -1
+            : b.circleType === client_1.CircleType.FIRST
+                ? 1
+                : 0);
     }
     async updateCircle(userId, circleId, dto) {
         await this.ensureCircleOwned(userId, circleId);
@@ -54,14 +73,19 @@ let SentinelService = class SentinelService {
     }
     async deleteCircle(userId, circleId) {
         const circle = await this.ensureCircleOwned(userId, circleId);
-        if (circle.isPrimary) {
+        if (circle.circleType === client_1.CircleType.FIRST) {
             throw new common_1.ConflictException('The 1st circle cannot be deleted');
         }
-        const memberCount = await this.prisma.circleMembership.count({ where: { circleId } });
+        const memberCount = await this.prisma.linkSentinels.count({
+            where: { circleId, status: { in: ACTIVE_STATUSES } },
+        });
         if (memberCount > 0) {
             throw new common_1.ConflictException('Empty the circle before deleting it');
         }
-        await this.prisma.circle.delete({ where: { id: circleId } });
+        await this.prisma.circle.update({
+            where: { id: circleId },
+            data: { status: client_1.CircleStatus.CLOSED, closedAt: new Date() },
+        });
         return { deleted: true };
     }
     async inviteSentinel(userId, circleId, dto) {
@@ -71,25 +95,28 @@ let SentinelService = class SentinelService {
         if (linkedUser?.id === userId) {
             throw new common_1.BadRequestException('You cannot add yourself as a Sentinel');
         }
-        const contact = await this.upsertContact(userId, phone, dto.name, linkedUser?.id);
-        await this.assertNoActiveMembership(contact.id);
-        const membership = await this.prisma.circleMembership.create({
-            data: {
-                circleId: circle.id,
-                contactId: contact.id,
-                status: client_1.MembershipStatus.PENDING,
-                initiatedBy: client_1.InitiatedBy.ME,
-                sentinelType: dto.sentinelType ?? client_1.SentinelType.SENTINEL,
-                isReference: await this.resolveIsReference(circle, dto.isReference),
-            },
+        if (circle.circleType === client_1.CircleType.FIRST && !linkedUser) {
+            throw new common_1.BadRequestException('A 1st-circle Sentinel must already have an account');
+        }
+        const sentinelUser = await this.findOrCreateUserByPhone(phone, dto.name);
+        const link = await this.createOrReactivateLink({
+            userSentinelId: sentinelUser.id,
+            userCompanionId: userId,
+            circleId: circle.id,
+            circleType: circle.circleType,
+            initiatedBy: client_1.LinkInitiator.COMPANION,
+            sentinelType: dto.sentinelType ?? client_1.SentinelType.SENTINEL,
+            requestedAsLead: dto.requestedAsLead,
         });
         const inviter = await this.getUser(userId);
         await this.sms.send(phone, (0, messages_1.sentinelInvitationSms)(this.label(inviter)));
-        return membership;
+        return link;
     }
     async requestToBeSentinel(requesterId, dto) {
         const targetPhone = dto.targetPhone.trim();
-        const target = await this.prisma.user.findUnique({ where: { phone: targetPhone } });
+        const target = await this.prisma.user.findUnique({
+            where: { phone: targetPhone },
+        });
         if (!target)
             throw new common_1.NotFoundException('No account with this phone number');
         if (target.id === requesterId) {
@@ -97,69 +124,70 @@ let SentinelService = class SentinelService {
         }
         const requester = await this.getUser(requesterId);
         const circle = await this.ensurePrimaryCircle(target.id);
-        const contact = await this.upsertContact(target.id, requester.phone, requester.firstName, requesterId);
-        await this.assertNoActiveMembership(contact.id);
-        const membership = await this.prisma.circleMembership.create({
-            data: {
-                circleId: circle.id,
-                contactId: contact.id,
-                status: client_1.MembershipStatus.PENDING,
-                initiatedBy: client_1.InitiatedBy.SENTINEL,
-                sentinelType: client_1.SentinelType.SENTINEL,
-                isReference: false,
-            },
+        const link = await this.createOrReactivateLink({
+            userSentinelId: requesterId,
+            userCompanionId: target.id,
+            circleId: circle.id,
+            circleType: circle.circleType,
+            initiatedBy: client_1.LinkInitiator.SENTINEL,
+            sentinelType: client_1.SentinelType.SENTINEL,
+            requestedAsLead: false,
         });
-        await this.sms.send(target.phone, (0, messages_1.sentinelRequestSms)(this.label(requester)));
-        return membership;
+        await this.sms.send(targetPhone, (0, messages_1.sentinelRequestSms)(this.label(requester)));
+        return link;
     }
     listMyInvitations(userId) {
-        return this.prisma.circleMembership.findMany({
+        return this.prisma.linkSentinels.findMany({
             where: {
-                status: client_1.MembershipStatus.PENDING,
-                initiatedBy: client_1.InitiatedBy.ME,
-                contact: { userId },
+                status: client_1.LinkStatus.PENDING,
+                initiatedBy: client_1.LinkInitiator.COMPANION,
+                userSentinelId: userId,
             },
             include: {
                 circle: {
-                    select: { id: true, label: true, owner: { select: { id: true, email: true, phone: true } } },
+                    select: {
+                        id: true,
+                        label: true,
+                        userCompanion: { select: { id: true, email: true, phone: true } },
+                    },
                 },
             },
             orderBy: { createdAt: 'desc' },
         });
     }
     listIncomingRequests(userId) {
-        return this.prisma.circleMembership.findMany({
+        return this.prisma.linkSentinels.findMany({
             where: {
-                status: client_1.MembershipStatus.PENDING,
-                initiatedBy: client_1.InitiatedBy.SENTINEL,
-                circle: { ownerId: userId },
+                status: client_1.LinkStatus.PENDING,
+                initiatedBy: client_1.LinkInitiator.SENTINEL,
+                userCompanionId: userId,
             },
             include: {
                 circle: { select: { id: true, label: true } },
-                contact: { select: { id: true, name: true, phone: true, userId: true } },
+                linkAsSentinel: { select: { id: true, firstName: true, phone: true } },
             },
             orderBy: { createdAt: 'desc' },
         });
     }
-    async respondToMembership(userId, membershipId, accept) {
-        const membership = await this.prisma.circleMembership.findUnique({
-            where: { id: membershipId },
-            include: { circle: { include: { owner: true } }, contact: true },
+    async respondToMembership(userId, linkId, accept) {
+        const link = await this.prisma.linkSentinels.findUnique({
+            where: { id: linkId },
+            include: LINK_WITH_PARTIES,
         });
-        if (!membership)
+        if (!link)
             throw new common_1.NotFoundException('Membership not found');
-        if (membership.status !== client_1.MembershipStatus.PENDING) {
+        if (link.status !== client_1.LinkStatus.PENDING) {
             throw new common_1.ConflictException('This invitation has already been answered');
         }
-        if (membership.initiatedBy === client_1.InitiatedBy.ME) {
-            if (membership.contact.userId !== userId) {
+        if (link.initiatedBy === client_1.LinkInitiator.COMPANION) {
+            if (link.userSentinelId !== userId) {
                 throw new common_1.ForbiddenException('This invitation is not addressed to you');
             }
         }
-        else if (membership.circle.ownerId !== userId) {
+        else if (link.userCompanionId !== userId) {
             throw new common_1.ForbiddenException('This request is not addressed to you');
         }
-        return this.applyResponse(membership, accept, false);
+        return this.applyResponse(link, accept, false);
     }
     async handleInboundSms(from, body) {
         const intent = (0, messages_1.parseSmsReply)(body);
@@ -167,221 +195,294 @@ let SentinelService = class SentinelService {
             return { matched: false, reason: 'unrecognized_reply' };
         }
         const phone = from.trim();
-        const pending = await this.prisma.circleMembership.findFirst({
+        const pending = await this.prisma.linkSentinels.findFirst({
             where: {
-                status: client_1.MembershipStatus.PENDING,
+                status: client_1.LinkStatus.PENDING,
                 OR: [
-                    { initiatedBy: client_1.InitiatedBy.ME, contact: { phone } },
-                    { initiatedBy: client_1.InitiatedBy.SENTINEL, circle: { owner: { phone } } },
+                    { initiatedBy: client_1.LinkInitiator.COMPANION, linkAsSentinel: { phone } },
+                    { initiatedBy: client_1.LinkInitiator.SENTINEL, userCompanion: { phone } },
                 ],
             },
-            include: MEMBERSHIP_WITH_PARTIES,
+            include: LINK_WITH_PARTIES,
             orderBy: { createdAt: 'desc' },
         });
         if (pending) {
             await this.applyResponse(pending, intent === 'accept', true);
-            return { matched: true, action: intent === 'accept' ? 'accepted' : 'declined' };
+            return {
+                matched: true,
+                action: intent === 'accept' ? 'accepted' : 'declined',
+            };
         }
         if (intent === 'decline') {
-            const active = await this.prisma.circleMembership.findFirst({
-                where: { status: client_1.MembershipStatus.ACCEPTED, contact: { phone } },
-                include: MEMBERSHIP_WITH_PARTIES,
+            const active = await this.prisma.linkSentinels.findFirst({
+                where: { status: client_1.LinkStatus.ACCEPTED, linkAsSentinel: { phone } },
+                include: LINK_WITH_PARTIES,
                 orderBy: { createdAt: 'desc' },
             });
             if (active) {
-                await this.leaveMembership(active, true);
+                await this.leaveLink(active, true);
                 return { matched: true, action: 'left' };
             }
         }
         return { matched: false, reason: 'no_actionable_link' };
     }
-    async leaveMembershipAsSentinel(userId, membershipId) {
-        const membership = await this.prisma.circleMembership.findUnique({
-            where: { id: membershipId },
-            include: MEMBERSHIP_WITH_PARTIES,
+    async leaveMembershipAsSentinel(userId, linkId) {
+        const link = await this.prisma.linkSentinels.findUnique({
+            where: { id: linkId },
+            include: LINK_WITH_PARTIES,
         });
-        if (!membership)
+        if (!link)
             throw new common_1.NotFoundException('Membership not found');
-        if (membership.contact.userId !== userId) {
+        if (link.userSentinelId !== userId) {
             throw new common_1.ForbiddenException('You are not the Sentinel of this link');
         }
-        if (membership.status !== client_1.MembershipStatus.ACCEPTED) {
+        if (link.status !== client_1.LinkStatus.ACCEPTED) {
             throw new common_1.ConflictException('This link is not active');
         }
-        return this.leaveMembership(membership, false);
+        return this.leaveLink(link, false);
     }
     async listCompanions(userId) {
-        const memberships = await this.prisma.circleMembership.findMany({
+        const links = await this.prisma.linkSentinels.findMany({
             where: {
-                status: client_1.MembershipStatus.ACCEPTED,
-                contact: { userId },
+                status: client_1.LinkStatus.ACCEPTED,
+                userSentinelId: userId,
             },
             include: {
                 circle: {
                     select: {
                         id: true,
                         label: true,
-                        isPrimary: true,
-                        owner: { select: { id: true, email: true, phone: true } },
+                        circleType: true,
+                        userCompanion: { select: { id: true, email: true, phone: true } },
                     },
                 },
             },
             orderBy: { createdAt: 'asc' },
         });
-        return memberships.map((m) => ({
-            membershipId: m.id,
-            sentinelType: m.sentinelType,
-            isReference: m.isReference,
-            circle: { id: m.circle.id, label: m.circle.label, isPrimary: m.circle.isPrimary },
-            companion: m.circle.owner,
+        return links.map((l) => ({
+            linkId: l.id,
+            sentinelType: l.sentinelType,
+            leadSlot: l.leadSlot,
+            circle: {
+                id: l.circle.id,
+                label: l.circle.label,
+                isPrimary: l.circle.circleType === client_1.CircleType.FIRST,
+            },
+            companion: l.circle.userCompanion,
         }));
     }
-    async updateMembership(userId, membershipId, dto) {
-        const membership = await this.getOwnedMembership(userId, membershipId);
-        let circleId = membership.circleId;
-        let targetIsPrimary = membership.circle.isPrimary;
-        if (dto.circleId && dto.circleId !== membership.circleId) {
+    async updateMembership(userId, linkId, dto) {
+        const link = await this.getOwnedLink(userId, linkId);
+        let circleId = link.circleId;
+        let targetIsFirst = link.circle.circleType === client_1.CircleType.FIRST;
+        if (dto.circleId && dto.circleId !== link.circleId) {
             const target = await this.ensureCircleOwned(userId, dto.circleId);
             circleId = target.id;
-            targetIsPrimary = target.isPrimary;
-        }
-        let isReference = dto.isReference ?? membership.isReference;
-        if (!targetIsPrimary) {
-            if (dto.isReference === true) {
-                throw new common_1.BadRequestException('Only a 1st-circle Sentinel can be a reference');
+            targetIsFirst = target.circleType === client_1.CircleType.FIRST;
+            if (targetIsFirst && link.linkAsSentinel.userType === client_1.UserType.ONLY_SMS) {
+                throw new common_1.BadRequestException('A 1st-circle Sentinel must already have an account');
             }
-            isReference = false;
         }
-        if (membership.isReference && !isReference) {
-            await this.assertReferencePreserved(membership);
+        let leadSlot = link.leadSlot;
+        let requestedAsLead = dto.requestedAsLead ?? link.requestedAsLead;
+        if (!targetIsFirst) {
+            if (dto.requestedAsLead === true) {
+                throw new common_1.BadRequestException('Only a 1st-circle Sentinel can be a Lead');
+            }
+            leadSlot = null;
+            requestedAsLead = false;
         }
-        return this.prisma.circleMembership.update({
-            where: { id: membership.id },
+        else if (dto.requestedAsLead === true && !leadSlot) {
+            leadSlot = await this.resolveLeadSlot({ id: circleId, circleType: client_1.CircleType.FIRST }, true);
+        }
+        else if (dto.requestedAsLead === false) {
+            leadSlot = null;
+        }
+        if (link.leadSlot && !leadSlot) {
+            await this.assertLeadPreserved(link);
+        }
+        return this.prisma.linkSentinels.update({
+            where: { id: link.id },
             data: {
                 circleId,
-                sentinelType: dto.sentinelType ?? membership.sentinelType,
-                isReference,
+                sentinelType: dto.sentinelType ?? link.sentinelType,
+                requestedAsLead,
+                leadSlot,
             },
         });
     }
-    async removeMembership(userId, membershipId) {
-        const membership = await this.getOwnedMembership(userId, membershipId);
-        await this.assertReferencePreserved(membership);
-        await this.prisma.circleMembership.delete({ where: { id: membership.id } });
+    async removeMembership(userId, linkId) {
+        const link = await this.getOwnedLink(userId, linkId);
+        await this.assertLeadPreserved(link);
+        await this.prisma.linkSentinels.update({
+            where: { id: link.id },
+            data: { status: client_1.LinkStatus.REMOVED },
+        });
         return { deleted: true };
     }
-    async leaveMembership(membership, viaSms) {
-        await this.assertReferencePreserved(membership);
-        const updated = await this.prisma.circleMembership.update({
-            where: { id: membership.id },
-            data: { status: client_1.MembershipStatus.DECLINED },
+    async findOrCreateUserByPhone(phone, name) {
+        const existing = await this.prisma.user.findUnique({ where: { phone } });
+        if (existing)
+            return existing;
+        return this.prisma.user.create({
+            data: { phone, firstName: name, userType: client_1.UserType.ONLY_SMS },
         });
-        const sentinelLabel = membership.contact.name?.trim() || membership.contact.phone;
-        await this.sms.send(membership.circle.owner.phone, (0, messages_1.sentinelLeftSms)(sentinelLabel));
+    }
+    async createOrReactivateLink(params) {
+        const existing = await this.prisma.linkSentinels.findUnique({
+            where: {
+                userSentinelId_userCompanionId: {
+                    userSentinelId: params.userSentinelId,
+                    userCompanionId: params.userCompanionId,
+                },
+            },
+        });
+        if (existing && ACTIVE_STATUSES.includes(existing.status)) {
+            throw new common_1.ConflictException('A pending or active Sentinel link already exists for this person');
+        }
+        const leadSlot = await this.resolveLeadSlot({ id: params.circleId, circleType: params.circleType }, params.requestedAsLead);
+        const data = {
+            circleId: params.circleId,
+            status: client_1.LinkStatus.PENDING,
+            initiatedBy: params.initiatedBy,
+            sentinelType: params.sentinelType,
+            requestedAsLead: params.requestedAsLead ?? false,
+            leadSlot,
+        };
+        if (existing) {
+            return this.prisma.linkSentinels.update({
+                where: { id: existing.id },
+                data,
+            });
+        }
+        return this.prisma.linkSentinels.create({
+            data: {
+                userSentinelId: params.userSentinelId,
+                userCompanionId: params.userCompanionId,
+                ...data,
+            },
+        });
+    }
+    async leaveLink(link, viaSms) {
+        await this.assertLeadPreserved(link);
+        const updated = await this.prisma.linkSentinels.update({
+            where: { id: link.id },
+            data: { status: client_1.LinkStatus.REMOVED },
+        });
+        const sentinelLabel = this.label(link.linkAsSentinel);
+        await this.sendSms(link.userCompanion.phone, (0, messages_1.sentinelLeftSms)(sentinelLabel));
         if (viaSms) {
-            await this.sms.send(membership.contact.phone, (0, messages_1.sentinelLeaveConfirmSms)(this.label(membership.circle.owner)));
+            await this.sendSms(link.linkAsSentinel.phone, (0, messages_1.sentinelLeaveConfirmSms)(this.label(link.userCompanion)));
         }
         return updated;
     }
-    async applyResponse(membership, accept, viaSms) {
-        const updated = await this.prisma.circleMembership.update({
-            where: { id: membership.id },
-            data: { status: accept ? client_1.MembershipStatus.ACCEPTED : client_1.MembershipStatus.DECLINED },
+    async applyResponse(link, accept, viaSms) {
+        const updated = await this.prisma.linkSentinels.update({
+            where: { id: link.id },
+            data: { status: accept ? client_1.LinkStatus.ACCEPTED : client_1.LinkStatus.DECLINED },
         });
-        const ownerLabel = this.label(membership.circle.owner);
-        const sentinelLabel = membership.contact.name?.trim() || membership.contact.phone;
-        if (membership.initiatedBy === client_1.InitiatedBy.ME) {
-            await this.sms.send(membership.circle.owner.phone, (0, messages_1.invitationAnsweredSms)(sentinelLabel, accept));
+        const companionLabel = this.label(link.userCompanion);
+        const sentinelLabel = this.label(link.linkAsSentinel);
+        if (link.initiatedBy === client_1.LinkInitiator.COMPANION) {
+            await this.sendSms(link.userCompanion.phone, (0, messages_1.invitationAnsweredSms)(sentinelLabel, accept));
             if (viaSms) {
-                const body = accept ? (0, messages_1.sentinelAcceptedSms)(ownerLabel) : (0, messages_1.sentinelDeclinedSms)(ownerLabel);
-                await this.sms.send(membership.contact.phone, body);
+                const smsBody = accept
+                    ? (0, messages_1.sentinelAcceptedSms)(companionLabel)
+                    : (0, messages_1.sentinelDeclinedSms)(companionLabel);
+                await this.sendSms(link.linkAsSentinel.phone, smsBody);
             }
         }
         else {
-            await this.sms.send(membership.contact.phone, (0, messages_1.requestAnsweredSms)(ownerLabel, accept));
+            await this.sendSms(link.linkAsSentinel.phone, (0, messages_1.requestAnsweredSms)(companionLabel, accept));
         }
         return updated;
     }
     async ensureCircleOwned(userId, circleId) {
-        const circle = await this.prisma.circle.findUnique({ where: { id: circleId } });
+        const circle = await this.prisma.circle.findUnique({
+            where: { id: circleId },
+        });
         if (!circle)
             throw new common_1.NotFoundException('Circle not found');
-        if (circle.ownerId !== userId)
+        if (circle.userCompanionId !== userId)
             throw new common_1.ForbiddenException('This circle is not yours');
         return circle;
     }
-    async getOwnedMembership(userId, membershipId) {
-        const membership = await this.prisma.circleMembership.findUnique({
-            where: { id: membershipId },
-            include: { circle: { select: { ownerId: true, isPrimary: true } } },
+    async getOwnedLink(userId, linkId) {
+        const link = await this.prisma.linkSentinels.findUnique({
+            where: { id: linkId },
+            include: {
+                circle: { select: { userCompanionId: true, circleType: true } },
+                linkAsSentinel: { select: { userType: true } },
+            },
         });
-        if (!membership)
+        if (!link)
             throw new common_1.NotFoundException('Membership not found');
-        if (membership.circle.ownerId !== userId) {
+        if (link.circle.userCompanionId !== userId) {
             throw new common_1.ForbiddenException('This Sentinel is not in one of your circles');
         }
-        return membership;
+        return link;
     }
-    async resolveIsReference(circle, explicit) {
-        if (!circle.isPrimary)
-            return false;
-        if (explicit !== undefined)
-            return explicit;
-        const existingRefs = await this.prisma.circleMembership.count({
-            where: { circleId: circle.id, isReference: true, status: { in: ACTIVE_STATUSES } },
+    async resolveLeadSlot(circle, explicit) {
+        if (circle.circleType !== client_1.CircleType.FIRST)
+            return null;
+        const activeLeads = await this.prisma.linkSentinels.findMany({
+            where: {
+                circleId: circle.id,
+                status: { in: ACTIVE_STATUSES },
+                leadSlot: { not: null },
+            },
+            select: { leadSlot: true },
         });
-        return existingRefs === 0;
+        const taken = new Set(activeLeads.map((l) => l.leadSlot));
+        if (explicit === false)
+            return null;
+        if (explicit === undefined) {
+            return taken.size === 0 ? client_1.LeadSlot.LEAD_1 : null;
+        }
+        const free = LEAD_SLOTS.find((slot) => !taken.has(slot));
+        if (!free) {
+            throw new common_1.ConflictException('This 1st circle already has 3 Lead Sentinels');
+        }
+        return free;
     }
-    async assertReferencePreserved(membership) {
-        if (!membership.circle.isPrimary || !membership.isReference)
+    async assertLeadPreserved(link) {
+        if (link.circle.circleType !== client_1.CircleType.FIRST || !link.leadSlot)
             return;
-        const [otherActive, otherRefs] = await Promise.all([
-            this.prisma.circleMembership.count({
-                where: { circleId: membership.circleId, status: client_1.MembershipStatus.ACCEPTED, id: { not: membership.id } },
+        const [otherActive, otherLeads] = await Promise.all([
+            this.prisma.linkSentinels.count({
+                where: {
+                    circleId: link.circleId,
+                    status: client_1.LinkStatus.ACCEPTED,
+                    id: { not: link.id },
+                },
             }),
-            this.prisma.circleMembership.count({
-                where: { circleId: membership.circleId, isReference: true, status: client_1.MembershipStatus.ACCEPTED, id: { not: membership.id } },
+            this.prisma.linkSentinels.count({
+                where: {
+                    circleId: link.circleId,
+                    leadSlot: { not: null },
+                    status: client_1.LinkStatus.ACCEPTED,
+                    id: { not: link.id },
+                },
             }),
         ]);
-        if (otherActive > 0 && otherRefs === 0) {
-            throw new common_1.ConflictException('Designate another reference Sentinel before removing this one');
+        if (otherActive > 0 && otherLeads === 0) {
+            throw new common_1.ConflictException('Designate another Lead Sentinel before removing this one');
         }
     }
-    async ensurePrimaryCircle(ownerId) {
+    async ensurePrimaryCircle(userCompanionId) {
         const existing = await this.prisma.circle.findFirst({
-            where: { ownerId, isPrimary: true },
+            where: { userCompanionId, circleType: client_1.CircleType.FIRST },
             orderBy: { createdAt: 'asc' },
         });
         if (existing)
             return existing;
-        return this.prisma.circle.create({ data: { ownerId, label: 'Premier cercle', isPrimary: true } });
-    }
-    async upsertContact(ownerId, phone, name, userId) {
-        const existing = await this.prisma.contact.findFirst({ where: { ownerId, phone } });
-        if (existing) {
-            const data = {};
-            if (userId && !existing.userId)
-                data.user = { connect: { id: userId } };
-            if (Object.keys(data).length === 0)
-                return existing;
-            return this.prisma.contact.update({ where: { id: existing.id }, data });
-        }
-        return this.prisma.contact.create({
+        return this.prisma.circle.create({
             data: {
-                owner: { connect: { id: ownerId } },
-                phone,
-                name,
-                ...(userId ? { user: { connect: { id: userId } } } : {}),
+                userCompanionId,
+                label: 'Premier cercle',
+                circleType: client_1.CircleType.FIRST,
             },
         });
-    }
-    async assertNoActiveMembership(contactId) {
-        const active = await this.prisma.circleMembership.findFirst({
-            where: { contactId, status: { in: ACTIVE_STATUSES } },
-        });
-        if (active) {
-            throw new common_1.ConflictException('A pending or active Sentinel link already exists for this person');
-        }
     }
     async getUser(userId) {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -390,7 +491,12 @@ let SentinelService = class SentinelService {
         return user;
     }
     label(user) {
-        return user.email ?? user.phone;
+        return user.firstName ?? user.phone ?? 'Sentinel';
+    }
+    async sendSms(phone, body) {
+        if (!phone)
+            return;
+        await this.sms.send(phone, body);
     }
 };
 exports.SentinelService = SentinelService;

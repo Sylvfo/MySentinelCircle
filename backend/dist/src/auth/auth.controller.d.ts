@@ -33,9 +33,9 @@ export declare class AuthController {
     }): Promise<{
         firstName: string;
         email: string | null;
-        phone: string;
+        phone: string | null;
         id: string;
-        phoneVerifiedAt: Date | null;
         createdAt: Date;
+        phoneVerifiedAt: Date | null;
     } | null>;
 }

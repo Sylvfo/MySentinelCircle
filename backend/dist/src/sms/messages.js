@@ -43,7 +43,15 @@ function requestAnsweredSms(targetLabel, accepted) {
         : `${targetLabel} a refuse votre demande de Sentinel sur ${APP}.`;
 }
 exports.ACCEPT_KEYWORDS = ['oui', 'ok', 'accepte', 'yes', 'y', 'o'];
-exports.DECLINE_KEYWORDS = ['non', 'no', 'refuse', 'stop', 'quitter', 'arreter', 'n'];
+exports.DECLINE_KEYWORDS = [
+    'non',
+    'no',
+    'refuse',
+    'stop',
+    'quitter',
+    'arreter',
+    'n',
+];
 function parseSmsReply(body) {
     const normalized = body
         .trim()

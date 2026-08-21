@@ -1,0 +1,22 @@
+Docs
+
+Documented stack decisions in STACK_SCHEMA.md: hybrid REST + WebSocket (alerts/notifications/messages over WS, rest over REST), rate-limiting pattern (@nestjs/throttler + composite IP/account key, with the nginx X-Forwarded-For lesson), Docker/MariaDB infra, hosting plan (42 Lausanne VM → Infomaniak), domain name.
+Fixed CLAUDE.md: removed stale Neon/Postgres references, added a pointer to STACK_SCHEMA.md.
+DB migration: PostgreSQL/Neon → MariaDB
+
+Switched schema.prisma datasource to mysql.
+Added root docker-compose.yml (MariaDB service with a named persistent volume).
+Added root .gitignore/.env/.env.example; updated backend/.env(.example) to the new connection string.
+Regenerated Prisma migrations from scratch for MySQL.
+Backend fixes
+
+Fixed a pre-existing typo in main.ts (deimport → import) that broke compilation entirely.
+Fully rewrote sentinel.service.ts (+ its DTOs): it was still targeting a pre-simplification schema (Contact/CircleMembership) that no longer exists. Rebuilt against the current LinkSentinels/Circle/User model, including the new lead-slot logic (requestedAsLead/leadSlot) and close-not-delete semantics for circles/links.
+Fixed 3 nullable-phone type errors in auth.service.ts.
+Frontend
+
+Synced api/sentinel.ts, CirclesPage.tsx, CompanionsPage.tsx to the new backend response shapes.
+Tooling
+
+Fixed the Makefile: replaced legacy docker-compose (v1, incompatible with current Docker) with docker compose (v2); added db-up/db-down/db-logs targets and a default all target.
+Backend and frontend both compile clean; MariaDB persistence verified end-to-end.
