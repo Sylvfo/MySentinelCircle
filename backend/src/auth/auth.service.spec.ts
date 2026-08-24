@@ -1,8 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { ConflictException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { UserType } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OTP_SENDER } from './otp/otp-sender.interface';
@@ -17,6 +23,9 @@ describe('AuthService', () => {
       update: jest.Mock;
     };
   };
+  let jwt: { sign: jest.Mock };
+  let otpSender: { send: jest.Mock };
+  let emailSender: { send: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -26,15 +35,18 @@ describe('AuthService', () => {
         update: jest.fn(),
       },
     };
+    jwt = { sign: jest.fn().mockReturnValue('signed-jwt') };
+    otpSender = { send: jest.fn() };
+    emailSender = { send: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: PrismaService, useValue: prisma },
-        { provide: JwtService, useValue: { sign: jest.fn() } },
+        { provide: JwtService, useValue: jwt },
         { provide: ConfigService, useValue: { get: jest.fn() } },
-        { provide: OTP_SENDER, useValue: { send: jest.fn() } },
-        { provide: EMAIL_SENDER, useValue: { send: jest.fn() } },
+        { provide: OTP_SENDER, useValue: otpSender },
+        { provide: EMAIL_SENDER, useValue: emailSender },
       ],
     }).compile();
 
@@ -110,6 +122,341 @@ describe('AuthService', () => {
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('signupEmail', () => {
+    it('rejects when the email is already in use', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'existing-id', email: 'ada@example.com' });
+
+      await expect(
+        service.signupEmail({
+          firstName: 'Ada',
+          email: 'ada@example.com',
+          password: 'password123',
+          phone: '+33600000000',
+        }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('creates the account and sends an OTP on success', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(null); // email check
+      prisma.user.findUnique.mockResolvedValueOnce(null); // claimOrCreateByPhone check
+      prisma.user.create.mockResolvedValue({ id: 'new-id', phone: '+33600000000' });
+
+      const result = await service.signupEmail({
+        firstName: 'Ada',
+        email: 'ada@example.com',
+        password: 'password123',
+        phone: '+33600000000',
+      });
+
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ email: 'ada@example.com', userType: UserType.ACCOUNT }),
+        }),
+      );
+      expect(otpSender.send).toHaveBeenCalledWith('+33600000000', expect.any(String));
+      expect(result).toEqual({ userId: 'new-id' });
+    });
+  });
+
+  describe('loginEmail', () => {
+    it('rejects when no account exists for the email', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.loginEmail({ email: 'ada@example.com', password: 'password123' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects when the account has no passwordHash (Google/phone-only)', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'id', email: 'ada@example.com', passwordHash: null });
+
+      await expect(
+        service.loginEmail({ email: 'ada@example.com', password: 'password123' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects on a wrong password', async () => {
+      const passwordHash = await bcrypt.hash('correct-password', 10);
+      prisma.user.findUnique.mockResolvedValue({ id: 'id', email: 'ada@example.com', passwordHash });
+
+      await expect(
+        service.loginEmail({ email: 'ada@example.com', password: 'wrong-password' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects when the phone is not verified', async () => {
+      const passwordHash = await bcrypt.hash('correct-password', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        email: 'ada@example.com',
+        passwordHash,
+        phoneVerifiedAt: null,
+      });
+
+      await expect(
+        service.loginEmail({ email: 'ada@example.com', password: 'correct-password' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('returns an access token on success', async () => {
+      const passwordHash = await bcrypt.hash('correct-password', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        email: 'ada@example.com',
+        passwordHash,
+        phoneVerifiedAt: new Date(),
+      });
+
+      const result = await service.loginEmail({ email: 'ada@example.com', password: 'correct-password' });
+
+      expect(result).toEqual({ accessToken: 'signed-jwt' });
+    });
+  });
+
+  describe('loginGoogle', () => {
+    it('rejects an invalid Google token', async () => {
+      jest.spyOn(service as any, 'verifyGoogleIdToken').mockRejectedValue(
+        new UnauthorizedException('Invalid Google token'),
+      );
+
+      await expect(service.loginGoogle({ idToken: 'bad-token' })).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects when no account is linked to this Google identity', async () => {
+      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({
+        googleId: 'google-123',
+        email: 'ada@example.com',
+      });
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.loginGoogle({ idToken: 'fake-token' })).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects when the phone is not verified', async () => {
+      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({
+        googleId: 'google-123',
+        email: 'ada@example.com',
+      });
+      prisma.user.findUnique.mockResolvedValue({ id: 'id', googleId: 'google-123', phoneVerifiedAt: null });
+
+      await expect(service.loginGoogle({ idToken: 'fake-token' })).rejects.toThrow(ForbiddenException);
+    });
+
+    it('returns an access token on success', async () => {
+      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({
+        googleId: 'google-123',
+        email: 'ada@example.com',
+      });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        googleId: 'google-123',
+        phoneVerifiedAt: new Date(),
+      });
+
+      const result = await service.loginGoogle({ idToken: 'fake-token' });
+
+      expect(result).toEqual({ accessToken: 'signed-jwt' });
+    });
+  });
+
+  describe('verifyOtp', () => {
+    it('rejects when there is no pending OTP for the account', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.verifyOtp({ userId: 'id', code: '123456' })).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('rejects after too many attempts', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        otpCodeHash: 'hash',
+        otpExpiresAt: new Date(Date.now() + 60_000),
+        otpAttempts: 5,
+      });
+
+      await expect(service.verifyOtp({ userId: 'id', code: '123456' })).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('rejects an expired code', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        otpCodeHash: 'hash',
+        otpExpiresAt: new Date(Date.now() - 60_000),
+        otpAttempts: 0,
+      });
+
+      await expect(service.verifyOtp({ userId: 'id', code: '123456' })).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('rejects a wrong code and increments otpAttempts', async () => {
+      const otpCodeHash = await bcrypt.hash('123456', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        otpCodeHash,
+        otpExpiresAt: new Date(Date.now() + 60_000),
+        otpAttempts: 0,
+      });
+
+      await expect(service.verifyOtp({ userId: 'id', code: '000000' })).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'id' },
+        data: { otpAttempts: { increment: 1 } },
+      });
+    });
+
+    it('verifies the phone on first success (phoneVerifiedAt was null)', async () => {
+      const otpCodeHash = await bcrypt.hash('123456', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        otpCodeHash,
+        otpExpiresAt: new Date(Date.now() + 60_000),
+        otpAttempts: 0,
+        phoneVerifiedAt: null,
+      });
+
+      const result = await service.verifyOtp({ userId: 'id', code: '123456' });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'id' },
+        data: {
+          otpCodeHash: null,
+          otpExpiresAt: null,
+          otpAttempts: 0,
+          phoneVerifiedAt: expect.any(Date),
+        },
+      });
+      expect(result).toEqual({ accessToken: 'signed-jwt' });
+    });
+
+    it('does not overwrite phoneVerifiedAt when already verified', async () => {
+      const otpCodeHash = await bcrypt.hash('123456', 10);
+      const alreadyVerifiedAt = new Date('2026-01-01T00:00:00.000Z');
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        otpCodeHash,
+        otpExpiresAt: new Date(Date.now() + 60_000),
+        otpAttempts: 0,
+        phoneVerifiedAt: alreadyVerifiedAt,
+      });
+
+      await service.verifyOtp({ userId: 'id', code: '123456' });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'id' },
+        data: {
+          otpCodeHash: null,
+          otpExpiresAt: null,
+          otpAttempts: 0,
+          phoneVerifiedAt: alreadyVerifiedAt,
+        },
+      });
+    });
+  });
+
+  describe('requestPasswordReset', () => {
+    it('sends a reset email when the account has a passwordHash', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        email: 'ada@example.com',
+        passwordHash: 'hash',
+      });
+
+      const result = await service.requestPasswordReset({ email: 'ada@example.com' });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'id' },
+        data: {
+          passwordResetTokenHash: expect.any(String),
+          passwordResetExpiresAt: expect.any(Date),
+        },
+      });
+      expect(emailSender.send).toHaveBeenCalledWith(
+        'ada@example.com',
+        expect.any(String),
+        expect.any(String),
+      );
+      expect(result).toEqual({
+        message: 'If an account exists for this email, a reset link has been sent.',
+      });
+    });
+
+    it('does nothing but still returns the generic message when no account exists', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      const result = await service.requestPasswordReset({ email: 'unknown@example.com' });
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(emailSender.send).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        message: 'If an account exists for this email, a reset link has been sent.',
+      });
+    });
+
+    it('does nothing for an account without a passwordHash (Google/phone-only)', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'id', email: 'ada@example.com', passwordHash: null });
+
+      const result = await service.requestPasswordReset({ email: 'ada@example.com' });
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(emailSender.send).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        message: 'If an account exists for this email, a reset link has been sent.',
+      });
+    });
+  });
+
+  describe('confirmPasswordReset', () => {
+    it('rejects when no account matches the token', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.confirmPasswordReset({ token: 'bad-token', newPassword: 'newpassword1' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects an expired token', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        passwordResetExpiresAt: new Date(Date.now() - 60_000),
+      });
+
+      await expect(
+        service.confirmPasswordReset({ token: 'expired-token', newPassword: 'newpassword1' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('updates the password and clears the reset token on success', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        passwordResetExpiresAt: new Date(Date.now() + 60_000),
+      });
+
+      const result = await service.confirmPasswordReset({
+        token: 'valid-token',
+        newPassword: 'newpassword1',
+      });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'id' },
+        data: {
+          passwordHash: expect.any(String),
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+        },
+      });
+      expect(result).toEqual({ message: 'Password updated' });
     });
   });
 });

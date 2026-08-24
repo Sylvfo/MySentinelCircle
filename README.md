@@ -35,18 +35,21 @@ new-feature
 debug
 
 
+## test
+'''
+cd /backend
+npm run test
+'''
+
 ## loops
 
 ## hooks
 
 ## verification
 
-# tech slack and tools
+## tech slack and tools
 
-## database
-neon
-
-## server
+see  STACK_SCHEMA.md
 
 → de projet
 → des règles
