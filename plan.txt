@@ -142,20 +142,29 @@ CIRCLES & PERMISSIONS
 CORE FEATURES (MVP)
 --------------------
 1. Auth
-   - Every account requires BOTH an identity credential (email+password OR
-     Google account) AND a phone number at signup, verified via OTP. Phone
-     is never optional: it's the core assurance to users that the people in
-     their circles can actually be reached when an alert fires.
+   - Every account requires a phone number, verified via OTP — phone is
+     never optional: it's the core assurance to users that the people in
+     their circles can actually be reached when an alert fires, and it's
+     the account's lifelong identifier. A phone-only account is a full,
+     permanent account on its own — no email or Google identity required.
+   - On top of the phone, an account may additionally carry an email+
+     password and/or a linked Google identity as extra ways to log in or
+     recover access — neither is required, and either can be added later
+     (e.g. to unlock password reset).
    - Username is optional at signup, usable (alongside phone and email) as
      an invitation target — see Circle management.
-   - Signup/login options: phone + SMS OTP (fast path), email + password,
-     or Google OAuth — phone verification is mandatory in all cases, even
-     when signing up via Google.
-   - Password reset via email link — does not depend on having the phone
-     (n/a for accounts that only use Google as their credential).
-   - If the phone number changes (lost/replaced device+SIM), the user logs
-     in via email+password and updates their phone number from account
-     settings; the new number is re-verified via OTP before use in alerts.
+   - Signup/login options: phone + SMS OTP (the baseline, works for every
+     account), plus optionally email + password or Google OAuth once added
+     — phone verification via OTP is mandatory in all cases.
+   - Password reset via email link — only available for accounts that have
+     added an email+password credential (n/a for phone-only or Google-only
+     accounts, which have no passwordHash to reset).
+   - If the phone number changes (lost/replaced device+SIM), a user with
+     email+password or Google logs in that way and updates their phone
+     number from account settings; the new number is re-verified via OTP
+     before use in alerts. A phone-only account with no other credential
+     has no recovery path today if the phone is lost — open gap, not yet
+     designed.
 
 2. Circle management
    - Create circles, invite Sentinels/Companions, set per-member settings
