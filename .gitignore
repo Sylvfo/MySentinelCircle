@@ -1,0 +1,9 @@
+# Environment variables — never commit real credentials
+.env
+.env.local
+.env.test
+
+node_modules
+
+# Self-signed dev certs — regenerated locally via `make certs`
+nginx/ssl/
