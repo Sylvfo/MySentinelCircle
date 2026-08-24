@@ -2,6 +2,7 @@
 name: debug
 description: Scientific debugging procedure — for any bug, whether found while building a feature or reported via a GitHub issue.
 ---
+Updated: 2026-08-21
 
 # Scientific debugging
 

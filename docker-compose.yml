@@ -43,6 +43,7 @@ services:
     restart: unless-stopped
     environment:
       VITE_API_URL: ""
+      VITE_GOOGLE_CLIENT_ID: "690453218919-c51tovqmqsabic58n9pk2ockog77b3o9.apps.googleusercontent.com"
       VITE_HMR_CLIENT_PORT: "4444"
     volumes:
       - ./frontend/src:/app/src

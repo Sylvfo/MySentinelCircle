@@ -5,6 +5,7 @@ Updated: 2026-08-21
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 @.claude/lastupdate.md
+@.claude/preferencesSyl/etiquette.md
 
 ## Project
 
@@ -60,4 +61,4 @@ Destructive Prisma commands against the dev database (`prisma migrate reset`, or
 These are locked with `deny` in `.claude/settings.json`, not just convention — see `PERMISSIONSCLAUDE.md` for the full list and the procedure to follow when a change is genuinely needed.
 
 ## Linkds
-- @.claud/convention/code-style.md
+

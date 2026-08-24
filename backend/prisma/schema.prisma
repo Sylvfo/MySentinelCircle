@@ -12,6 +12,7 @@ enum UserType {
   ACCOUNT
   PAID_ACCOUNT
   ORGANISATION
+  UNCOMPLETE
 }
 
 enum UserStatus {
@@ -120,6 +121,10 @@ model User {
   otpCodeHash  String?
   otpExpiresAt DateTime?
   otpAttempts  Int       @default(0)
+  
+  passwordResetTokenHash  String?   @unique
+  passwordResetExpiresAt  DateTime?
+
 
   myCircles   Circle[]        @relation("MyCirclesAsCompanion")
   myUserSentinels LinkSentinels[] @relation("SentinelCompanion")

@@ -1,0 +1,10 @@
+{
+  "name": "nosmsnow",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Terminal stand-in for a real SMS/email provider during dev — watch outbound sends, simulate inbound SMS replies.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
