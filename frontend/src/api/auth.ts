@@ -4,19 +4,33 @@ export interface Me {
   id: string;
   firstName: string;
   email: string | null;
-  phone: string;
+  phone: string | null;
   phoneVerifiedAt: string | null;
   createdAt: string;
 }
 
-export const signupEmail = (firstName: string, email: string, password: string, phone: string) =>
-  apiPost<{ userId: string }>('/auth/signup/email', { firstName, email, password, phone });
+export type SignupResult = { userId: string } | { accessToken: string };
+
+export const signupEmail = (
+  firstName: string,
+  lastName: string | undefined,
+  userName: string,
+  email: string,
+  password: string,
+  phone: string | undefined,
+) =>
+  apiPost<SignupResult>('/auth/signup/email', { firstName, lastName, userName, email, password, phone });
 
 export const loginEmail = (email: string, password: string) =>
   apiPost<{ accessToken: string }>('/auth/login/email', { email, password });
 
-export const signupGoogle = (firstName: string, phone: string, idToken: string) =>
-  apiPost<{ userId: string }>('/auth/signup/google', { firstName, phone, idToken });
+export const signupGoogle = (
+  firstName: string,
+  lastName: string | undefined,
+  userName: string,
+  phone: string | undefined,
+  idToken: string,
+) => apiPost<SignupResult>('/auth/signup/google', { firstName, lastName, userName, phone, idToken });
 
 export const loginGoogle = (idToken: string) =>
   apiPost<{ accessToken: string }>('/auth/login/google', { idToken });

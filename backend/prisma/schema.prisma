@@ -12,6 +12,7 @@ enum UserType {
   ACCOUNT
   PAID_ACCOUNT
   ORGANISATION
+  UNCOMPLETE
 }
 
 enum UserStatus {

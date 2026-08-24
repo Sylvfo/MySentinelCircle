@@ -142,20 +142,35 @@ CIRCLES & PERMISSIONS
 CORE FEATURES (MVP)
 --------------------
 1. Auth
-   - Every account requires a phone number, verified via OTP — phone is
-     never optional: it's the core assurance to users that the people in
-     their circles can actually be reached when an alert fires, and it's
-     the account's lifelong identifier. A phone-only account is a full,
-     permanent account on its own — no email or Google identity required.
+   - Phone-only signup: a full, permanent account from just a phone number
+     + firstName, no email or Google identity required — phone is the
+     account's lifelong identifier, verified via OTP, never optional on
+     this path.
+   - Email+password and Google signup: phone is now OPTIONAL, to let
+     someone try the app with minimal friction ("just looking around"
+     mode). An account created this way with no phone is marked
+     `userType: UNCOMPLETE` (vs `ACCOUNT` once a phone is present) — it can
+     browse freely but can't have or be a Sentinel until a phone is added.
+     **Not yet enforced in code** — no real guard on Sentinel routes checks
+     `userType`/phone presence yet, this is documented intent for when the
+     `sentinel` module grows, not a built safeguard today. "Complete your
+     profile with a phone later" isn't built either — no endpoint for it
+     yet, future work.
+   - Username: optional for phone-only signup. **Mandatory** for
+     email+password and Google signup — auto-suggested at signup,
+     editable, but can't be skipped or deferred (unlike lastName and phone
+     on those two paths, which can be added later). Visible to other users
+     as an invitation target — see Circle management. The phone number, by
+     contrast, is never shown to other users.
    - On top of the phone, an account may additionally carry an email+
      password and/or a linked Google identity as extra ways to log in or
      recover access — neither is required, and either can be added later
      (e.g. to unlock password reset).
-   - Username is optional at signup, usable (alongside phone and email) as
-     an invitation target — see Circle management.
    - Signup/login options: phone + SMS OTP (the baseline, works for every
-     account), plus optionally email + password or Google OAuth once added
-     — phone verification via OTP is mandatory in all cases.
+     account with a phone), plus email + password or Google OAuth — phone
+     verification via OTP is mandatory whenever an account has a phone,
+     but an `UNCOMPLETE` account (no phone) logs in freely with no OTP step
+     at all, nothing to verify.
    - Password reset via email link — only available for accounts that have
      added an email+password credential (n/a for phone-only or Google-only
      accounts, which have no passwordHash to reset).

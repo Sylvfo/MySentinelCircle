@@ -5,7 +5,7 @@ import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from './../src/email/email-sender.interface';
-import { testEmail, testPhone } from './helpers/test-data';
+import { testEmail, testPhone, testUsername } from './helpers/test-data';
 
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
@@ -94,7 +94,7 @@ describe('Auth (e2e)', () => {
 
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({ firstName: 'Ada', email, password, phone })
+      .send({ firstName: 'Ada', userName: testUsername(), email, password, phone })
       .expect(201);
     const { userId } = signupRes.body;
     expect(sentOtps).toHaveLength(1);
@@ -111,6 +111,33 @@ describe('Auth (e2e)', () => {
     expect(loginRes.body.accessToken).toBeDefined();
   });
 
+  it('signs up by email with no phone, gets an access token immediately, and can call a protected route', async () => {
+    const email = testEmail();
+    const userName = testUsername();
+    const password = 'password123';
+
+    const signupRes = await request(app.getHttpServer())
+      .post('/auth/signup/email')
+      .send({ firstName: 'Ada', userName, email, password })
+      .expect(201);
+    expect(signupRes.body.accessToken).toBeDefined();
+    expect(sentOtps).toHaveLength(0);
+
+    const meRes = await request(app.getHttpServer())
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${signupRes.body.accessToken}`)
+      .expect(200);
+    expect(meRes.body.email).toBe(email);
+    expect(meRes.body.phone).toBeNull();
+
+    // logging back in works too, despite phoneVerifiedAt never being set
+    const loginRes = await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(201);
+    expect(loginRes.body.accessToken).toBeDefined();
+  });
+
   it('resets a forgotten password end-to-end and logs in with the new one', async () => {
     const phone = testPhone();
     const email = testEmail();
@@ -119,7 +146,7 @@ describe('Auth (e2e)', () => {
 
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({ firstName: 'Ada', email, password, phone })
+      .send({ firstName: 'Ada', userName: testUsername(), email, password, phone })
       .expect(201);
     const { userId } = signupRes.body;
     await request(app.getHttpServer())

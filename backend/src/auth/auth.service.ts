@@ -48,13 +48,18 @@ export class AuthService {
   async signupEmail(dto: SignupEmailDto) {
     const emailTaken = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (emailTaken) throw new ConflictException('Email already in use');
+    const usernameTaken = await this.prisma.user.findUnique({ where: { userName: dto.userName } });
+    if (usernameTaken) throw new ConflictException('Username already taken');
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.claimOrCreateByPhone(
       dto.phone,
-      { firstName: dto.firstName, email: dto.email, passwordHash },
-      UserType.ACCOUNT,
+      { firstName: dto.firstName, lastName: dto.lastName, userName: dto.userName, email: dto.email, passwordHash },
+      dto.phone ? UserType.ACCOUNT : UserType.UNCOMPLETE,
     );
+    if (!dto.phone) {
+      return { accessToken: this.issueToken(user.id) };
+    }
     await this.sendOtp(user.id, dto.phone);
     return { userId: user.id };
   }
@@ -62,9 +67,10 @@ export class AuthService {
   async signupGoogle(dto: SignupGoogleDto) {
     const { googleId, email } = await this.verifyGoogleIdToken(dto.idToken);
 
-    const [googleTaken, emailTaken] = await Promise.all([
+    const [googleTaken, emailTaken, usernameTaken] = await Promise.all([
       this.prisma.user.findUnique({ where: { googleId } }),
       this.prisma.user.findUnique({ where: { email } }),
+      this.prisma.user.findUnique({ where: { userName: dto.userName } }),
     ]);
     if (googleTaken)
       throw new ConflictException('Google account already linked to a user');
@@ -73,12 +79,16 @@ export class AuthService {
         'An account already exists for this email — log in with your password, or use password reset.',
       );
     }
+    if (usernameTaken) throw new ConflictException('Username already taken');
 
     const user = await this.claimOrCreateByPhone(
       dto.phone,
-      { firstName: dto.firstName, googleId, email },
-      UserType.ACCOUNT,
+      { firstName: dto.firstName, lastName: dto.lastName, userName: dto.userName, googleId, email },
+      dto.phone ? UserType.ACCOUNT : UserType.UNCOMPLETE,
     );
+    if (!dto.phone) {
+      return { accessToken: this.issueToken(user.id) };
+    }
     await this.sendOtp(user.id, dto.phone);
     return { userId: user.id };
   }
@@ -118,7 +128,7 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
-    this.assertPhoneVerified(user.phoneVerifiedAt);
+    this.assertPhoneVerified(user);
     return { accessToken: this.issueToken(user.id) };
   }
 
@@ -128,7 +138,7 @@ export class AuthService {
     if (!user)
       throw new NotFoundException('No account linked to this Google identity');
 
-    this.assertPhoneVerified(user.phoneVerifiedAt);
+    this.assertPhoneVerified(user);
     return { accessToken: this.issueToken(user.id) };
   }
 
@@ -222,10 +232,23 @@ export class AuthService {
   // A phone already belonging to a real account (userType !== ONLY_SMS) is
   // rejected as taken.
   private async claimOrCreateByPhone(
-    phone: string,
-    credentials: { firstName: string; email?: string; passwordHash?: string; googleId?: string },
+    phone: string | undefined,
+    credentials: {
+      firstName: string;
+      lastName?: string;
+      userName?: string;
+      email?: string;
+      passwordHash?: string;
+      googleId?: string;
+    },
     userType: UserType,
   ): Promise<User> {
+    if (!phone) {
+      // No phone at all (browse-only signup) — nothing to claim/collide
+      // with, just create the account directly as UserType.UNCOMPLETE.
+      return this.prisma.user.create({ data: { userType, ...credentials } });
+    }
+
     const existing = await this.prisma.user.findUnique({ where: { phone } });
 
     if (!existing) {
@@ -251,8 +274,11 @@ export class AuthService {
     await this.otpSender.send(phone, code);
   }
 
-  private assertPhoneVerified(phoneVerifiedAt: Date | null) {
-    if (!phoneVerifiedAt) {
+  // Only blocks login if the account HAS a phone that isn't verified yet —
+  // an account created without one (UserType.UNCOMPLETE) has nothing to
+  // verify and logs in freely, just without Sentinel access (see plan.txt).
+  private assertPhoneVerified(user: { phone: string | null; phoneVerifiedAt: Date | null }) {
+    if (user.phone && !user.phoneVerifiedAt) {
       throw new ForbiddenException(
         'Phone verification is not complete for this account',
       );

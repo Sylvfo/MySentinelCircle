@@ -13,3 +13,7 @@ export function testPhone(): string {
 export function testEmail(): string {
   return `test-${uniqueSuffix()}@example.test`;
 }
+
+export function testUsername(): string {
+  return `test_${uniqueSuffix()}`;
+}

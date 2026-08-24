@@ -1,8 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsEmail,
+  IsOptional,
   IsPhoneNumber,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -15,6 +17,21 @@ export class SignupEmailDto {
   @MaxLength(80)
   firstName: string;
 
+  @ApiProperty({ required: false, maxLength: 80 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  lastName?: string;
+
+  // Visible to other users (invitation target) — mandatory, unlike lastName
+  // and phone which can be filled in later.
+  @ApiProperty({ minLength: 3, maxLength: 30 })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(30)
+  @Matches(/^[a-zA-Z0-9_.]+$/)
+  userName: string;
+
   @ApiProperty()
   @IsEmail()
   email: string;
@@ -23,7 +40,10 @@ export class SignupEmailDto {
   @MinLength(8)
   password: string;
 
-  @ApiProperty()
+  // Optional at signup — an account without a phone is created as
+  // UserType.UNCOMPLETE and can browse, but can't have/be a Sentinel.
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsPhoneNumber()
-  phone: string;
+  phone?: string;
 }

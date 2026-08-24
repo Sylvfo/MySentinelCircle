@@ -117,11 +117,56 @@ describe('AuthService', () => {
       await expect(
         service.signupGoogle({
           firstName: 'Ada',
+          userName: 'ada123',
           idToken: 'fake-token',
           phone: '+33600000000',
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the username is already taken', async () => {
+      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({
+        googleId: 'google-123',
+        email: 'ada@example.com',
+      });
+      prisma.user.findUnique.mockImplementation(({ where }) => {
+        if (where.userName) return Promise.resolve({ id: 'other-id', userName: 'ada123' });
+        return Promise.resolve(null);
+      });
+
+      await expect(
+        service.signupGoogle({
+          firstName: 'Ada',
+          userName: 'ada123',
+          idToken: 'fake-token',
+          phone: '+33600000000',
+        }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('creates an UNCOMPLETE account and returns an access token on success, without a phone', async () => {
+      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({
+        googleId: 'google-123',
+        email: 'ada@example.com',
+      });
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({ id: 'new-id' });
+
+      const result = await service.signupGoogle({
+        firstName: 'Ada',
+        userName: 'ada123',
+        idToken: 'fake-token',
+      });
+
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ googleId: 'google-123', userType: UserType.UNCOMPLETE }),
+        }),
+      );
+      expect(otpSender.send).not.toHaveBeenCalled();
+      expect(result).toEqual({ accessToken: 'signed-jwt' });
     });
   });
 
@@ -132,6 +177,7 @@ describe('AuthService', () => {
       await expect(
         service.signupEmail({
           firstName: 'Ada',
+          userName: 'ada123',
           email: 'ada@example.com',
           password: 'password123',
           phone: '+33600000000',
@@ -140,13 +186,31 @@ describe('AuthService', () => {
       expect(prisma.user.create).not.toHaveBeenCalled();
     });
 
-    it('creates the account and sends an OTP on success', async () => {
+    it('rejects when the username is already taken', async () => {
       prisma.user.findUnique.mockResolvedValueOnce(null); // email check
+      prisma.user.findUnique.mockResolvedValueOnce({ id: 'existing-id', userName: 'ada123' }); // username check
+
+      await expect(
+        service.signupEmail({
+          firstName: 'Ada',
+          userName: 'ada123',
+          email: 'ada@example.com',
+          password: 'password123',
+          phone: '+33600000000',
+        }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('creates the account and sends an OTP on success, with a phone', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(null); // email check
+      prisma.user.findUnique.mockResolvedValueOnce(null); // username check
       prisma.user.findUnique.mockResolvedValueOnce(null); // claimOrCreateByPhone check
       prisma.user.create.mockResolvedValue({ id: 'new-id', phone: '+33600000000' });
 
       const result = await service.signupEmail({
         firstName: 'Ada',
+        userName: 'ada123',
         email: 'ada@example.com',
         password: 'password123',
         phone: '+33600000000',
@@ -159,6 +223,27 @@ describe('AuthService', () => {
       );
       expect(otpSender.send).toHaveBeenCalledWith('+33600000000', expect.any(String));
       expect(result).toEqual({ userId: 'new-id' });
+    });
+
+    it('creates an UNCOMPLETE account and returns an access token on success, without a phone', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(null); // email check
+      prisma.user.findUnique.mockResolvedValueOnce(null); // username check
+      prisma.user.create.mockResolvedValue({ id: 'new-id' });
+
+      const result = await service.signupEmail({
+        firstName: 'Ada',
+        userName: 'ada123',
+        email: 'ada@example.com',
+        password: 'password123',
+      });
+
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ email: 'ada@example.com', userType: UserType.UNCOMPLETE }),
+        }),
+      );
+      expect(otpSender.send).not.toHaveBeenCalled();
+      expect(result).toEqual({ accessToken: 'signed-jwt' });
     });
   });
 
@@ -194,12 +279,28 @@ describe('AuthService', () => {
         id: 'id',
         email: 'ada@example.com',
         passwordHash,
+        phone: '+33600000000',
         phoneVerifiedAt: null,
       });
 
       await expect(
         service.loginEmail({ email: 'ada@example.com', password: 'correct-password' }),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('logs in an account with no phone at all, even though phoneVerifiedAt is null', async () => {
+      const passwordHash = await bcrypt.hash('correct-password', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        email: 'ada@example.com',
+        passwordHash,
+        phone: null,
+        phoneVerifiedAt: null,
+      });
+
+      const result = await service.loginEmail({ email: 'ada@example.com', password: 'correct-password' });
+
+      expect(result).toEqual({ accessToken: 'signed-jwt' });
     });
 
     it('returns an access token on success', async () => {
@@ -241,9 +342,31 @@ describe('AuthService', () => {
         googleId: 'google-123',
         email: 'ada@example.com',
       });
-      prisma.user.findUnique.mockResolvedValue({ id: 'id', googleId: 'google-123', phoneVerifiedAt: null });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        googleId: 'google-123',
+        phone: '+33600000000',
+        phoneVerifiedAt: null,
+      });
 
       await expect(service.loginGoogle({ idToken: 'fake-token' })).rejects.toThrow(ForbiddenException);
+    });
+
+    it('logs in an account with no phone at all, even though phoneVerifiedAt is null', async () => {
+      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({
+        googleId: 'google-123',
+        email: 'ada@example.com',
+      });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        googleId: 'google-123',
+        phone: null,
+        phoneVerifiedAt: null,
+      });
+
+      const result = await service.loginGoogle({ idToken: 'fake-token' });
+
+      expect(result).toEqual({ accessToken: 'signed-jwt' });
     });
 
     it('returns an access token on success', async () => {
