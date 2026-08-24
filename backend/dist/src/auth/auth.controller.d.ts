@@ -43,11 +43,11 @@ export declare class AuthController {
     me(user: {
         userId: string;
     }): Promise<{
+        email: string | null;
+        firstName: string;
+        phone: string | null;
         id: string;
         createdAt: Date;
-        firstName: string;
-        email: string | null;
-        phone: string | null;
         phoneVerifiedAt: Date | null;
     } | null>;
 }
