@@ -4,3 +4,6 @@ dist
 .env
 
 /generated/prisma
+
+# User-uploaded files — not code, not committed
+/uploads

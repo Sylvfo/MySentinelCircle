@@ -107,6 +107,7 @@ model User {
   email        String? @unique
   passwordHash String?
   googleId     String? @unique
+  avatarPath String?
 
   phone           String? @unique
   phoneVerifiedAt DateTime?

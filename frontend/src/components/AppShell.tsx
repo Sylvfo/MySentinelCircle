@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: '/companions', key: 'nav.companions' },
   { to: '/alerts', key: 'nav.alerts' },
   { to: '/messages', key: 'nav.messages' },
+  { to: '/settings', key: 'nav.settings' },
 ];
 
 export function AppShell() {

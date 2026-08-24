@@ -28,6 +28,7 @@
     "companions": "Companions",
     "alerts": "Alerts",
     "messages": "Messages",
+    "settings": "Settings",
     "logout": "Log out"
   },
   "auth": {
@@ -136,5 +137,19 @@
     "title": "Messages",
     "intro": "Conversations with your Sentinels and pending requests.",
     "empty": "No message yet — the Messaging module isn't built yet."
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "avatar": "Profile photo",
+    "editable": "Editable info",
+    "phone": "Phone",
+    "addPhone": "Add your phone number",
+    "isMajor": "I am an adult",
+    "publicStatus": "Public status",
+    "status": "Account status",
+    "userType": "Account type",
+    "createdAt": "Created on",
+    "updatedAt": "Last updated"
   }
 }
