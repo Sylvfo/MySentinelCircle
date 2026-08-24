@@ -1,6 +1,6 @@
 # Stack schema
 
-Updated: 2026-08-21 16:21
+Updated: 2026-08-24 15:17
 
 Conceptual overview of the whole MySentinelCircle stack — how the pieces fit together. For DB entities/relations see `backend/prisma/DB_schema.md`; for route-by-route detail see `API.md`.
 
@@ -14,8 +14,10 @@ domain name: mysentinelscircles.com.
 - **ORM / DB**: Prisma + MariaDB, containerized (self-hosted, not a managed provider like Neon)
 - **SMS**: pluggable provider behind an interface (console sender in dev; Twilio likely default in prod)
 - **Real-time**: hybrid REST + WebSocket. WebSocket (NestJS gateway) for alerts, notifications, and messages — everything else stays REST. One WS gateway with rooms keyed by `conversationId`, reusing the single `Conversation`/`Message` model; alerts fan out to WS (connected users) and SMS (everyone else) in parallel. WS auth reuses the existing JWT, verified on socket connection.
-- **Rate limiting**: `@nestjs/throttler`. Pattern: `@UseGuards(RateLimitGuard, AuthGuard)` + `@Throttle({ default: { limit, ttl } })` per controller, custom Swagger decorators kept in a separate `*.documentation.ts` file. Priority targets: OTP and alert routes. **Not implemented yet** — `@nestjs/throttler` isn't installed, `RateLimitGuard` doesn't exist. The `trust proxy` half below is done; this half is still to do.
-  Lesson from transcendance: behind nginx, the backend saw every client as the same IP, so concurrent signups all shared one throttle bucket and got blocked. Fix: nginx must set `X-Forwarded-For`/`X-Real-IP` (done, every `nginx/nginx.conf` location block sets it), NestJS must `app.set('trust proxy', 1)` (done, in `main.ts`), and OTP/signup throttling must key on the target identifier (phone/account), not IP alone — several real users can legitimately share one IP (school network, hotel Organization Sentinels).
+- **Rate limiting**: `@nestjs/throttler`, **implemented**. A single global default guard (`ThrottlerModule.forRoot([{ ttl: 60_000, limit: 20 }])` + `APP_GUARD` → `ThrottlerGuard`, both in `app.module.ts`) covers every route at 20 req/min/IP; `auth`'s routes additionally carry `@Throttle({ default: { limit: 5, ttl: 60_000 } })` (5 req/min/IP) since signup/login/OTP/password-reset are the brute-force-sensitive surface. No custom `RateLimitGuard`, no separate `*.documentation.ts` files — simpler than originally sketched. `alert` has no route-specific throttling yet (module is still a skeleton); revisit once it has real endpoints.
+  Lesson from transcendance: behind nginx, the backend saw every client as the same IP, so concurrent signups all shared one throttle bucket and got blocked. Fix: nginx must set `X-Forwarded-For`/`X-Real-IP` (done, every `nginx/nginx.conf` location block sets it), NestJS must `app.set('trust proxy', 1)` (done, in `main.ts`). Throttling still keys on IP, not on the target identifier (phone/account) — several real users can legitimately share one IP (school network, hotel Organization Sentinels); not hardened yet.
+- **API docs**: Swagger (`@nestjs/swagger`), dev-only. `main.ts` mounts `SwaggerModule` at `/docs` guarded by `process.env.NODE_ENV !== 'production'` — never exposed in prod, and not reachable through nginx in Docker mode either (no `location /docs` block; would need one added to the locked `nginx.conf` if ever wanted there). DTOs across `auth` are decorated with `@ApiProperty()`; other modules have none yet (still skeletons).
+- **CI**: GitHub Actions, `.github/workflows/backend-ci.yml`. Runs on every push/PR to `main`/`dev`: `npm run lint`, `npm run test` (unit), `npm run test:e2e` — against an ephemeral MariaDB 11 service container (not Sylvie's local Docker), so it never touches real data. See `TEST.md` for the full test strategy (unit vs e2e, local `mysentinelcircle_test` DB, how to run each).
 - **Infra**: Docker + `docker-compose` (pattern reused from the transcendance project, adapted — see `PERMISSIONSCLAUDE.md`, these files are now `deny`-locked). Root `docker-compose.yml` runs 4 services: `mariadb` (named volume, persists across restarts), `backend`, `frontend`, `nginx` (reverse proxy, self-signed HTTPS). Two ways to run locally:
   - **Host mode** (`make dev`): backend on `:3000`, frontend on `:5173`, both on the bare host — the original simple flow, still works unchanged.
   - **Docker mode** (`make docker-up`, after `make certs` once): full stack in containers, reachable through nginx at `https://localhost:4444` (HTTP `:8081` redirects to it). `backend`/`frontend` containers publish no ports — only reachable via nginx — so both modes can run at once without colliding, sharing only the `mariadb` container/volume. nginx routes one location block per backend module prefix (`/auth/`, `/user/`, `/sentinel/`, `/alert/`, `/organization/`, `/messaging/`, plus a forward-looking `/socket.io/`) straight through to `backend:3000`, no `/api` prefix. The frontend's `VITE_API_URL` is overridden to `""` in Docker mode so every API call becomes same-origin relative through nginx — no frontend code change needed. Cert is self-signed (`make certs`, gitignored) — browsers show a "not private" warning, expected until a real domain is involved.
@@ -39,6 +41,7 @@ flowchart LR
         Org["OrganizationModule (skeleton)"]
         Messaging["MessagingModule (skeleton)"]
         Sms["SmsModule\n(pluggable sender)"]
+        Email["EmailModule\n(pluggable sender)"]
         Gateway["WS Gateway(s)\n(alerts, messaging — JWT on socket connect)"]
         Prisma["PrismaModule\n(PrismaService)"]
     end
@@ -55,6 +58,7 @@ flowchart LR
     Gateway --> Messaging
 
     Auth --> Sms
+    Auth --> Email
     Alert -.-> Sms
     Auth --> Prisma
     User --> Prisma
@@ -78,6 +82,7 @@ One NestJS module per concern (`backend/src/`), per `plan.txt`'s BACKEND MODULES
 | `organization` | Authenticate the `OrganizationMember`, look up a target user by phone, raise an alert (with reason), notify the 1st circle, open the Organization↔1st-circle `Conversation`. | Skeleton |
 | `messaging` | Everyday Me↔Sentinel conversations outside any active alert; also backs in-alert conversations used by `alert` (1st circle chat, per-Sentinel+ isolated chat, Organization chat). Same model, different rules depending on context. Message delivery over WS (room per `conversationId`); conversation/history CRUD over REST. | Skeleton |
 | `sms` | Pluggable SMS sender behind `sms-sender.interface.ts` (console sender in dev). Used by `auth` (OTP) and will be used by `alert`. | Implemented |
+| `email` | Pluggable email sender behind `email-sender.interface.ts` (`EMAIL_SENDER` token, console sender in dev — same pattern as `sms`). Used by `auth` for password-reset links. | Implemented |
 | `prisma` | Wraps `PrismaService` for DB access, injected into every module above. | Implemented |
 
 Skeleton = empty controller/service, module wired into `app.module.ts` but no logic yet — the schema (`schema.prisma`) was reworked ahead of these.

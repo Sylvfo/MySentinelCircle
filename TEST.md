@@ -1,51 +1,56 @@
 # TEST.md
 
-Updated: 2026-08-24 14:23
+Updated: 2026-08-24 15:06
 
-## Quand les tests se déclenchent
+## When tests run
 
-| Quand | Commande | Quoi |
+| When | Command | What |
 |---|---|---|
-| Pendant que tu codes, à la main | `npm run test` (dans `backend/`) | Unitaire seul, Prisma mocké, aucune DB touchée |
-| Avant de push, à la main | `npm run test:e2e` (dans `backend/`) | Réinitialise + migre `mysentinelcircle_test`, lance les specs e2e — ne touche jamais la DB dev |
-| À chaque push/PR sur `main`/`dev` | CI — `.github/workflows/backend-ci.yml` | `npm run lint` + `npm run test` + `npm run test:e2e`, sur une DB MariaDB éphémère créée par GitHub Actions |
-| Proposé, pas encore activé | Hook Claude Code local | Relancerait `npm run test` après que Claude édite un fichier sous `backend/src/**` — à coller toi-même dans `.claude/settings.json` (verrouillé) si tu veux l'activer |
+| While coding, manually | `npm run test` (in `backend/`) | Unit only, Prisma mocked, no DB touched |
+| Before pushing, manually | `npm run test:e2e` (in `backend/`) | Resets + migrates `mysentinelcircle_test`, runs the e2e specs — never touches the dev DB |
+| On every push/PR to `main`/`dev` | CI — `.github/workflows/backend-ci.yml` | `npm run lint` + `npm run test` + `npm run test:e2e`, against an ephemeral MariaDB DB created by GitHub Actions |
+| Proposed, not yet enabled | Local Claude Code hook | Would rerun `npm run test` after Claude edits a file under `backend/src/**` — paste it yourself into `.claude/settings.json` (locked) if you want to enable it |
 
-## Liste des tests actuels
+## Current test list
 
-### Unitaires — `backend/src/**/*.spec.ts` (28 tests)
+### Unit — `backend/src/**/*.spec.ts` (28 tests)
 
-- **`app.controller.spec.ts`** (1 test) — vérifie que `GET /` répond `"Hello World!"`.
-- **`auth/auth.service.spec.ts`** (27 tests, `PrismaService`/`JwtService`/`ConfigService`/`OTP_SENDER`/`EMAIL_SENDER` mockés) :
-  - **`claimOrCreateByPhone`** (via `signupPhone`, 3 tests) — création si aucun user, claim/upgrade d'un stub `ONLY_SMS` (même `id` conservé), rejet 409 si déjà un vrai compte.
-  - **`signupGoogle`** (1 test) — rejet 409 si l'email Google est déjà utilisé par un autre compte.
-  - **`signupEmail`** (2 tests) — rejet 409 si l'email est déjà pris ; succès (création + envoi OTP).
-  - **`loginEmail`** (5 tests) — rejet si aucun compte, si pas de `passwordHash` (compte Google/phone-only), si mauvais mot de passe, si téléphone non vérifié ; succès (retourne un `accessToken`).
-  - **`loginGoogle`** (4 tests) — rejet si token Google invalide, si aucun compte lié, si téléphone non vérifié ; succès (retourne un `accessToken`).
-  - **`verifyOtp`** (6 tests) — rejet si aucun OTP en attente, si trop de tentatives (≥5), si code expiré, si mauvais code (avec vérification de l'incrément `otpAttempts`) ; succès à la première vérification (`phoneVerifiedAt` positionné) et succès si déjà vérifié (`phoneVerifiedAt` non écrasé).
-  - **`requestPasswordReset`** (3 tests) — envoie l'email si le compte a un `passwordHash` ; ne fait rien (mais retourne le même message générique) si aucun compte ou si le compte n'a pas de `passwordHash`.
-  - **`confirmPasswordReset`** (3 tests) — rejet si aucun compte pour ce token, si le token a expiré ; succès (mot de passe mis à jour, token effacé).
+- **`app.controller.spec.ts`** (1 test) — checks `GET /` responds `"Hello World!"`.
+- **`auth/auth.service.spec.ts`** (27 tests, `PrismaService`/`JwtService`/`ConfigService`/`OTP_SENDER`/`EMAIL_SENDER` mocked):
+  - **`claimOrCreateByPhone`** (via `signupPhone`, 3 tests) — creates when no row exists, claims/upgrades an `ONLY_SMS` stub (same `id` kept), rejects 409 if already a real account.
+  - **`signupGoogle`** (1 test) — rejects 409 when the Google email is already used by another account.
+  - **`signupEmail`** (2 tests) — rejects 409 if the email is already taken; success (creates account + sends OTP).
+  - **`loginEmail`** (5 tests) — rejects when no account, no `passwordHash` (Google/phone-only account), wrong password, unverified phone; success (returns an `accessToken`).
+  - **`loginGoogle`** (4 tests) — rejects on invalid Google token, no linked account, unverified phone; success (returns an `accessToken`).
+  - **`verifyOtp`** (6 tests) — rejects when no pending OTP, too many attempts (≥5), expired code, wrong code (asserts the `otpAttempts` increment); succeeds on first verification (`phoneVerifiedAt` set) and succeeds when already verified (`phoneVerifiedAt` not overwritten).
+  - **`requestPasswordReset`** (3 tests) — sends the email when the account has a `passwordHash`; does nothing (but returns the same generic message) when no account exists or the account has no `passwordHash`.
+  - **`confirmPasswordReset`** (3 tests) — rejects when no account matches the token, when the token expired; success (password updated, token cleared).
 
-### E2e — `backend/test/**/*.e2e-spec.ts` (1 test)
+### E2e — `backend/test/**/*.e2e-spec.ts` (5 tests)
 
-- **`app.e2e-spec.ts`** — monte une vraie instance Nest (`AppModule`) contre `mysentinelcircle_test`, vérifie `GET /` → 200 `"Hello World!"`.
+- **`app.e2e-spec.ts`** (1 test) — boots a real Nest instance (`AppModule`) against `mysentinelcircle_test`, checks `GET /` → 200 `"Hello World!"`.
+- **`auth.e2e-spec.ts`** (4 tests, `OTP_SENDER`/`EMAIL_SENDER` intercepted via `overrideProvider` to capture the real code/link instead of parsing console output):
+  - Phone signup → OTP verification → phone+OTP login again, end to end over real HTTP requests.
+  - Rejects a second signup on an already-claimed phone with 409.
+  - Email signup → OTP verification → login with the password.
+  - Full password reset (request → confirm → login with the new password; the old password no longer works afterwards).
 
-## Où voir les résultats
+## Where to see results
 
-- **En local** : directement dans le terminal (sortie de `npm run test` / `npm run test:e2e`).
-- **En CI** : onglet **Actions** du repo GitHub → workflow **backend-ci** → job **test**, un run par push/PR sur `main`/`dev`.
+- **Locally**: directly in the terminal (output of `npm run test` / `npm run test:e2e`).
+- **In CI**: GitHub repo's **Actions** tab → **backend-ci** workflow → **test** job, one run per push/PR to `main`/`dev`.
 
-## Tests restant à écrire
+## Tests still to write
 
-- **E2e auth complet** — aujourd'hui seul `/` est testé en e2e ; rien ne couvre encore un vrai parcours signup → OTP → login via de vraies requêtes HTTP contre `mysentinelcircle_test`.
-- **Module `sentinel`** (circles/memberships) — prochaine priorité dès qu'il y a du code à tester (règles "au moins un Lead Sentinel par 1er cercle", "un seul `LinkSentinels` actif par paire").
-- **`alert` / `organization` / `messaging`** — encore des coquilles vides, pas de tests à écrire avant qu'il y ait du code.
+- **`loginGoogle`/`signupGoogle` in e2e** — not covered (would need a real Google token, not easily simulated in e2e; the branching logic is already covered at the unit level via a mocked `verifyGoogleIdToken`).
+- **`sentinel` module** (circles/memberships) — next priority once there's code to test (rules like "at least one Lead Sentinel per 1st circle", "one active `LinkSentinels` per pair").
+- **`alert` / `organization` / `messaging`** — still empty skeletons, nothing to test until there's code.
 
-La couverture unitaire de `AuthService` est maintenant complète (les 6 méthodes qui manquaient — `signupEmail`, `loginEmail`, `loginGoogle`, `verifyOtp`, `requestPasswordReset`, `confirmPasswordReset` — sont toutes couvertes).
+`auth` coverage is now complete on both fronts: unit (the 6 previously-missing methods — `signupEmail`, `loginEmail`, `loginGoogle`, `verifyOtp`, `requestPasswordReset`, `confirmPasswordReset` — are all covered) and e2e (phone+OTP, email+password, and password-reset flows, end to end).
 
-## Infra de test (référence)
+## Test infra (reference)
 
-- DB de test : `mysentinelcircle_test`, créée une fois via `bash backend/scripts/create-test-db.sh` (ou `make db-test-init`) — utilise les identifiants root, jamais rejoué automatiquement.
-- Config locale : `backend/.env.test` (gitignored) — à créer à partir de `backend/.env.test.example`.
-- `npm run test:e2e` vérifie d'abord que `DATABASE_URL` pointe bien vers `mysentinelcircle_test` (refuse sinon), puis réinitialise le schéma (`prisma migrate reset --force`) avant de lancer les specs.
-- Chaque test doit créer ses propres données (téléphone/email uniques via `backend/test/helpers/test-data.ts`) — pas de fixtures partagées.
+- Test DB: `mysentinelcircle_test`, created once via `bash backend/scripts/create-test-db.sh` (or `make db-test-init`) — uses root credentials, never rerun automatically.
+- Local config: `backend/.env.test` (gitignored) — create it from `backend/.env.test.example`.
+- `npm run test:e2e` first checks that `DATABASE_URL` points at `mysentinelcircle_test` (refuses otherwise), then resets the schema (`prisma migrate reset --force`) before running the specs.
+- Each test must create its own data (unique phone/email via `backend/test/helpers/test-data.ts`) — no shared fixtures.

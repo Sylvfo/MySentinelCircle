@@ -83,6 +83,21 @@ export class AuthService {
     return { userId: user.id };
   }
 
+  // Attaches a Google identity to the already-authenticated caller's own
+  // account. Requires a valid JWT (proof the caller already owns the
+  // account via password login) — deliberately not exposed as an
+  // unauthenticated "link by email match" endpoint, which would let anyone
+  // controlling that Gmail address silently take over an existing account.
+  async linkGoogle(userId: string, idToken: string) {
+    const { googleId } = await this.verifyGoogleIdToken(idToken);
+    const existing = await this.prisma.user.findUnique({ where: { googleId } });
+    if (existing && existing.id !== userId) {
+      throw new ConflictException('This Google account is already linked to another user');
+    }
+    await this.prisma.user.update({ where: { id: userId }, data: { googleId } });
+    return { message: 'Google account linked' };
+  }
+
   async signupPhone(dto: SignupPhoneDto) {
     const user = await this.claimOrCreateByPhone(
       dto.phone,

@@ -165,6 +165,11 @@ CORE FEATURES (MVP)
      before use in alerts. A phone-only account with no other credential
      has no recovery path today if the phone is lost — open gap, not yet
      designed.
+   - Known accepted gap in `claimOrCreateByPhone` (auth.service.ts): a
+     narrow race between the read and the write if two signups for the
+     same phone land concurrently. The create-fresh path is protected by
+     the DB's `phone` unique constraint; the claim-a-stub path isn't.
+     Not hardened for now — revisit later if it matters in practice.
 
 2. Circle management
    - Create circles, invite Sentinels/Companions, set per-member settings
@@ -459,6 +464,20 @@ OPEN POINTS / TO REVISIT
   specified, flagged as TBD fields in DATA MODEL.
 - Whether a second/confident-but-non-parent contact makes sense for minors
   (raised as a "worth exploring" idea, not a decision).
+
+DEV-ONLY STUBS — NEED A REAL EXTERNAL PROVIDER
+-------------------------------------------------
+Coded and working in dev, but nothing actually reaches a real person until
+a real provider is wired in behind the existing pluggable interface (no
+caller-side changes needed once that happens):
+- Email sending (password reset link) — `ConsoleEmailSenderService` only,
+  logs the email to the backend console instead of sending it. Needs a
+  real provider (SendGrid, Mailgun, Amazon SES, etc.) behind
+  `EmailSender`/`EMAIL_SENDER`.
+- SMS sending (OTP codes, Sentinel invitations, alerts) —
+  `ConsoleSmsSenderService` only, logs to the backend console instead of
+  sending it. Needs a real operator/provider (Twilio likely default, see
+  TECH STACK) behind `SmsSender`/`SMS_SENDER`.
 
 STATUS
 ------

@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { signupEmail } from '../api/auth';
+import { signupEmail, signupGoogle } from '../api/auth';
 import { ApiError } from '../api/client';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { GoogleSignInButton } from '../components/GoogleSignInButton';
 
 export function SignupPage() {
   const [firstName, setFirstName] = useState('');
@@ -23,6 +24,23 @@ export function SignupPage() {
       const { userId } = await signupEmail(firstName.trim(), email, password, phone);
       navigate('/otp', { state: { userId, phone, justSignedUp: true } });
     } catch (err) {
+      setError(err instanceof ApiError ? err.message : t('auth.errors.signup'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGoogleCredential = async (idToken: string) => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { userId } = await signupGoogle(firstName.trim(), phone, idToken);
+      navigate('/otp', { state: { userId, phone, justSignedUp: true } });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && err.message.includes('already exists for this email')) {
+        navigate('/login', { state: { pendingGoogleIdToken: idToken } });
+        return;
+      }
       setError(err instanceof ApiError ? err.message : t('auth.errors.signup'));
     } finally {
       setSubmitting(false);
@@ -71,7 +89,14 @@ export function SignupPage() {
       </form>
 
       <div className="auth-divider">{t('common.or')}</div>
-      <p className="google-btn-placeholder">{t('auth.googleSignup', { state: t('common.comingSoon') })}</p>
+      {firstName.trim() && phone.trim() ? (
+        <GoogleSignInButton
+          onCredential={handleGoogleCredential}
+          fallbackLabel={t('auth.googleSignup', { state: t('common.comingSoon') })}
+        />
+      ) : (
+        <p className="google-btn-placeholder">{t('auth.googleFillFirst')}</p>
+      )}
 
       <p className="switch-link">
         {t('auth.haveAccount')} <Link to="/login">{t('auth.signIn')}</Link>

@@ -263,6 +263,35 @@ describe('AuthService', () => {
     });
   });
 
+  describe('linkGoogle', () => {
+    it('rejects when the Google identity is already linked to another user', async () => {
+      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({
+        googleId: 'google-123',
+        email: 'ada@example.com',
+      });
+      prisma.user.findUnique.mockResolvedValue({ id: 'other-id', googleId: 'google-123' });
+
+      await expect(service.linkGoogle('my-id', 'fake-token')).rejects.toThrow(ConflictException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('links the Google identity to the caller on success', async () => {
+      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({
+        googleId: 'google-123',
+        email: 'ada@example.com',
+      });
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      const result = await service.linkGoogle('my-id', 'fake-token');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'my-id' },
+        data: { googleId: 'google-123' },
+      });
+      expect(result).toEqual({ message: 'Google account linked' });
+    });
+  });
+
   describe('verifyOtp', () => {
     it('rejects when there is no pending OTP for the account', async () => {
       prisma.user.findUnique.mockResolvedValue(null);

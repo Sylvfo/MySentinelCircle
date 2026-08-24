@@ -79,6 +79,16 @@ export class AuthController {
     return this.authService.confirmPasswordReset(dto);
   }
 
+  // Attaches a Google identity to the caller's own already-authenticated
+  // account — requires a JWT (proof of ownership via password login), not
+  // exposed as an unauthenticated "link by email match" endpoint.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard)
+  @Post('link/google')
+  linkGoogle(@CurrentUser() user: { userId: string }, @Body() dto: LoginGoogleDto) {
+    return this.authService.linkGoogle(user.userId, dto.idToken);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('me')
   async me(@CurrentUser() user: { userId: string }) {
