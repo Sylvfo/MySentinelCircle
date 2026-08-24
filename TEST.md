@@ -1,46 +1,51 @@
-Deux catégories, deux configs Jest distinctes :
+# TEST.md
 
-Tests unitaires — colocalisés à côté du code source, suffixe .spec.ts :
+Updated: 2026-08-24 14:23
 
-app.controller.spec.ts
-auth.service.spec.ts (ajouté cette session)
-Config dans backend/package.json ("jest": {...}) : rootDir: "src", cherche tout *.spec.ts sous src/, compile via ts-jest. Lancé par npm run test.
+## Quand les tests se déclenchent
 
-Tests e2e — dans un dossier séparé backend/test/, suffixe .e2e-spec.ts :
+| Quand | Commande | Quoi |
+|---|---|---|
+| Pendant que tu codes, à la main | `npm run test` (dans `backend/`) | Unitaire seul, Prisma mocké, aucune DB touchée |
+| Avant de push, à la main | `npm run test:e2e` (dans `backend/`) | Réinitialise + migre `mysentinelcircle_test`, lance les specs e2e — ne touche jamais la DB dev |
+| À chaque push/PR sur `main`/`dev` | CI — `.github/workflows/backend-ci.yml` | `npm run lint` + `npm run test` + `npm run test:e2e`, sur une DB MariaDB éphémère créée par GitHub Actions |
+| Proposé, pas encore activé | Hook Claude Code local | Relancerait `npm run test` après que Claude édite un fichier sous `backend/src/**` — à coller toi-même dans `.claude/settings.json` (verrouillé) si tu veux l'activer |
 
-app.e2e-spec.ts (seul présent, généré par défaut par le CLI NestJS — pas encore personnalisé)
-Config séparée backend/test/jest-e2e.json : rootDir: "." (relatif à test/), monte l'app NestJS complète via supertest. Lancé par npm run test:e2e.
+## Liste des tests actuels
 
+### Unitaires — `backend/src/**/*.spec.ts` (28 tests)
 
-Les tests unitaires (*.spec.ts) testent une petite partie du code isolément, par exemple une méthode de AuthService. Ils sont rapides et servent à vérifier la logique métier.
+- **`app.controller.spec.ts`** (1 test) — vérifie que `GET /` répond `"Hello World!"`.
+- **`auth/auth.service.spec.ts`** (27 tests, `PrismaService`/`JwtService`/`ConfigService`/`OTP_SENDER`/`EMAIL_SENDER` mockés) :
+  - **`claimOrCreateByPhone`** (via `signupPhone`, 3 tests) — création si aucun user, claim/upgrade d'un stub `ONLY_SMS` (même `id` conservé), rejet 409 si déjà un vrai compte.
+  - **`signupGoogle`** (1 test) — rejet 409 si l'email Google est déjà utilisé par un autre compte.
+  - **`signupEmail`** (2 tests) — rejet 409 si l'email est déjà pris ; succès (création + envoi OTP).
+  - **`loginEmail`** (5 tests) — rejet si aucun compte, si pas de `passwordHash` (compte Google/phone-only), si mauvais mot de passe, si téléphone non vérifié ; succès (retourne un `accessToken`).
+  - **`loginGoogle`** (4 tests) — rejet si token Google invalide, si aucun compte lié, si téléphone non vérifié ; succès (retourne un `accessToken`).
+  - **`verifyOtp`** (6 tests) — rejet si aucun OTP en attente, si trop de tentatives (≥5), si code expiré, si mauvais code (avec vérification de l'incrément `otpAttempts`) ; succès à la première vérification (`phoneVerifiedAt` positionné) et succès si déjà vérifié (`phoneVerifiedAt` non écrasé).
+  - **`requestPasswordReset`** (3 tests) — envoie l'email si le compte a un `passwordHash` ; ne fait rien (mais retourne le même message générique) si aucun compte ou si le compte n'a pas de `passwordHash`.
+  - **`confirmPasswordReset`** (3 tests) — rejet si aucun compte pour ce token, si le token a expiré ; succès (mot de passe mis à jour, token effacé).
 
-CI github action
-.github/workflow
+### E2e — `backend/test/**/*.e2e-spec.ts` (1 test)
 
-hook code claude local
+- **`app.e2e-spec.ts`** — monte une vraie instance Nest (`AppModule`) contre `mysentinelcircle_test`, vérifie `GET /` → 200 `"Hello World!"`.
 
----
+## Où voir les résultats
 
-## Stratégie discutée (2026-08-24) — à reprendre sur la branche `test`
+- **En local** : directement dans le terminal (sortie de `npm run test` / `npm run test:e2e`).
+- **En CI** : onglet **Actions** du repo GitHub → workflow **backend-ci** → job **test**, un run par push/PR sur `main`/`dev`.
 
-**Problème déclencheur** : le test curl du flux password-reset a modifié le mot de passe du vrai compte dev (`forster.sylvie@gmail.com`) faute de DB de test isolée.
+## Tests restant à écrire
 
-**Décisions à valider avant de coder** :
+- **E2e auth complet** — aujourd'hui seul `/` est testé en e2e ; rien ne couvre encore un vrai parcours signup → OTP → login via de vraies requêtes HTTP contre `mysentinelcircle_test`.
+- **Module `sentinel`** (circles/memberships) — prochaine priorité dès qu'il y a du code à tester (règles "au moins un Lead Sentinel par 1er cercle", "un seul `LinkSentinels` actif par paire").
+- **`alert` / `organization` / `messaging`** — encore des coquilles vides, pas de tests à écrire avant qu'il y ait du code.
 
-1. **DB de test séparée** — `mysentinelcircle_test`, sur le même serveur MariaDB (pas besoin de toucher `docker-compose.yml`, juste une autre base sur le même conteneur). Jamais la DB dev.
+La couverture unitaire de `AuthService` est maintenant complète (les 6 méthodes qui manquaient — `signupEmail`, `loginEmail`, `loginGoogle`, `verifyOtp`, `requestPasswordReset`, `confirmPasswordReset` — sont toutes couvertes).
 
-2. **Niveaux de test** :
-   - Unitaire (Jest + mocks Prisma) : logique métier des `*.service.ts`, surtout les règles "fluides" non protégées par le schéma (cf. `CLAUDE.md` — ex. un seul `LinkSentinels` actif par paire, au moins un Lead Sentinel par 1er cercle). Rapide, pas de DB.
-   - E2e (Supertest + `mysentinelcircle_test`) : parcours utilisateur critiques de bout en bout (signup→OTP→login, invitation Sentinel→acceptation, cycle de vie d'une alerte).
-   - Contrôleurs : pas de tests dédiés, déjà couverts indirectement par l'e2e.
+## Infra de test (référence)
 
-3. **Priorité par module** : `auth` (déjà partiellement couvert) → `sentinel` (le plus de règles métier non protégées par le schéma) → `alert`/`organization`/`messaging` (encore des coquilles vides, pas la peine avant qu'il y ait du code).
-
-**Workflow `npm run test:e2e` à implémenter** (spécifié par Sylvie) :
-1. Vérifie qu'on utilise bien `mysentinelcircle_test` (jamais la DB dev)
-2. Applique les migrations/schema sur cette DB
-3. Nettoie la DB (état propre avant chaque run)
-4. Lance les tests
-5. Chaque test crée ses propres utilisateurs/données (pas de fixtures partagées)
-
-Pas encore implémenté — à faire sur la branche `test`.
+- DB de test : `mysentinelcircle_test`, créée une fois via `bash backend/scripts/create-test-db.sh` (ou `make db-test-init`) — utilise les identifiants root, jamais rejoué automatiquement.
+- Config locale : `backend/.env.test` (gitignored) — à créer à partir de `backend/.env.test.example`.
+- `npm run test:e2e` vérifie d'abord que `DATABASE_URL` pointe bien vers `mysentinelcircle_test` (refuse sinon), puis réinitialise le schéma (`prisma migrate reset --force`) avant de lancer les specs.
+- Chaque test doit créer ses propres données (téléphone/email uniques via `backend/test/helpers/test-data.ts`) — pas de fixtures partagées.

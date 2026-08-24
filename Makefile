@@ -1,4 +1,4 @@
-.PHONY: all install back front dev db-up db-down db-logs certs docker-up docker-down nosmsnow
+.PHONY: all install back front dev db-up db-down db-logs db-test-init certs docker-up docker-down nosmsnow
 
 # Default target — `make` alone runs this
 all: dev
@@ -15,6 +15,9 @@ db-down:
 
 db-logs:
 	docker compose logs -f mariadb
+
+db-test-init:
+	bash backend/scripts/create-test-db.sh
 
 back:
 	cd backend && npm run start:dev
