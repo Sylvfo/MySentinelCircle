@@ -58,3 +58,23 @@ export function apiPatch<T>(path: string, data: unknown): Promise<T> {
 export function apiDelete<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' });
 }
+
+// No JSON Content-Type here — the browser sets the correct
+// multipart/form-data boundary itself when the body is a FormData.
+export async function apiPostForm<T>(path: string, formData: FormData): Promise<T> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  const body = res.status === 204 ? null : await res.json().catch(() => null);
+
+  if (!res.ok) {
+    const message = Array.isArray(body?.message) ? body.message.join(', ') : (body?.message ?? res.statusText);
+    throw new ApiError(res.status, message);
+  }
+
+  return body as T;
+}

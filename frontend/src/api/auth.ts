@@ -1,13 +1,4 @@
-import { apiGet, apiPost } from './client';
-
-export interface Me {
-  id: string;
-  firstName: string;
-  email: string | null;
-  phone: string | null;
-  phoneVerifiedAt: string | null;
-  createdAt: string;
-}
+import { apiPost } from './client';
 
 export type SignupResult = { userId: string } | { accessToken: string };
 
@@ -42,8 +33,6 @@ export const requestOtp = (phone: string) => apiPost<{ userId: string }>('/auth/
 
 export const verifyOtp = (userId: string, code: string) =>
   apiPost<{ accessToken: string }>('/auth/otp/verify', { userId, code });
-
-export const fetchMe = () => apiGet<Me>('/auth/me');
 
 export const requestPasswordReset = (email: string) =>
   apiPost<{ message: string }>('/auth/password-reset/request', { email });

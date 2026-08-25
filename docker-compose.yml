@@ -32,6 +32,7 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
+      - backend_uploads:/app/uploads
     depends_on:
       mariadb:
         condition: service_healthy
@@ -67,3 +68,4 @@ services:
 
 volumes:
   mariadb_data:
+  backend_uploads:

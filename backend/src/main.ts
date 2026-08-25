@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -11,6 +12,7 @@ async function bootstrap() {
     origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
 
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()

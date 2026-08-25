@@ -12,6 +12,7 @@ import { CirclesPage } from './pages/CirclesPage';
 import { CompanionsPage } from './pages/CompanionsPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { MessagesPage } from './pages/MessagesPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
             <Route path="/companions" element={<CompanionsPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/messages" element={<MessagesPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>
 

@@ -28,6 +28,7 @@
     "companions": "Companions",
     "alerts": "Alertes",
     "messages": "Messages",
+    "settings": "Paramètres",
     "logout": "Déconnexion"
   },
   "auth": {
@@ -136,5 +137,19 @@
     "title": "Messages",
     "intro": "Conversations avec vos Sentinels et requêtes en attente.",
     "empty": "Aucun message pour l'instant — le module Messaging n'est pas encore codé."
+  },
+  "settings": {
+    "title": "Paramètres",
+    "profile": "Profil",
+    "avatar": "Photo de profil",
+    "editable": "Infos modifiables",
+    "phone": "Téléphone",
+    "addPhone": "Ajouter ton numéro de téléphone",
+    "isMajor": "Je suis majeur·e",
+    "publicStatus": "Statut public",
+    "status": "Statut du compte",
+    "userType": "Type de compte",
+    "createdAt": "Créé le",
+    "updatedAt": "Dernière modification"
   }
 }

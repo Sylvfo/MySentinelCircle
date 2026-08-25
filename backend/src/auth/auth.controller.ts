@@ -1,7 +1,6 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { PrismaService } from '../prisma/prisma.service';
 import { SignupEmailDto } from './dto/signup-email.dto';
 import { SignupGoogleDto } from './dto/signup-google.dto';
 import { SignupPhoneDto } from './dto/signup-phone.dto';
@@ -16,10 +15,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private readonly authService: AuthService,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly authService: AuthService) {}
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('signup/email')
@@ -87,22 +83,5 @@ export class AuthController {
   @Post('link/google')
   linkGoogle(@CurrentUser() user: { userId: string }, @Body() dto: LoginGoogleDto) {
     return this.authService.linkGoogle(user.userId, dto.idToken);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get('me')
-  async me(@CurrentUser() user: { userId: string }) {
-    const record = await this.prisma.user.findUnique({
-      where: { id: user.userId },
-      select: {
-        id: true,
-        firstName: true,
-        email: true,
-        phone: true,
-        phoneVerifiedAt: true,
-        createdAt: true,
-      },
-    });
-    return record;
   }
 }
