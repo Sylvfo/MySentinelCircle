@@ -46,15 +46,25 @@ export class AuthService {
   }
 
   async signupEmail(dto: SignupEmailDto) {
-    const emailTaken = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const emailTaken = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (emailTaken) throw new ConflictException('Email already in use');
-    const usernameTaken = await this.prisma.user.findUnique({ where: { userName: dto.userName } });
+    const usernameTaken = await this.prisma.user.findUnique({
+      where: { userName: dto.userName },
+    });
     if (usernameTaken) throw new ConflictException('Username already taken');
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.claimOrCreateByPhone(
       dto.phone,
-      { firstName: dto.firstName, lastName: dto.lastName, userName: dto.userName, email: dto.email, passwordHash },
+      {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        userName: dto.userName,
+        email: dto.email,
+        passwordHash,
+      },
       dto.phone ? UserType.ACCOUNT : UserType.UNCOMPLETE,
     );
     if (!dto.phone) {
@@ -83,7 +93,13 @@ export class AuthService {
 
     const user = await this.claimOrCreateByPhone(
       dto.phone,
-      { firstName: dto.firstName, lastName: dto.lastName, userName: dto.userName, googleId, email },
+      {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        userName: dto.userName,
+        googleId,
+        email,
+      },
       dto.phone ? UserType.ACCOUNT : UserType.UNCOMPLETE,
     );
     if (!dto.phone) {
@@ -102,9 +118,14 @@ export class AuthService {
     const { googleId } = await this.verifyGoogleIdToken(idToken);
     const existing = await this.prisma.user.findUnique({ where: { googleId } });
     if (existing && existing.id !== userId) {
-      throw new ConflictException('This Google account is already linked to another user');
+      throw new ConflictException(
+        'This Google account is already linked to another user',
+      );
     }
-    await this.prisma.user.update({ where: { id: userId }, data: { googleId } });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { googleId },
+    });
     return { message: 'Google account linked' };
   }
 
@@ -193,7 +214,9 @@ export class AuthService {
   // for Google-only or phone-only accounts, which have no passwordHash.
   // Never reveals whether the account exists or has a password at all.
   async requestPasswordReset(dto: RequestPasswordResetDto) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (user?.passwordHash) {
       const rawToken = randomBytes(32).toString('hex');
       const tokenHash = createHash('sha256').update(rawToken).digest('hex');
@@ -201,25 +224,43 @@ export class AuthService {
         where: { id: user.id },
         data: {
           passwordResetTokenHash: tokenHash,
-          passwordResetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60_000),
+          passwordResetExpiresAt: new Date(
+            Date.now() + PASSWORD_RESET_TTL_MINUTES * 60_000,
+          ),
         },
       });
       const link = `${this.config.get('FRONTEND_URL')}/reset-password?token=${rawToken}`;
-      await this.emailSender.send(user.email!, 'Réinitialisation de mot de passe', link);
+      await this.emailSender.send(
+        user.email!,
+        'Réinitialisation de mot de passe',
+        link,
+      );
     }
-    return { message: 'If an account exists for this email, a reset link has been sent.' };
+    return {
+      message:
+        'If an account exists for this email, a reset link has been sent.',
+    };
   }
 
   async confirmPasswordReset(dto: ConfirmPasswordResetDto) {
     const tokenHash = createHash('sha256').update(dto.token).digest('hex');
-    const user = await this.prisma.user.findUnique({ where: { passwordResetTokenHash: tokenHash } });
-    if (!user?.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) {
+    const user = await this.prisma.user.findUnique({
+      where: { passwordResetTokenHash: tokenHash },
+    });
+    if (
+      !user?.passwordResetExpiresAt ||
+      user.passwordResetExpiresAt < new Date()
+    ) {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
     const passwordHash = await bcrypt.hash(dto.newPassword, 10);
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash, passwordResetTokenHash: null, passwordResetExpiresAt: null },
+      data: {
+        passwordHash,
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+      },
     });
     return { message: 'Password updated' };
   }
@@ -252,12 +293,17 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({ where: { phone } });
 
     if (!existing) {
-      return this.prisma.user.create({ data: { phone, userType, ...credentials } });
+      return this.prisma.user.create({
+        data: { phone, userType, ...credentials },
+      });
     }
     if (existing.userType !== UserType.ONLY_SMS) {
       throw new ConflictException('Phone already in use');
     }
-    return this.prisma.user.update({ where: { id: existing.id }, data: { userType, ...credentials } });
+    return this.prisma.user.update({
+      where: { id: existing.id },
+      data: { userType, ...credentials },
+    });
   }
 
   private async sendOtp(userId: string, phone: string) {
@@ -277,7 +323,10 @@ export class AuthService {
   // Only blocks login if the account HAS a phone that isn't verified yet —
   // an account created without one (UserType.UNCOMPLETE) has nothing to
   // verify and logs in freely, just without Sentinel access (see plan.txt).
-  private assertPhoneVerified(user: { phone: string | null; phoneVerifiedAt: Date | null }) {
+  private assertPhoneVerified(user: {
+    phone: string | null;
+    phoneVerifiedAt: Date | null;
+  }) {
     if (user.phone && !user.phoneVerifiedAt) {
       throw new ForbiddenException(
         'Phone verification is not complete for this account',

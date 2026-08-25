@@ -81,7 +81,10 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard)
   @Post('link/google')
-  linkGoogle(@CurrentUser() user: { userId: string }, @Body() dto: LoginGoogleDto) {
+  linkGoogle(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: LoginGoogleDto,
+  ) {
     return this.authService.linkGoogle(user.userId, dto.idToken);
   }
 }

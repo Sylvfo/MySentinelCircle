@@ -1,4 +1,9 @@
-import { ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcryptjs';
@@ -43,9 +48,15 @@ const PROFILE_SELECT = {
 
 // Never return the raw hash/id — just whether they exist, so the frontend
 // knows which credentials/step-up methods apply to this account.
-function toProfileDto<T extends { passwordHash: string | null; googleId: string | null }>(user: T) {
+function toProfileDto<
+  T extends { passwordHash: string | null; googleId: string | null },
+>(user: T) {
   const { passwordHash, googleId, ...rest } = user;
-  return { ...rest, hasPassword: passwordHash !== null, hasGoogle: googleId !== null };
+  return {
+    ...rest,
+    hasPassword: passwordHash !== null,
+    hasGoogle: googleId !== null,
+  };
 }
 
 @Injectable()
@@ -62,20 +73,33 @@ export class UserService {
   }
 
   async getProfile(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: PROFILE_SELECT });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: PROFILE_SELECT,
+    });
     return user && toProfileDto(user);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     if (dto.userName) {
-      const current = await this.prisma.user.findUnique({ where: { id: userId }, select: { userName: true } });
+      const current = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { userName: true },
+      });
       if (current?.userName) {
         throw new ConflictException('Username cannot be changed once set');
       }
-      const taken = await this.prisma.user.findUnique({ where: { userName: dto.userName } });
-      if (taken && taken.id !== userId) throw new ConflictException('Username already taken');
+      const taken = await this.prisma.user.findUnique({
+        where: { userName: dto.userName },
+      });
+      if (taken && taken.id !== userId)
+        throw new ConflictException('Username already taken');
     }
-    const user = await this.prisma.user.update({ where: { id: userId }, data: dto, select: PROFILE_SELECT });
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: dto,
+      select: PROFILE_SELECT,
+    });
     return toProfileDto(user);
   }
 
@@ -107,7 +131,11 @@ export class UserService {
         }),
         this.prisma.user.update({
           where: { id: existing.id },
-          data: { phone: null, status: UserStatus.DELETED, deletedAt: new Date() },
+          data: {
+            phone: null,
+            status: UserStatus.DELETED,
+            deletedAt: new Date(),
+          },
         }),
       ]);
     }
@@ -155,7 +183,10 @@ export class UserService {
         otpExpiresAt: null,
         otpAttempts: 0,
         phoneVerifiedAt: new Date(),
-        userType: user.userType === UserType.UNCOMPLETE ? UserType.ACCOUNT : user.userType,
+        userType:
+          user.userType === UserType.UNCOMPLETE
+            ? UserType.ACCOUNT
+            : user.userType,
       },
       select: PROFILE_SELECT,
     });
@@ -175,7 +206,10 @@ export class UserService {
       throw new UnauthorizedException('Current password is incorrect');
     }
     const passwordHash = await bcrypt.hash(dto.newPassword, 10);
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
     return { message: 'Password updated' };
   }
 
@@ -188,7 +222,8 @@ export class UserService {
 
   async stepUpPassword(userId: string, password: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user?.passwordHash) throw new UnauthorizedException('This account has no password');
+    if (!user?.passwordHash)
+      throw new UnauthorizedException('This account has no password');
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Incorrect password');
     await this.markStepUpVerified(userId);
@@ -199,7 +234,9 @@ export class UserService {
     const { googleId } = await this.verifyGoogleIdToken(idToken);
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user?.googleId || user.googleId !== googleId) {
-      throw new UnauthorizedException('Google identity does not match this account');
+      throw new UnauthorizedException(
+        'Google identity does not match this account',
+      );
     }
     await this.markStepUpVerified(userId);
     return { message: 'Identity verified' };
@@ -216,14 +253,23 @@ export class UserService {
       }
       await this.prisma.user.update({
         where: { id: userId },
-        data: { otpCodeHash, otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60_000), otpAttempts: 0 },
+        data: {
+          otpCodeHash,
+          otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60_000),
+          otpAttempts: 0,
+        },
       });
       await this.otpSender.send(user.phone, code);
     } else {
-      if (!user?.email) throw new UnauthorizedException('No email on this account');
+      if (!user?.email)
+        throw new UnauthorizedException('No email on this account');
       await this.prisma.user.update({
         where: { id: userId },
-        data: { otpCodeHash, otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60_000), otpAttempts: 0 },
+        data: {
+          otpCodeHash,
+          otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60_000),
+          otpAttempts: 0,
+        },
       });
       await this.emailSender.send(user.email, 'Code de vérification', code);
     }
@@ -243,7 +289,10 @@ export class UserService {
     }
     const valid = await bcrypt.compare(code, user.otpCodeHash);
     if (!valid) {
-      await this.prisma.user.update({ where: { id: userId }, data: { otpAttempts: { increment: 1 } } });
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { otpAttempts: { increment: 1 } },
+      });
       throw new UnauthorizedException('Invalid code');
     }
     await this.prisma.user.update({
@@ -255,20 +304,27 @@ export class UserService {
   }
 
   private async markStepUpVerified(userId: string) {
-    await this.prisma.user.update({ where: { id: userId }, data: { stepUpVerifiedAt: new Date() } });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { stepUpVerifiedAt: new Date() },
+    });
   }
 
   // Throws unless step-up was completed in the last STEP_UP_TTL_MINUTES —
   // called before any sensitive change (email, or a phone that's already set).
   private assertStepUpFresh(user: { stepUpVerifiedAt: Date | null }) {
     const freshEnough =
-      user.stepUpVerifiedAt && user.stepUpVerifiedAt > new Date(Date.now() - STEP_UP_TTL_MINUTES * 60_000);
+      user.stepUpVerifiedAt &&
+      user.stepUpVerifiedAt >
+        new Date(Date.now() - STEP_UP_TTL_MINUTES * 60_000);
     if (!freshEnough) {
       throw new UnauthorizedException('Please re-verify your identity first');
     }
   }
 
-  private async verifyGoogleIdToken(idToken: string): Promise<{ googleId: string }> {
+  private async verifyGoogleIdToken(
+    idToken: string,
+  ): Promise<{ googleId: string }> {
     const ticket = await this.googleClient.verifyIdToken({
       idToken,
       audience: this.config.get('GOOGLE_CLIENT_ID'),
@@ -288,8 +344,11 @@ export class UserService {
     if (!caller) throw new UnauthorizedException('Account not found');
     this.assertStepUpFresh(caller);
 
-    const taken = await this.prisma.user.findUnique({ where: { email: newEmail } });
-    if (taken && taken.id !== userId) throw new ConflictException('Email already in use');
+    const taken = await this.prisma.user.findUnique({
+      where: { email: newEmail },
+    });
+    if (taken && taken.id !== userId)
+      throw new ConflictException('Email already in use');
 
     const rawToken = randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
@@ -298,11 +357,17 @@ export class UserService {
       data: {
         pendingEmail: newEmail,
         pendingEmailTokenHash: tokenHash,
-        pendingEmailExpiresAt: new Date(Date.now() + PENDING_EMAIL_TTL_MINUTES * 60_000),
+        pendingEmailExpiresAt: new Date(
+          Date.now() + PENDING_EMAIL_TTL_MINUTES * 60_000,
+        ),
       },
     });
     const link = `${this.config.get('FRONTEND_URL')}/confirm-email?token=${rawToken}`;
-    await this.emailSender.send(newEmail, 'Confirme ta nouvelle adresse email', link);
+    await this.emailSender.send(
+      newEmail,
+      'Confirme ta nouvelle adresse email',
+      link,
+    );
     return { message: 'Confirmation link sent to the new email' };
   }
 
@@ -310,13 +375,24 @@ export class UserService {
   // possibly on a different device than the one that requested the change.
   async confirmEmailChange(token: string) {
     const tokenHash = createHash('sha256').update(token).digest('hex');
-    const user = await this.prisma.user.findUnique({ where: { pendingEmailTokenHash: tokenHash } });
-    if (!user?.pendingEmail || !user.pendingEmailExpiresAt || user.pendingEmailExpiresAt < new Date()) {
+    const user = await this.prisma.user.findUnique({
+      where: { pendingEmailTokenHash: tokenHash },
+    });
+    if (
+      !user?.pendingEmail ||
+      !user.pendingEmailExpiresAt ||
+      user.pendingEmailExpiresAt < new Date()
+    ) {
       throw new UnauthorizedException('Invalid or expired confirmation link');
     }
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { email: user.pendingEmail, pendingEmail: null, pendingEmailTokenHash: null, pendingEmailExpiresAt: null },
+      data: {
+        email: user.pendingEmail,
+        pendingEmail: null,
+        pendingEmailTokenHash: null,
+        pendingEmailExpiresAt: null,
+      },
     });
     return { message: 'Email updated' };
   }
@@ -324,7 +400,10 @@ export class UserService {
   // One photo per user, never accumulated: the previous file (if any, and
   // if different from the new one) is removed once the new one is saved.
   async setAvatar(userId: string, filename: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { avatarPath: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarPath: true },
+    });
     if (user?.avatarPath && user.avatarPath !== filename) {
       await unlink(join(AVATAR_DIR, user.avatarPath)).catch(() => {});
     }

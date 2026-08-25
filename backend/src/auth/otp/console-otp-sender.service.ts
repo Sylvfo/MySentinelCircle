@@ -21,7 +21,11 @@ export class ConsoleOtpSenderService implements OtpSender {
       await fetch(`${nosmsnowUrl}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: 'otp', to: phone, body: `Code: ${code}` }),
+        body: JSON.stringify({
+          channel: 'otp',
+          to: phone,
+          body: `Code: ${code}`,
+        }),
         signal: AbortSignal.timeout(2000),
       });
     } catch {

@@ -9,6 +9,14 @@ import { EMAIL_SENDER } from './../src/email/email-sender.interface';
 import { PrismaService } from './../src/prisma/prisma.service';
 import { testEmail, testPhone, testUsername } from './helpers/test-data';
 
+interface UserResponseBody {
+  accessToken?: string;
+  userId?: string;
+  email?: string | null;
+  phone?: string | null;
+  userType?: UserType;
+}
+
 describe('User (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
@@ -24,20 +32,24 @@ describe('User (e2e)', () => {
     })
       .overrideProvider(OTP_SENDER)
       .useValue({
-        send: async (phone: string, code: string) => {
+        send: (phone: string, code: string) => {
           sentOtps.push({ phone, code });
+          return Promise.resolve();
         },
       })
       .overrideProvider(EMAIL_SENDER)
       .useValue({
-        send: async (to: string, subject: string, body: string) => {
+        send: (to: string, subject: string, body: string) => {
           sentEmails.push({ to, subject, body });
+          return Promise.resolve();
         },
       })
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
     prisma = moduleFixture.get(PrismaService);
   });
@@ -53,7 +65,8 @@ describe('User (e2e)', () => {
       .post('/auth/signup/email')
       .send({ firstName: 'Ada', userName: testUsername(), email, password })
       .expect(201);
-    return { accessToken: signupRes.body.accessToken as string, email };
+    const signupBody = signupRes.body as UserResponseBody;
+    return { accessToken: signupBody.accessToken as string, email };
   }
 
   // Signs up with a password AND a phone (goes through OTP verify), so the
@@ -65,14 +78,29 @@ describe('User (e2e)', () => {
     const phone = testPhone();
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({ firstName: 'Ada', userName: testUsername(), email, password, phone })
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email,
+        password,
+        phone,
+      })
       .expect(201);
-    const { userId } = signupRes.body;
+    const signupBody = signupRes.body as UserResponseBody;
     const verifyRes = await request(app.getHttpServer())
       .post('/auth/otp/verify')
-      .send({ userId, code: sentOtps[sentOtps.length - 1].code })
+      .send({
+        userId: signupBody.userId,
+        code: sentOtps[sentOtps.length - 1].code,
+      })
       .expect(201);
-    return { accessToken: verifyRes.body.accessToken as string, email, password, phone };
+    const verifyBody = verifyRes.body as UserResponseBody;
+    return {
+      accessToken: verifyBody.accessToken as string,
+      email,
+      password,
+      phone,
+    };
   }
 
   it('completes an UNCOMPLETE profile with a phone, promoting it to ACCOUNT', async () => {
@@ -82,8 +110,9 @@ describe('User (e2e)', () => {
       .get('/user/me')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
-    expect(meBefore.body.userType).toBe(UserType.UNCOMPLETE);
-    expect(meBefore.body.phone).toBeNull();
+    const meBeforeBody = meBefore.body as UserResponseBody;
+    expect(meBeforeBody.userType).toBe(UserType.UNCOMPLETE);
+    expect(meBeforeBody.phone).toBeNull();
 
     const phone = testPhone();
     await request(app.getHttpServer())
@@ -103,20 +132,29 @@ describe('User (e2e)', () => {
       .get('/user/me')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
-    expect(meAfter.body.userType).toBe(UserType.ACCOUNT);
-    expect(meAfter.body.phone).toBe(phone);
+    const meAfterBody = meAfter.body as UserResponseBody;
+    expect(meAfterBody.userType).toBe(UserType.ACCOUNT);
+    expect(meAfterBody.phone).toBe(phone);
   });
 
   it('claims an existing ONLY_SMS Sentinel stub when adding its phone', async () => {
     const companion = await prisma.user.create({
-      data: { firstName: 'Companion', phone: testPhone(), userType: UserType.ACCOUNT },
+      data: {
+        firstName: 'Companion',
+        phone: testPhone(),
+        userType: UserType.ACCOUNT,
+      },
     });
     const circle = await prisma.circle.create({
       data: { label: 'Test Circle', userCompanionId: companion.id },
     });
     const stubPhone = testPhone();
     const stub = await prisma.user.create({
-      data: { firstName: 'Stub', phone: stubPhone, userType: UserType.ONLY_SMS },
+      data: {
+        firstName: 'Stub',
+        phone: stubPhone,
+        userType: UserType.ONLY_SMS,
+      },
     });
     const link = await prisma.linkSentinels.create({
       data: {
@@ -135,10 +173,14 @@ describe('User (e2e)', () => {
       .send({ phone: stubPhone })
       .expect(201);
 
-    const updatedLink = await prisma.linkSentinels.findUnique({ where: { id: link.id } });
+    const updatedLink = await prisma.linkSentinels.findUnique({
+      where: { id: link.id },
+    });
     expect(updatedLink?.userSentinelId).not.toBe(stub.id);
 
-    const updatedStub = await prisma.user.findUnique({ where: { id: stub.id } });
+    const updatedStub = await prisma.user.findUnique({
+      where: { id: stub.id },
+    });
     expect(updatedStub?.phone).toBeNull();
     expect(updatedStub?.status).toBe('DELETED');
   });
@@ -195,15 +237,20 @@ describe('User (e2e)', () => {
       .get('/user/me')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
-    expect(meBefore.body.email).not.toBe(newEmail);
+    const meBeforeBody = meBefore.body as UserResponseBody;
+    expect(meBeforeBody.email).not.toBe(newEmail);
 
     // public route, no auth header needed
-    await request(app.getHttpServer()).post('/user/confirm-email').send({ token }).expect(201);
+    await request(app.getHttpServer())
+      .post('/user/confirm-email')
+      .send({ token })
+      .expect(201);
 
     const meAfter = await request(app.getHttpServer())
       .get('/user/me')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
-    expect(meAfter.body.email).toBe(newEmail);
+    const meAfterBody = meAfter.body as UserResponseBody;
+    expect(meAfterBody.email).toBe(newEmail);
   });
 });
