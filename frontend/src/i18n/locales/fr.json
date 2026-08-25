@@ -150,6 +150,31 @@
     "status": "Statut du compte",
     "userType": "Type de compte",
     "createdAt": "Créé le",
-    "updatedAt": "Dernière modification"
+    "updatedAt": "Dernière modification",
+    "security": "Sécurité",
+    "changePassword": "Changer le mot de passe",
+    "currentPassword": "Mot de passe actuel",
+    "newPasswordLabel": "Nouveau mot de passe",
+    "confirmNewPassword": "Confirmer le nouveau mot de passe",
+    "passwordMismatch": "Les mots de passe ne correspondent pas",
+    "changePhone": "Changer le numéro de téléphone",
+    "changeEmail": {
+      "title": "Changer l'email",
+      "newEmail": "Nouvelle adresse email",
+      "send": "Envoyer le lien de confirmation",
+      "sent": "Lien de confirmation envoyé. Vérifie la boîte mail de ta nouvelle adresse.",
+      "confirmTitle": "Confirme ta nouvelle adresse email",
+      "confirmDone": "Ton email a été mis à jour. Tu peux maintenant te connecter.",
+      "confirmMissingToken": "Lien de confirmation manquant ou invalide."
+    },
+    "stepUp": {
+      "prompt": "Vérifie d'abord que c'est bien toi.",
+      "usePassword": "Utiliser mon mot de passe",
+      "useGoogle": "Utiliser Google",
+      "useCodePhone": "Envoyer un code par SMS",
+      "useCodeEmail": "Envoyer un code par email",
+      "codeSentPhone": "Un code a été envoyé par SMS.",
+      "codeSentEmail": "Un code a été envoyé par email."
+    }
   }
 }

@@ -150,6 +150,31 @@
     "status": "Account status",
     "userType": "Account type",
     "createdAt": "Created on",
-    "updatedAt": "Last updated"
+    "updatedAt": "Last updated",
+    "security": "Security",
+    "changePassword": "Change password",
+    "currentPassword": "Current password",
+    "newPasswordLabel": "New password",
+    "confirmNewPassword": "Confirm new password",
+    "passwordMismatch": "Passwords don't match",
+    "changePhone": "Change phone number",
+    "changeEmail": {
+      "title": "Change email",
+      "newEmail": "New email address",
+      "send": "Send confirmation link",
+      "sent": "Confirmation link sent. Check the inbox of your new email address.",
+      "confirmTitle": "Confirm your new email",
+      "confirmDone": "Your email has been updated. You can now log in.",
+      "confirmMissingToken": "Missing or invalid confirmation link."
+    },
+    "stepUp": {
+      "prompt": "Verify it's really you first.",
+      "usePassword": "Use my password",
+      "useGoogle": "Use Google",
+      "useCodePhone": "Send a code to my phone",
+      "useCodeEmail": "Send a code to my email",
+      "codeSentPhone": "A code was sent to your phone.",
+      "codeSentEmail": "A code was sent to your email."
+    }
   }
 }

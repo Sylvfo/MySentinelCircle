@@ -1,13 +1,27 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../api/client';
-import { fetchMe, requestAddPhone, updateProfile, uploadAvatar, verifyAddPhone, type Me } from '../api/user';
+import {
+  changePassword,
+  fetchMe,
+  requestAddPhone,
+  requestEmailChange,
+  updateProfile,
+  uploadAvatar,
+  verifyAddPhone,
+  type Me,
+} from '../api/user';
+import { Modal } from '../components/Modal';
+import { StepUpPanel } from '../components/StepUp';
 
 export function SettingsPage() {
   const { t } = useTranslation();
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
 
   const reload = async () => {
     setError(null);
@@ -32,6 +46,49 @@ export function SettingsPage() {
 
       <AvatarPanel me={me} onChange={reload} onError={setError} />
       <ProfileInfoPanel me={me} onChange={reload} onError={setError} />
+
+      {(me.hasPassword || me.email) && (
+        <section className="panel">
+          <h2>{t('settings.security')}</h2>
+          <div className="row">
+            {me.hasPassword && (
+              <button type="button" onClick={() => setShowPasswordModal(true)}>
+                {t('settings.changePassword')}
+              </button>
+            )}
+            {me.email && (
+              <button type="button" onClick={() => setShowEmailModal(true)}>
+                {t('settings.changeEmail.title')}
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+
+      {showPasswordModal && (
+        <Modal title={t('settings.changePassword')} onClose={() => setShowPasswordModal(false)}>
+          <ChangePasswordForm onDone={() => setShowPasswordModal(false)} onError={setError} />
+        </Modal>
+      )}
+
+      {showEmailModal && (
+        <Modal title={t('settings.changeEmail.title')} onClose={() => setShowEmailModal(false)}>
+          <ChangeEmailFlow me={me} onError={setError} />
+        </Modal>
+      )}
+
+      {showPhoneModal && (
+        <Modal title={t('settings.changePhone')} onClose={() => setShowPhoneModal(false)}>
+          <ChangePhoneFlow
+            me={me}
+            onChange={() => {
+              reload();
+              setShowPhoneModal(false);
+            }}
+            onError={setError}
+          />
+        </Modal>
+      )}
 
       <section className="panel">
         <h2>{t('settings.editable')}</h2>
@@ -60,6 +117,9 @@ export function SettingsPage() {
           <div>
             <label>{t('settings.phone')}</label>
             <p>{me.phone}</p>
+            <button type="button" onClick={() => setShowPhoneModal(true)}>
+              {t('settings.changePhone')}
+            </button>
           </div>
         ) : (
           <AddPhonePanel onChange={reload} onError={setError} />
@@ -328,5 +388,131 @@ function AddPhonePanel({ onChange, onError }: { onChange: () => void; onError: (
         </form>
       )}
     </div>
+  );
+}
+
+function ChangeEmailFlow({ me, onError }: { me: Me; onError: (m: string) => void }) {
+  const { t } = useTranslation();
+  const [verified, setVerified] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [sent, setSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await requestEmailChange(newEmail.trim());
+      setSent(true);
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!verified) {
+    return <StepUpPanel me={me} onVerified={() => setVerified(true)} onError={onError} />;
+  }
+
+  if (sent) {
+    return <p>{t('settings.changeEmail.sent')}</p>;
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <label>
+        {t('settings.changeEmail.newEmail')}
+        <input type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+      </label>
+      <button type="submit" disabled={submitting}>
+        {t('settings.changeEmail.send')}
+      </button>
+    </form>
+  );
+}
+
+function ChangePhoneFlow({
+  me,
+  onChange,
+  onError,
+}: {
+  me: Me;
+  onChange: () => void;
+  onError: (m: string) => void;
+}) {
+  const [verified, setVerified] = useState(false);
+
+  if (!verified) {
+    return <StepUpPanel me={me} onVerified={() => setVerified(true)} onError={onError} />;
+  }
+
+  return <AddPhonePanel onChange={onChange} onError={onError} />;
+}
+
+function ChangePasswordForm({ onDone, onError }: { onDone: () => void; onError: (m: string) => void }) {
+  const { t } = useTranslation();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setLocalError(null);
+    if (newPassword !== confirmPassword) {
+      setLocalError(t('settings.passwordMismatch'));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      onDone();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : String(err);
+      setLocalError(message);
+      onError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <label>
+        {t('settings.currentPassword')}
+        <input
+          type="password"
+          required
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+        />
+      </label>
+      <label>
+        {t('settings.newPasswordLabel')}
+        <input
+          type="password"
+          required
+          minLength={8}
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+        />
+      </label>
+      <label>
+        {t('settings.confirmNewPassword')}
+        <input
+          type="password"
+          required
+          minLength={8}
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+        />
+      </label>
+      {localError && <p className="form-error">{localError}</p>}
+      <button type="submit" disabled={submitting}>
+        {t('common.save')}
+      </button>
+    </form>
   );
 }
