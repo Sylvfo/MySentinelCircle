@@ -46,6 +46,7 @@ enum CircleType {
   BASIC
   FIRST
   ORGANISATION
+  RESERVED
 }
 
 enum CircleStatus {
@@ -187,6 +188,8 @@ model LinkSentinels {
   userSentinelId  String
   userCompanionId String
   circleId    String
+  proposedCircleId String?   // set only while awaiting consent to move into the 1st circle
+
 
   linkAsSentinel User   @relation("LinkAsSentinel", fields: [userSentinelId], references: [id], onDelete: Restrict)
   userCompanion      User   @relation("SentinelCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)

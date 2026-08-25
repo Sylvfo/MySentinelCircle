@@ -1,8 +1,8 @@
 ## Database Schema
 
-Updated: 2026-08-24 15:17
+Updated: 2026-08-25
 
-> Reflète l'état actuel de `schema.prisma` (branche `implement-testing`).
+> Reflète l'état actuel de `schema.prisma` (branche `sms-like-programm`).
 
 Modèles actifs : `User`, `Circle`, `LinkSentinels`, `LinkSentinelsEvent`, `Alert`, `AlertParticipant`, `Conversation`, `ConversationParticipant`, `Message`.
 Principe central : rien n'est jamais vraiment supprimé — `User`/`Circle`/`LinkSentinels` se ferment ou s'anonymisent, mais restent référençables pour toujours. Pas de tables-copies (`CircleAlert`/`LinkSentinelAlert` n'existent plus), pas de journal d'événements séparé (`AlertEvent` a été remplacé par des timestamps d'étape directement sur `Alert`).
@@ -48,6 +48,7 @@ erDiagram
     string sentinelId FK
     string companionId FK
     string circleId FK
+    string proposedCircleId
     enum   status
     enum   sentinelType
     enum   initiatedBy
@@ -134,6 +135,7 @@ erDiagram
     string sentinelId FK
     string companionId FK
     string circleId FK
+    string proposedCircleId
     enum   status
     enum   sentinelType
   }
@@ -223,6 +225,8 @@ erDiagram
 - `MyAlertsAsCompanion` : les alertes que ce `User` a déclenchées.
 - `firstCircle` sur `Alert` pointe directement sur `Circle` (permanent) — plus besoin de snapshot.
 - `Alert.launchedBy`/`closedBy` pointent directement sur `User` — couvre aussi bien le cas où c'est le companion lui-même (`AlertType.BYCOMPANION`) que le cas où c'est une sentinelle.
+- `circleType` (`BASIC | FIRST | ORGANISATION | RESERVED`) : `FIRST` et `RESERVED` sont tous deux gérés automatiquement (un seul par companion, créé à la demande, jamais supprimable). `RESERVED` regroupe les liens `LinkSentinels` acceptés mais pas actuellement dans un cercle réel — une sentinelle mise en pause, ou les survivantes d'un cercle supprimé (`deleteCircle` les y déplace au lieu de bloquer la suppression). Une sentinelle n'y atterrit jamais directement à la création (invitation ou demande) — seulement par déplacement manuel ou suppression de cercle.
+- `LinkSentinels.proposedCircleId` : référence transitoire (pas une vraie relation Prisma, comme `AlertParticipant.circleId`/`circleName`) posée par `updateMembership` quand "Me" déplace une sentinelle déjà acceptée vers le 1er cercle — le lien reste actif dans son cercle actuel le temps que la sentinelle réponde (`respondToCircleMove`, ou OUI/NON par SMS). Accepté : `circleId` devient `proposedCircleId`, qui repasse à `null`. Refusé : `proposedCircleId` repasse juste à `null`, rien d'autre ne change. Déplacer vers n'importe quel autre cercle (`BASIC`/`RESERVED`) reste immédiat, sans consentement — juste une notification.
 
 ---
 
@@ -260,6 +264,7 @@ erDiagram
     string sentinelId FK
     string companionId FK
     string circleId FK
+    string proposedCircleId
     enum   status
     enum   sentinelType
   }
