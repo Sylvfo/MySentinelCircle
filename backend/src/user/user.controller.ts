@@ -9,6 +9,12 @@ import { UserService, AVATAR_DIR } from './user.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AddPhoneDto } from './dto/add-phone.dto';
 import { VerifyAddPhoneDto } from './dto/verify-add-phone.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { StepUpPasswordDto } from './dto/step-up-password.dto';
+import { StepUpGoogleDto } from './dto/step-up-google.dto';
+import { StepUpCodeRequestDto } from './dto/step-up-code-request.dto';
+import { StepUpCodeVerifyDto } from './dto/step-up-code-verify.dto';
+import { ChangeEmailRequestDto } from './dto/change-email-request.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -41,6 +47,42 @@ export class UserController {
   @Post('phone/verify')
   verifyAddPhone(@CurrentUser() user: { userId: string }, @Body() dto: VerifyAddPhoneDto) {
     return this.userService.verifyAddPhone(user.userId, dto.code);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('me/change-password')
+  changePassword(@CurrentUser() user: { userId: string }, @Body() dto: ChangePasswordDto) {
+    return this.userService.changePassword(user.userId, dto);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('me/step-up/password')
+  stepUpPassword(@CurrentUser() user: { userId: string }, @Body() dto: StepUpPasswordDto) {
+    return this.userService.stepUpPassword(user.userId, dto.password);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('me/step-up/google')
+  stepUpGoogle(@CurrentUser() user: { userId: string }, @Body() dto: StepUpGoogleDto) {
+    return this.userService.stepUpGoogle(user.userId, dto.idToken);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('me/step-up/code/request')
+  stepUpCodeRequest(@CurrentUser() user: { userId: string }, @Body() dto: StepUpCodeRequestDto) {
+    return this.userService.stepUpCodeRequest(user.userId, dto);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('me/step-up/code/verify')
+  stepUpCodeVerify(@CurrentUser() user: { userId: string }, @Body() dto: StepUpCodeVerifyDto) {
+    return this.userService.stepUpCodeVerify(user.userId, dto.code);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('me/change-email/request')
+  requestEmailChange(@CurrentUser() user: { userId: string }, @Body() dto: ChangeEmailRequestDto) {
+    return this.userService.requestEmailChange(user.userId, dto.newEmail);
   }
 
   @Post('me/avatar')

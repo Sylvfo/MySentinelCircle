@@ -124,7 +124,7 @@ describe('Auth (e2e)', () => {
     expect(sentOtps).toHaveLength(0);
 
     const meRes = await request(app.getHttpServer())
-      .get('/auth/me')
+      .get('/user/me')
       .set('Authorization', `Bearer ${signupRes.body.accessToken}`)
       .expect(200);
     expect(meRes.body.email).toBe(email);

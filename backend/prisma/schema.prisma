@@ -108,6 +108,10 @@ model User {
   passwordHash String?
   googleId     String? @unique
   avatarPath String?
+  stepUpVerifiedAt        DateTime?
+  pendingEmail             String?
+  pendingEmailTokenHash    String?   @unique
+  pendingEmailExpiresAt    DateTime?  
 
   phone           String? @unique
   phoneVerifiedAt DateTime?
