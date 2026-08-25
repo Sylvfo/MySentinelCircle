@@ -15,7 +15,9 @@
         "Edit(procedures.txt)",
         "Edit(.claude/**)",
         "Write(.claude/**)",
-        "Bash(npm prisma)"
+        "Bash(npm prisma)",
+        "Edit(/backend/src/auth)",
+        "Write(/backend/src/auth)"
     ],
     "deny": [
       "Edit(backend/prisma/schema.prisma)",
