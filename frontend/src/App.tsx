@@ -7,6 +7,7 @@ import { SignupPage } from './pages/SignupPage';
 import { OtpVerifyPage } from './pages/OtpVerifyPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { ConfirmEmailChangePage } from './pages/ConfirmEmailChangePage';
 import { DashboardPage } from './pages/DashboardPage';
 import { CirclesPage } from './pages/CirclesPage';
 import { CompanionsPage } from './pages/CompanionsPage';
@@ -23,6 +24,7 @@ function App() {
         <Route path="/otp" element={<OtpVerifyPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/confirm-email" element={<ConfirmEmailChangePage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
