@@ -42,7 +42,10 @@ describe('UserService', () => {
 
   describe('updateProfile', () => {
     it('rejects when the caller already has a username set', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', userName: 'already-set' });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        userName: 'already-set',
+      });
 
       await expect(
         service.updateProfile('my-id', { userName: 'new-name' }),
@@ -51,8 +54,14 @@ describe('UserService', () => {
     });
 
     it('rejects when the username is already taken by someone else', async () => {
-      prisma.user.findUnique.mockResolvedValueOnce({ id: 'my-id', userName: null }); // current user check
-      prisma.user.findUnique.mockResolvedValueOnce({ id: 'other-id', userName: 'ada123' }); // taken check
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'my-id',
+        userName: null,
+      }); // current user check
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'other-id',
+        userName: 'ada123',
+      }); // taken check
 
       await expect(
         service.updateProfile('my-id', { userName: 'ada123' }),
@@ -61,37 +70,74 @@ describe('UserService', () => {
     });
 
     it('allows setting the username when the account has none yet', async () => {
-      prisma.user.findUnique.mockResolvedValueOnce({ id: 'my-id', userName: null }); // current user check
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'my-id',
+        userName: null,
+      }); // current user check
       prisma.user.findUnique.mockResolvedValueOnce(null); // taken check
-      prisma.user.update.mockResolvedValue({ id: 'my-id', userName: 'ada123', passwordHash: null, googleId: null });
+      prisma.user.update.mockResolvedValue({
+        id: 'my-id',
+        userName: 'ada123',
+        passwordHash: null,
+        googleId: null,
+      });
 
-      const result = await service.updateProfile('my-id', { userName: 'ada123' });
+      const result = await service.updateProfile('my-id', {
+        userName: 'ada123',
+      });
 
       expect(prisma.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'my-id' }, data: { userName: 'ada123' } }),
+        expect.objectContaining({
+          where: { id: 'my-id' },
+          data: { userName: 'ada123' },
+        }),
       );
-      expect(result).toEqual({ id: 'my-id', userName: 'ada123', hasPassword: false, hasGoogle: false });
+      expect(result).toEqual({
+        id: 'my-id',
+        userName: 'ada123',
+        hasPassword: false,
+        hasGoogle: false,
+      });
     });
 
     it('updates the profile on success', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
-      prisma.user.update.mockResolvedValue({ id: 'my-id', firstName: 'Ada', passwordHash: null, googleId: null });
+      prisma.user.update.mockResolvedValue({
+        id: 'my-id',
+        firstName: 'Ada',
+        passwordHash: null,
+        googleId: null,
+      });
 
       const result = await service.updateProfile('my-id', { firstName: 'Ada' });
 
       expect(prisma.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'my-id' }, data: { firstName: 'Ada' } }),
+        expect.objectContaining({
+          where: { id: 'my-id' },
+          data: { firstName: 'Ada' },
+        }),
       );
-      expect(result).toEqual({ id: 'my-id', firstName: 'Ada', hasPassword: false, hasGoogle: false });
+      expect(result).toEqual({
+        id: 'my-id',
+        firstName: 'Ada',
+        hasPassword: false,
+        hasGoogle: false,
+      });
     });
   });
 
   describe('changePassword', () => {
     it('rejects when the account has no password to change', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', passwordHash: null });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        passwordHash: null,
+      });
 
       await expect(
-        service.changePassword('my-id', { currentPassword: 'whatever', newPassword: 'newpassword1' }),
+        service.changePassword('my-id', {
+          currentPassword: 'whatever',
+          newPassword: 'newpassword1',
+        }),
       ).rejects.toThrow(UnauthorizedException);
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
@@ -101,7 +147,10 @@ describe('UserService', () => {
       prisma.user.findUnique.mockResolvedValue({ id: 'my-id', passwordHash });
 
       await expect(
-        service.changePassword('my-id', { currentPassword: 'wrong-password', newPassword: 'newpassword1' }),
+        service.changePassword('my-id', {
+          currentPassword: 'wrong-password',
+          newPassword: 'newpassword1',
+        }),
       ).rejects.toThrow(UnauthorizedException);
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
@@ -125,9 +174,14 @@ describe('UserService', () => {
 
   describe('requestAddPhone', () => {
     it('rejects when the phone belongs to a real account', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'other-id', userType: UserType.ACCOUNT });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'other-id',
+        userType: UserType.ACCOUNT,
+      });
 
-      await expect(service.requestAddPhone('my-id', '+33600000000')).rejects.toThrow(ConflictException);
+      await expect(
+        service.requestAddPhone('my-id', '+33600000000'),
+      ).rejects.toThrow(ConflictException);
       expect(otpSender.send).not.toHaveBeenCalled();
     });
 
@@ -143,7 +197,10 @@ describe('UserService', () => {
           data: expect.objectContaining({ phone: '+33600000000' }),
         }),
       );
-      expect(otpSender.send).toHaveBeenCalledWith('+33600000000', expect.any(String));
+      expect(otpSender.send).toHaveBeenCalledWith(
+        '+33600000000',
+        expect.any(String),
+      );
       expect(result).toEqual({ message: 'Code sent' });
     });
 
@@ -162,7 +219,11 @@ describe('UserService', () => {
       });
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'stub-id' },
-        data: { phone: null, status: UserStatus.DELETED, deletedAt: expect.any(Date) },
+        data: {
+          phone: null,
+          status: UserStatus.DELETED,
+          deletedAt: expect.any(Date),
+        },
       });
       // and the caller's own row still gets the phone + OTP
       expect(prisma.user.update).toHaveBeenCalledWith(
@@ -176,9 +237,14 @@ describe('UserService', () => {
 
   describe('verifyAddPhone', () => {
     it('rejects when there is no pending code', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', otpCodeHash: null });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        otpCodeHash: null,
+      });
 
-      await expect(service.verifyAddPhone('my-id', '123456')).rejects.toThrow(UnauthorizedException);
+      await expect(service.verifyAddPhone('my-id', '123456')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('rejects after too many attempts', async () => {
@@ -189,7 +255,9 @@ describe('UserService', () => {
         otpAttempts: 5,
       });
 
-      await expect(service.verifyAddPhone('my-id', '123456')).rejects.toThrow(UnauthorizedException);
+      await expect(service.verifyAddPhone('my-id', '123456')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('rejects an expired code', async () => {
@@ -200,7 +268,9 @@ describe('UserService', () => {
         otpAttempts: 0,
       });
 
-      await expect(service.verifyAddPhone('my-id', '123456')).rejects.toThrow(UnauthorizedException);
+      await expect(service.verifyAddPhone('my-id', '123456')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('rejects a wrong code and increments otpAttempts', async () => {
@@ -212,7 +282,9 @@ describe('UserService', () => {
         otpAttempts: 0,
       });
 
-      await expect(service.verifyAddPhone('my-id', '000000')).rejects.toThrow(UnauthorizedException);
+      await expect(service.verifyAddPhone('my-id', '000000')).rejects.toThrow(
+        UnauthorizedException,
+      );
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'my-id' },
         data: { otpAttempts: { increment: 1 } },
@@ -228,7 +300,12 @@ describe('UserService', () => {
         otpAttempts: 0,
         userType: UserType.UNCOMPLETE,
       });
-      prisma.user.update.mockResolvedValue({ id: 'my-id', userType: UserType.ACCOUNT, passwordHash: null, googleId: null });
+      prisma.user.update.mockResolvedValue({
+        id: 'my-id',
+        userType: UserType.ACCOUNT,
+        passwordHash: null,
+        googleId: null,
+      });
 
       const result = await service.verifyAddPhone('my-id', '123456');
 
@@ -238,7 +315,12 @@ describe('UserService', () => {
           data: expect.objectContaining({ userType: UserType.ACCOUNT }),
         }),
       );
-      expect(result).toEqual({ id: 'my-id', userType: UserType.ACCOUNT, hasPassword: false, hasGoogle: false });
+      expect(result).toEqual({
+        id: 'my-id',
+        userType: UserType.ACCOUNT,
+        hasPassword: false,
+        hasGoogle: false,
+      });
     });
 
     it('does not change userType when it was already something other than UNCOMPLETE', async () => {
@@ -250,21 +332,32 @@ describe('UserService', () => {
         otpAttempts: 0,
         userType: UserType.ACCOUNT,
       });
-      prisma.user.update.mockResolvedValue({ id: 'my-id', userType: UserType.ACCOUNT });
+      prisma.user.update.mockResolvedValue({
+        id: 'my-id',
+        userType: UserType.ACCOUNT,
+      });
 
       await service.verifyAddPhone('my-id', '123456');
 
       expect(prisma.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ userType: UserType.ACCOUNT }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ userType: UserType.ACCOUNT }),
+        }),
       );
     });
   });
 
   describe('requestAddPhone — step-up required when changing an existing phone', () => {
     it('rejects when the caller already has a phone and step-up is not fresh', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', phone: '+33600000001', stepUpVerifiedAt: null });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        phone: '+33600000001',
+        stepUpVerifiedAt: null,
+      });
 
-      await expect(service.requestAddPhone('my-id', '+33600000002')).rejects.toThrow(UnauthorizedException);
+      await expect(
+        service.requestAddPhone('my-id', '+33600000002'),
+      ).rejects.toThrow(UnauthorizedException);
       expect(otpSender.send).not.toHaveBeenCalled();
     });
 
@@ -279,22 +372,32 @@ describe('UserService', () => {
 
       await service.requestAddPhone('my-id', '+33600000002');
 
-      expect(otpSender.send).toHaveBeenCalledWith('+33600000002', expect.any(String));
+      expect(otpSender.send).toHaveBeenCalledWith(
+        '+33600000002',
+        expect.any(String),
+      );
     });
   });
 
   describe('stepUpPassword', () => {
     it('rejects when the account has no password', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', passwordHash: null });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        passwordHash: null,
+      });
 
-      await expect(service.stepUpPassword('my-id', 'whatever')).rejects.toThrow(UnauthorizedException);
+      await expect(service.stepUpPassword('my-id', 'whatever')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('rejects on a wrong password', async () => {
       const passwordHash = await bcrypt.hash('correct-password', 10);
       prisma.user.findUnique.mockResolvedValue({ id: 'my-id', passwordHash });
 
-      await expect(service.stepUpPassword('my-id', 'wrong-password')).rejects.toThrow(UnauthorizedException);
+      await expect(
+        service.stepUpPassword('my-id', 'wrong-password'),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('marks the account step-up verified on success', async () => {
@@ -314,22 +417,38 @@ describe('UserService', () => {
 
   describe('stepUpGoogle', () => {
     it('rejects when the account has no linked Google identity', async () => {
-      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({ googleId: 'google-123' });
+      jest
+        .spyOn(service as any, 'verifyGoogleIdToken')
+        .mockResolvedValue({ googleId: 'google-123' });
       prisma.user.findUnique.mockResolvedValue({ id: 'my-id', googleId: null });
 
-      await expect(service.stepUpGoogle('my-id', 'fake-token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.stepUpGoogle('my-id', 'fake-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('rejects when the token is for a different Google identity', async () => {
-      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({ googleId: 'google-123' });
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', googleId: 'google-456' });
+      jest
+        .spyOn(service as any, 'verifyGoogleIdToken')
+        .mockResolvedValue({ googleId: 'google-123' });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        googleId: 'google-456',
+      });
 
-      await expect(service.stepUpGoogle('my-id', 'fake-token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.stepUpGoogle('my-id', 'fake-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('marks the account step-up verified on success', async () => {
-      jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({ googleId: 'google-123' });
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', googleId: 'google-123' });
+      jest
+        .spyOn(service as any, 'verifyGoogleIdToken')
+        .mockResolvedValue({ googleId: 'google-123' });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        googleId: 'google-123',
+      });
       prisma.user.update.mockResolvedValue({});
 
       const result = await service.stepUpGoogle('my-id', 'fake-token');
@@ -344,47 +463,70 @@ describe('UserService', () => {
 
   describe('stepUpCodeRequest', () => {
     it('rejects the phone channel when there is no verified phone', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', phone: null, phoneVerifiedAt: null });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        phone: null,
+        phoneVerifiedAt: null,
+      });
 
-      await expect(service.stepUpCodeRequest('my-id', { channel: 'phone' })).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.stepUpCodeRequest('my-id', { channel: 'phone' }),
+      ).rejects.toThrow(UnauthorizedException);
       expect(otpSender.send).not.toHaveBeenCalled();
     });
 
     it('rejects the email channel when there is no email', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 'my-id', email: null });
 
-      await expect(service.stepUpCodeRequest('my-id', { channel: 'email' })).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.stepUpCodeRequest('my-id', { channel: 'email' }),
+      ).rejects.toThrow(UnauthorizedException);
       expect(emailSender.send).not.toHaveBeenCalled();
     });
 
     it('sends a code to the current phone', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', phone: '+33600000000', phoneVerifiedAt: new Date() });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        phone: '+33600000000',
+        phoneVerifiedAt: new Date(),
+      });
       prisma.user.update.mockResolvedValue({});
 
       await service.stepUpCodeRequest('my-id', { channel: 'phone' });
 
-      expect(otpSender.send).toHaveBeenCalledWith('+33600000000', expect.any(String));
+      expect(otpSender.send).toHaveBeenCalledWith(
+        '+33600000000',
+        expect.any(String),
+      );
     });
 
     it('sends a code to the current email', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', email: 'ada@example.com' });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        email: 'ada@example.com',
+      });
       prisma.user.update.mockResolvedValue({});
 
       await service.stepUpCodeRequest('my-id', { channel: 'email' });
 
-      expect(emailSender.send).toHaveBeenCalledWith('ada@example.com', expect.any(String), expect.any(String));
+      expect(emailSender.send).toHaveBeenCalledWith(
+        'ada@example.com',
+        expect.any(String),
+        expect.any(String),
+      );
     });
   });
 
   describe('stepUpCodeVerify', () => {
     it('rejects when there is no pending code', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', otpCodeHash: null });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        otpCodeHash: null,
+      });
 
-      await expect(service.stepUpCodeVerify('my-id', '123456')).rejects.toThrow(UnauthorizedException);
+      await expect(service.stepUpCodeVerify('my-id', '123456')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('rejects a wrong code and increments otpAttempts', async () => {
@@ -396,7 +538,9 @@ describe('UserService', () => {
         otpAttempts: 0,
       });
 
-      await expect(service.stepUpCodeVerify('my-id', '000000')).rejects.toThrow(UnauthorizedException);
+      await expect(service.stepUpCodeVerify('my-id', '000000')).rejects.toThrow(
+        UnauthorizedException,
+      );
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'my-id' },
         data: { otpAttempts: { increment: 1 } },
@@ -425,35 +569,58 @@ describe('UserService', () => {
 
   describe('requestEmailChange', () => {
     it('rejects when step-up is not fresh', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'my-id', stepUpVerifiedAt: null });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        stepUpVerifiedAt: null,
+      });
 
-      await expect(service.requestEmailChange('my-id', 'new@example.com')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.requestEmailChange('my-id', 'new@example.com'),
+      ).rejects.toThrow(UnauthorizedException);
       expect(emailSender.send).not.toHaveBeenCalled();
     });
 
     it('rejects when the new email is already in use', async () => {
-      prisma.user.findUnique.mockResolvedValueOnce({ id: 'my-id', stepUpVerifiedAt: new Date() }); // caller
-      prisma.user.findUnique.mockResolvedValueOnce({ id: 'other-id', email: 'new@example.com' }); // taken check
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'my-id',
+        stepUpVerifiedAt: new Date(),
+      }); // caller
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'other-id',
+        email: 'new@example.com',
+      }); // taken check
 
-      await expect(service.requestEmailChange('my-id', 'new@example.com')).rejects.toThrow(ConflictException);
+      await expect(
+        service.requestEmailChange('my-id', 'new@example.com'),
+      ).rejects.toThrow(ConflictException);
       expect(emailSender.send).not.toHaveBeenCalled();
     });
 
     it('stores the pending email and sends a confirmation link on success', async () => {
-      prisma.user.findUnique.mockResolvedValueOnce({ id: 'my-id', stepUpVerifiedAt: new Date() }); // caller
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'my-id',
+        stepUpVerifiedAt: new Date(),
+      }); // caller
       prisma.user.findUnique.mockResolvedValueOnce(null); // taken check
       prisma.user.update.mockResolvedValue({});
 
-      const result = await service.requestEmailChange('my-id', 'new@example.com');
+      const result = await service.requestEmailChange(
+        'my-id',
+        'new@example.com',
+      );
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'my-id' },
         data: expect.objectContaining({ pendingEmail: 'new@example.com' }),
       });
-      expect(emailSender.send).toHaveBeenCalledWith('new@example.com', expect.any(String), expect.any(String));
-      expect(result).toEqual({ message: 'Confirmation link sent to the new email' });
+      expect(emailSender.send).toHaveBeenCalledWith(
+        'new@example.com',
+        expect.any(String),
+        expect.any(String),
+      );
+      expect(result).toEqual({
+        message: 'Confirmation link sent to the new email',
+      });
     });
   });
 
@@ -461,7 +628,9 @@ describe('UserService', () => {
     it('rejects an unknown or expired token', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.confirmEmailChange('bad-token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.confirmEmailChange('bad-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('rejects an expired pending email request', async () => {
@@ -471,7 +640,9 @@ describe('UserService', () => {
         pendingEmailExpiresAt: new Date(Date.now() - 60_000),
       });
 
-      await expect(service.confirmEmailChange('some-token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.confirmEmailChange('some-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('applies the pending email on success', async () => {
@@ -486,7 +657,12 @@ describe('UserService', () => {
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'my-id' },
-        data: { email: 'new@example.com', pendingEmail: null, pendingEmailTokenHash: null, pendingEmailExpiresAt: null },
+        data: {
+          email: 'new@example.com',
+          pendingEmail: null,
+          pendingEmailTokenHash: null,
+          pendingEmailExpiresAt: null,
+        },
       });
       expect(result).toEqual({ message: 'Email updated' });
     });

@@ -7,6 +7,13 @@ import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from './../src/email/email-sender.interface';
 import { testEmail, testPhone, testUsername } from './helpers/test-data';
 
+interface AuthResponseBody {
+  accessToken?: string;
+  userId?: string;
+  email?: string | null;
+  phone?: string | null;
+}
+
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
   let sentOtps: { phone: string; code: string }[];
@@ -21,20 +28,24 @@ describe('Auth (e2e)', () => {
     })
       .overrideProvider(OTP_SENDER)
       .useValue({
-        send: async (phone: string, code: string) => {
+        send: (phone: string, code: string) => {
           sentOtps.push({ phone, code });
+          return Promise.resolve();
         },
       })
       .overrideProvider(EMAIL_SENDER)
       .useValue({
-        send: async (to: string, subject: string, body: string) => {
+        send: (to: string, subject: string, body: string) => {
           sentEmails.push({ to, subject, body });
+          return Promise.resolve();
         },
       })
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   });
 
@@ -49,28 +60,31 @@ describe('Auth (e2e)', () => {
       .post('/auth/signup/phone')
       .send({ firstName: 'Ada', phone })
       .expect(201);
-    const { userId } = signupRes.body;
-    expect(userId).toBeDefined();
+    const signupBody = signupRes.body as AuthResponseBody;
+    expect(signupBody.userId).toBeDefined();
     expect(sentOtps).toHaveLength(1);
 
     const verifyRes = await request(app.getHttpServer())
       .post('/auth/otp/verify')
-      .send({ userId, code: sentOtps[0].code })
+      .send({ userId: signupBody.userId, code: sentOtps[0].code })
       .expect(201);
-    expect(verifyRes.body.accessToken).toBeDefined();
+    const verifyBody = verifyRes.body as AuthResponseBody;
+    expect(verifyBody.accessToken).toBeDefined();
 
     const loginRequestRes = await request(app.getHttpServer())
       .post('/auth/otp/request')
       .send({ phone })
       .expect(201);
-    expect(loginRequestRes.body.userId).toBe(userId);
+    const loginRequestBody = loginRequestRes.body as AuthResponseBody;
+    expect(loginRequestBody.userId).toBe(signupBody.userId);
     expect(sentOtps).toHaveLength(2);
 
     const loginVerifyRes = await request(app.getHttpServer())
       .post('/auth/otp/verify')
-      .send({ userId, code: sentOtps[1].code })
+      .send({ userId: signupBody.userId, code: sentOtps[1].code })
       .expect(201);
-    expect(loginVerifyRes.body.accessToken).toBeDefined();
+    const loginVerifyBody = loginVerifyRes.body as AuthResponseBody;
+    expect(loginVerifyBody.accessToken).toBeDefined();
   });
 
   it('rejects a second signup with an already-claimed phone', async () => {
@@ -94,21 +108,28 @@ describe('Auth (e2e)', () => {
 
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({ firstName: 'Ada', userName: testUsername(), email, password, phone })
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email,
+        password,
+        phone,
+      })
       .expect(201);
-    const { userId } = signupRes.body;
+    const signupBody = signupRes.body as AuthResponseBody;
     expect(sentOtps).toHaveLength(1);
 
     await request(app.getHttpServer())
       .post('/auth/otp/verify')
-      .send({ userId, code: sentOtps[0].code })
+      .send({ userId: signupBody.userId, code: sentOtps[0].code })
       .expect(201);
 
     const loginRes = await request(app.getHttpServer())
       .post('/auth/login/email')
       .send({ email, password })
       .expect(201);
-    expect(loginRes.body.accessToken).toBeDefined();
+    const loginBody = loginRes.body as AuthResponseBody;
+    expect(loginBody.accessToken).toBeDefined();
   });
 
   it('signs up by email with no phone, gets an access token immediately, and can call a protected route', async () => {
@@ -120,22 +141,25 @@ describe('Auth (e2e)', () => {
       .post('/auth/signup/email')
       .send({ firstName: 'Ada', userName, email, password })
       .expect(201);
-    expect(signupRes.body.accessToken).toBeDefined();
+    const signupBody = signupRes.body as AuthResponseBody;
+    expect(signupBody.accessToken).toBeDefined();
     expect(sentOtps).toHaveLength(0);
 
     const meRes = await request(app.getHttpServer())
       .get('/user/me')
-      .set('Authorization', `Bearer ${signupRes.body.accessToken}`)
+      .set('Authorization', `Bearer ${signupBody.accessToken}`)
       .expect(200);
-    expect(meRes.body.email).toBe(email);
-    expect(meRes.body.phone).toBeNull();
+    const meBody = meRes.body as AuthResponseBody;
+    expect(meBody.email).toBe(email);
+    expect(meBody.phone).toBeNull();
 
     // logging back in works too, despite phoneVerifiedAt never being set
     const loginRes = await request(app.getHttpServer())
       .post('/auth/login/email')
       .send({ email, password })
       .expect(201);
-    expect(loginRes.body.accessToken).toBeDefined();
+    const loginBody = loginRes.body as AuthResponseBody;
+    expect(loginBody.accessToken).toBeDefined();
   });
 
   it('resets a forgotten password end-to-end and logs in with the new one', async () => {
@@ -146,12 +170,18 @@ describe('Auth (e2e)', () => {
 
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({ firstName: 'Ada', userName: testUsername(), email, password, phone })
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email,
+        password,
+        phone,
+      })
       .expect(201);
-    const { userId } = signupRes.body;
+    const signupBody = signupRes.body as AuthResponseBody;
     await request(app.getHttpServer())
       .post('/auth/otp/verify')
-      .send({ userId, code: sentOtps[0].code })
+      .send({ userId: signupBody.userId, code: sentOtps[0].code })
       .expect(201);
 
     await request(app.getHttpServer())

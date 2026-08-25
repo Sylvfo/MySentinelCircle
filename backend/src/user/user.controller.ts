@@ -1,4 +1,14 @@
-import { BadRequestException, Body, Controller, Get, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { diskStorage } from 'multer';
@@ -33,55 +43,82 @@ export class UserController {
   }
 
   @Patch('me')
-  updateProfile(@CurrentUser() user: { userId: string }, @Body() dto: UpdateProfileDto) {
+  updateProfile(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: UpdateProfileDto,
+  ) {
     return this.userService.updateProfile(user.userId, dto);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('phone/request')
-  requestAddPhone(@CurrentUser() user: { userId: string }, @Body() dto: AddPhoneDto) {
+  requestAddPhone(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: AddPhoneDto,
+  ) {
     return this.userService.requestAddPhone(user.userId, dto.phone);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('phone/verify')
-  verifyAddPhone(@CurrentUser() user: { userId: string }, @Body() dto: VerifyAddPhoneDto) {
+  verifyAddPhone(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: VerifyAddPhoneDto,
+  ) {
     return this.userService.verifyAddPhone(user.userId, dto.code);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('me/change-password')
-  changePassword(@CurrentUser() user: { userId: string }, @Body() dto: ChangePasswordDto) {
+  changePassword(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: ChangePasswordDto,
+  ) {
     return this.userService.changePassword(user.userId, dto);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('me/step-up/password')
-  stepUpPassword(@CurrentUser() user: { userId: string }, @Body() dto: StepUpPasswordDto) {
+  stepUpPassword(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: StepUpPasswordDto,
+  ) {
     return this.userService.stepUpPassword(user.userId, dto.password);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('me/step-up/google')
-  stepUpGoogle(@CurrentUser() user: { userId: string }, @Body() dto: StepUpGoogleDto) {
+  stepUpGoogle(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: StepUpGoogleDto,
+  ) {
     return this.userService.stepUpGoogle(user.userId, dto.idToken);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('me/step-up/code/request')
-  stepUpCodeRequest(@CurrentUser() user: { userId: string }, @Body() dto: StepUpCodeRequestDto) {
+  stepUpCodeRequest(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: StepUpCodeRequestDto,
+  ) {
     return this.userService.stepUpCodeRequest(user.userId, dto);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('me/step-up/code/verify')
-  stepUpCodeVerify(@CurrentUser() user: { userId: string }, @Body() dto: StepUpCodeVerifyDto) {
+  stepUpCodeVerify(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: StepUpCodeVerifyDto,
+  ) {
     return this.userService.stepUpCodeVerify(user.userId, dto.code);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('me/change-email/request')
-  requestEmailChange(@CurrentUser() user: { userId: string }, @Body() dto: ChangeEmailRequestDto) {
+  requestEmailChange(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: ChangeEmailRequestDto,
+  ) {
     return this.userService.requestEmailChange(user.userId, dto.newEmail);
   }
 
@@ -98,14 +135,20 @@ export class UserController {
       limits: { fileSize: 5 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         if (!AVATAR_MIME_TYPES.test(file.mimetype)) {
-          cb(new BadRequestException('Only jpg/png/webp images are allowed'), false);
+          cb(
+            new BadRequestException('Only jpg/png/webp images are allowed'),
+            false,
+          );
           return;
         }
         cb(null, true);
       },
     }),
   )
-  uploadAvatar(@CurrentUser() user: { userId: string }, @UploadedFile() file: Express.Multer.File) {
+  uploadAvatar(
+    @CurrentUser() user: { userId: string },
+    @UploadedFile() file: Express.Multer.File,
+  ) {
     return this.userService.setAvatar(user.userId, file.filename);
   }
 }
