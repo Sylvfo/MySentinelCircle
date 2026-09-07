@@ -1,5 +1,7 @@
 # MySentinelCircle
 
+Work in progress :)
+
 A safety-net platform built to fight isolation: each person builds their own circle of trusted contacts — family, neighbors, friends — who can be alerted and mobilized in real time the moment something goes wrong, from a missed check-in to an accident.
 
 On the product side, the user stays in control at every step: who can contact them, who can be contacted around them, and which actions or communications are allowed within their circles.
