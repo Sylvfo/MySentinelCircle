@@ -14,13 +14,18 @@
     "status": {
       "PENDING": "Pending",
       "ACCEPTED": "Accepted",
-      "DECLINED": "Declined"
+      "DECLINED": "Declined",
+      "REMOVED": "Removed",
+      "BLOCKED": "Blocked"
     },
     "type": {
+      "ONLY_SMS": "SMS only",
       "SENTINEL": "Sentinel",
-      "SENTINEL_PLUS": "Sentinel+"
+      "LEAD": "Lead Sentinel",
+      "FIRSTCIRCLE": "1st Circle Sentinel",
+      "UNCOMPLETE": "Incomplete"
     },
-    "reference": "Reference"
+    "leadSentinel": "Lead Sentinel"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -108,7 +113,10 @@
     "requestFrom": "{{who}} wants to become your Sentinel",
     "approve": "Approve",
     "decline": "Decline",
-    "removeMember": "Remove"
+    "removeMember": "Remove",
+    "confirmRemoveMember": "Warning, this Sentinel will no longer be part of any of your circles.",
+    "move": "Move",
+    "awaitingFirstCircleConsent": "Awaiting acceptance for the 1st circle"
   },
   "companions": {
     "title": "Companions",
@@ -126,7 +134,10 @@
     "requestIntro": "Enter the phone number of the person to watch over; they will receive your request.",
     "targetPhone": "Person's phone (+33…)",
     "sendRequest": "Send request",
-    "requestSent": "Request sent."
+    "requestSent": "Request sent.",
+    "circleMoveProposed": "{{who}} is proposing you join their 1st circle",
+    "acceptCircleMove": "Accept",
+    "declineCircleMove": "Decline"
   },
   "alerts": {
     "title": "Alerts",

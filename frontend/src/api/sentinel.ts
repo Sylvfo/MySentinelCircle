@@ -4,7 +4,7 @@ export type SentinelType = 'ONLY_SMS' | 'SENTINEL' | 'LEAD' | 'FIRSTCIRCLE' | 'U
 export type LinkStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'REMOVED' | 'BLOCKED';
 export type LinkInitiator = 'COMPANION' | 'SENTINEL';
 export type LeadSlot = 'LEAD_1' | 'LEAD_2' | 'LEAD_3';
-export type CircleType = 'BASIC' | 'FIRST' | 'ORGANISATION';
+export type CircleType = 'BASIC' | 'FIRST' | 'ORGANISATION' | 'RESERVED';
 
 export interface SentinelRef {
   id: string;
@@ -15,6 +15,7 @@ export interface SentinelRef {
 export interface Membership {
   id: string;
   circleId: string;
+  proposedCircleId: string | null;
   sentinelType: SentinelType;
   requestedAsLead: boolean;
   leadSlot: LeadSlot | null;
@@ -60,6 +61,7 @@ export interface Companion {
   sentinelType: SentinelType;
   leadSlot: LeadSlot | null;
   circle: { id: string; label: string; isPrimary: boolean };
+  proposedCircle: { id: string; label: string } | null;
   companion: PersonRef;
 }
 
@@ -94,14 +96,22 @@ export const updateMembership = (
 export const removeMembership = (id: string) =>
   apiDelete<{ deleted: true }>(`/sentinel/memberships/${id}`);
 
-export const acceptMembership = (id: string) =>
-  apiPost<Membership>(`/sentinel/memberships/${id}/accept`, {});
+// circleId is only required when accepting a Sentinel-initiated request
+// (the requester couldn't see the circle list, so "Me" picks it now).
+export const acceptMembership = (id: string, circleId?: string) =>
+  apiPost<Membership>(`/sentinel/memberships/${id}/accept`, { circleId });
 
 export const declineMembership = (id: string) =>
   apiPost<Membership>(`/sentinel/memberships/${id}/decline`, {});
 
 export const leaveMembership = (id: string) =>
   apiPost<Membership>(`/sentinel/memberships/${id}/leave`, {});
+
+export const acceptCircleMove = (id: string) =>
+  apiPost<Membership>(`/sentinel/memberships/${id}/circle-move/accept`, {});
+
+export const declineCircleMove = (id: string) =>
+  apiPost<Membership>(`/sentinel/memberships/${id}/circle-move/decline`, {});
 
 // ---- Inboxes & reverse views --------------------------------------------------
 

@@ -54,7 +54,7 @@ Sylvie edits `backend/prisma/schema.prisma` by hand herself. Propose schema chan
 
 Same rule as `schema.prisma`: Sylvie edits `.claude/settings.json` by hand herself. Propose permission changes as JSON in the conversation for her to apply — don't write to that file directly, even for a change she's already approved verbally.
 
-Destructive Prisma commands against the dev database (`prisma migrate reset`, or anything that would drop/recreate data) require Sylvie's fresh, explicit confirmation in that same turn before running, even if she approved a similar action earlier in the conversation — Prisma's own safety guard blocks these for AI agents without it.
+Destructive Prisma commands (`prisma migrate reset`, or anything that would drop/recreate data) — against the dev database *or* the `mysentinelcircle_test` database (e.g. the reset that `npm run test:e2e`'s `test/global-setup.js` runs automatically) — require Sylvie's fresh, explicit confirmation in that same turn before running, even if she approved a similar action earlier in the conversation or a previous session. Prisma's own safety guard blocks these for AI agents without it; once she confirms in-turn, rerun with `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION` set to the exact text of her consenting message (no quotes/newlines).
 
 ## Working on infra files (`docker-compose.yml`, `nginx/`, Dockerfiles)
 

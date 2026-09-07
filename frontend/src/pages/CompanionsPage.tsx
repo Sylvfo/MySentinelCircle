@@ -2,7 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../api/client';
 import {
+  acceptCircleMove,
   acceptMembership,
+  declineCircleMove,
   declineMembership,
   leaveMembership,
   listCompanions,
@@ -56,14 +58,30 @@ export function CompanionsPage() {
                 <span className="badge">{t('companions.inCircle', { label: c.circle.label })}</span>
                 <span className="badge">{t(`sentinel.type.${c.sentinelType}`)}</span>
               </span>
-              <button
-                className="ghost"
-                onClick={() => {
-                  if (window.confirm(t('companions.confirmLeave'))) leaveMembership(c.linkId).then(reload);
-                }}
-              >
-                {t('companions.leave')}
-              </button>
+              {c.proposedCircle ? (
+                <span className="row-actions">
+                  <span>
+                    {t('companions.circleMoveProposed', {
+                      who: c.companion.email || c.companion.phone,
+                    })}
+                  </span>
+                  <button onClick={() => acceptCircleMove(c.linkId).then(reload)}>
+                    {t('companions.acceptCircleMove')}
+                  </button>
+                  <button className="ghost" onClick={() => declineCircleMove(c.linkId).then(reload)}>
+                    {t('companions.declineCircleMove')}
+                  </button>
+                </span>
+              ) : (
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    if (window.confirm(t('companions.confirmLeave'))) leaveMembership(c.linkId).then(reload);
+                  }}
+                >
+                  {t('companions.leave')}
+                </button>
+              )}
             </div>
           ))}
         </section>
