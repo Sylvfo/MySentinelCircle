@@ -12,11 +12,12 @@
       "Bash(ls)"
     ],
     "ask": [ 
-       "Write(backend)",
-       "Edit(backend)",
-       "Edit(procedures.txt)",
+        "Edit(procedures.txt)",
         "Edit(.claude/**)",
-        "Write(.claude/**)"
+        "Write(.claude/**)",
+        "Bash(npm prisma)",
+        "Edit(/backend/src/auth)",
+        "Write(/backend/src/auth)"
     ],
     "deny": [
       "Edit(backend/prisma/schema.prisma)",
@@ -30,7 +31,19 @@
       "Bash(gh issue reopen *)",
       "Bash(gh label create *)",
       "Bash(gh label edit *)",
-      "Bash(gh label delete *)"
+      "Bash(gh label delete *)",
+      "Edit(docker-compose.yml)",
+      "Write(docker-compose.yml)",
+      "Edit(nginx/**)",
+      "Write(nginx/**)",
+      "Edit(backend/Dockerfile)",
+      "Write(backend/Dockerfile)",
+      "Edit(frontend/Dockerfile)",
+      "Write(frontend/Dockerfile)",
+      "Edit(backend/.dockerignore)",
+      "Write(backend/.dockerignore)",
+      "Edit(frontend/.dockerignore)",
+      "Write(frontend/.dockerignore)"
     ]
   }
 }

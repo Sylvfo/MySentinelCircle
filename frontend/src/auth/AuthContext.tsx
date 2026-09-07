@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { clearToken, getToken, setToken } from '../api/client';
-import { fetchMe, type Me } from '../api/auth';
+import { fetchMe, type Me } from '../api/user';
 
 interface AuthContextValue {
   user: Me | null;

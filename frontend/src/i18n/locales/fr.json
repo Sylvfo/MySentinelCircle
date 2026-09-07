@@ -14,13 +14,18 @@
     "status": {
       "PENDING": "En attente",
       "ACCEPTED": "Acceptée",
-      "DECLINED": "Refusée"
+      "DECLINED": "Refusée",
+      "REMOVED": "Retirée",
+      "BLOCKED": "Bloquée"
     },
     "type": {
+      "ONLY_SMS": "SMS uniquement",
       "SENTINEL": "Sentinelle",
-      "SENTINEL_PLUS": "Sentinelle+"
+      "LEAD": "Sentinelle référente",
+      "FIRSTCIRCLE": "Sentinelle 1er cercle",
+      "UNCOMPLETE": "Incomplet"
     },
-    "reference": "Référence"
+    "leadSentinel": "Sentinelle référente"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -28,6 +33,7 @@
     "companions": "Companions",
     "alerts": "Alertes",
     "messages": "Messages",
+    "settings": "Paramètres",
     "logout": "Déconnexion"
   },
   "auth": {
@@ -35,6 +41,11 @@
     "signupTitle": "Créer un compte",
     "verifyTitle": "Vérification",
     "firstName": "Prénom",
+    "lastName": "Nom",
+    "username": "Nom d'utilisateur",
+    "usernameHint": "Visible par les autres utilisateurs (par exemple comme cible d'invitation). Tu peux le modifier, mais pas le passer.",
+    "phoneHint": "Jamais visible par les autres utilisateurs. Sans lui, tu ne pourras ni avoir ni être un Sentinel — tu pourras l'ajouter plus tard.",
+    "back": "Retour",
     "email": "Email",
     "password": "Mot de passe",
     "phone": "Numéro de téléphone",
@@ -44,6 +55,17 @@
     "validate": "Valider",
     "switchToPhone": "Se connecter par téléphone (OTP)",
     "switchToPassword": "Se connecter par email + mot de passe",
+    "forgotPassword": "Mot de passe oublié ?",
+    "forgotTitle": "Réinitialiser ton mot de passe",
+    "forgotSent": "Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.",
+    "forgotSubmit": "Envoyer le lien",
+    "backToLogin": "Retour à la connexion",
+    "resetTitle": "Choisis un nouveau mot de passe",
+    "resetMissingToken": "Lien de réinitialisation manquant ou invalide.",
+    "resetDone": "Mot de passe mis à jour. Tu peux maintenant te connecter.",
+    "resetSubmit": "Mettre à jour le mot de passe",
+    "newPassword": "Nouveau mot de passe",
+    "linkGooglePrompt": "Un compte existe déjà avec cet email. Connecte-toi ci-dessous pour lier ton compte Google à ce compte.",
     "googleLogin": "Google ({{state}})",
     "googleSignup": "S'inscrire avec Google ({{state}})",
     "noAccount": "Pas encore de compte ?",
@@ -91,7 +113,10 @@
     "requestFrom": "{{who}} souhaite devenir votre sentinelle",
     "approve": "Approuver",
     "decline": "Refuser",
-    "removeMember": "Retirer"
+    "removeMember": "Retirer",
+    "confirmRemoveMember": "Attention, cette sentinelle ne fera plus partie de vos cercles.",
+    "move": "Déplacer",
+    "awaitingFirstCircleConsent": "En attente d'accord pour le 1er cercle"
   },
   "companions": {
     "title": "Companions",
@@ -109,7 +134,10 @@
     "requestIntro": "Entrez le numéro de la personne à surveiller ; elle recevra votre demande.",
     "targetPhone": "Téléphone de la personne (+33…)",
     "sendRequest": "Envoyer la demande",
-    "requestSent": "Demande envoyée."
+    "requestSent": "Demande envoyée.",
+    "circleMoveProposed": "{{who}} vous propose de rejoindre son 1er cercle",
+    "acceptCircleMove": "Accepter",
+    "declineCircleMove": "Refuser"
   },
   "alerts": {
     "title": "Alertes",
@@ -120,5 +148,44 @@
     "title": "Messages",
     "intro": "Conversations avec vos Sentinels et requêtes en attente.",
     "empty": "Aucun message pour l'instant — le module Messaging n'est pas encore codé."
+  },
+  "settings": {
+    "title": "Paramètres",
+    "profile": "Profil",
+    "avatar": "Photo de profil",
+    "editable": "Infos modifiables",
+    "phone": "Téléphone",
+    "addPhone": "Ajouter ton numéro de téléphone",
+    "isMajor": "Je suis majeur·e",
+    "publicStatus": "Statut public",
+    "status": "Statut du compte",
+    "userType": "Type de compte",
+    "createdAt": "Créé le",
+    "updatedAt": "Dernière modification",
+    "security": "Sécurité",
+    "changePassword": "Changer le mot de passe",
+    "currentPassword": "Mot de passe actuel",
+    "newPasswordLabel": "Nouveau mot de passe",
+    "confirmNewPassword": "Confirmer le nouveau mot de passe",
+    "passwordMismatch": "Les mots de passe ne correspondent pas",
+    "changePhone": "Changer le numéro de téléphone",
+    "changeEmail": {
+      "title": "Changer l'email",
+      "newEmail": "Nouvelle adresse email",
+      "send": "Envoyer le lien de confirmation",
+      "sent": "Lien de confirmation envoyé. Vérifie la boîte mail de ta nouvelle adresse.",
+      "confirmTitle": "Confirme ta nouvelle adresse email",
+      "confirmDone": "Ton email a été mis à jour. Tu peux maintenant te connecter.",
+      "confirmMissingToken": "Lien de confirmation manquant ou invalide."
+    },
+    "stepUp": {
+      "prompt": "Vérifie d'abord que c'est bien toi.",
+      "usePassword": "Utiliser mon mot de passe",
+      "useGoogle": "Utiliser Google",
+      "useCodePhone": "Envoyer un code par SMS",
+      "useCodeEmail": "Envoyer un code par email",
+      "codeSentPhone": "Un code a été envoyé par SMS.",
+      "codeSentEmail": "Un code a été envoyé par email."
+    }
   }
 }

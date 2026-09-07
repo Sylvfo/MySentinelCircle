@@ -4,3 +4,9 @@ dist
 .env
 
 /generated/prisma
+
+# User-uploaded files — not code, not committed
+/uploads
+
+# Seeded test-account credentials (plaintext passwords) — local dev only
+test-users.local.md

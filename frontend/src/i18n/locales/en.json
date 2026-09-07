@@ -14,13 +14,18 @@
     "status": {
       "PENDING": "Pending",
       "ACCEPTED": "Accepted",
-      "DECLINED": "Declined"
+      "DECLINED": "Declined",
+      "REMOVED": "Removed",
+      "BLOCKED": "Blocked"
     },
     "type": {
+      "ONLY_SMS": "SMS only",
       "SENTINEL": "Sentinel",
-      "SENTINEL_PLUS": "Sentinel+"
+      "LEAD": "Lead Sentinel",
+      "FIRSTCIRCLE": "1st Circle Sentinel",
+      "UNCOMPLETE": "Incomplete"
     },
-    "reference": "Reference"
+    "leadSentinel": "Lead Sentinel"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -28,6 +33,7 @@
     "companions": "Companions",
     "alerts": "Alerts",
     "messages": "Messages",
+    "settings": "Settings",
     "logout": "Log out"
   },
   "auth": {
@@ -35,6 +41,11 @@
     "signupTitle": "Create an account",
     "verifyTitle": "Verification",
     "firstName": "First name",
+    "lastName": "Last name",
+    "username": "Username",
+    "usernameHint": "Visible to other users (e.g. as an invitation target). You can change it, but not skip it.",
+    "phoneHint": "Never shown to other users. Without it, you can't have or be a Sentinel — you can add it later.",
+    "back": "Back",
     "email": "Email",
     "password": "Password",
     "phone": "Phone number",
@@ -44,6 +55,17 @@
     "validate": "Confirm",
     "switchToPhone": "Log in by phone (OTP)",
     "switchToPassword": "Log in with email + password",
+    "forgotPassword": "Forgot password?",
+    "forgotTitle": "Reset your password",
+    "forgotSent": "If an account exists for this email, a reset link has been sent.",
+    "forgotSubmit": "Send reset link",
+    "backToLogin": "Back to login",
+    "resetTitle": "Choose a new password",
+    "resetMissingToken": "Missing or invalid reset link.",
+    "resetDone": "Password updated. You can now log in.",
+    "resetSubmit": "Update password",
+    "newPassword": "New password",
+    "linkGooglePrompt": "An account already exists for this email. Log in below to link your Google account to it.",
     "googleLogin": "Google ({{state}})",
     "googleSignup": "Sign up with Google ({{state}})",
     "noAccount": "No account yet?",
@@ -91,7 +113,10 @@
     "requestFrom": "{{who}} wants to become your Sentinel",
     "approve": "Approve",
     "decline": "Decline",
-    "removeMember": "Remove"
+    "removeMember": "Remove",
+    "confirmRemoveMember": "Warning, this Sentinel will no longer be part of any of your circles.",
+    "move": "Move",
+    "awaitingFirstCircleConsent": "Awaiting acceptance for the 1st circle"
   },
   "companions": {
     "title": "Companions",
@@ -109,7 +134,10 @@
     "requestIntro": "Enter the phone number of the person to watch over; they will receive your request.",
     "targetPhone": "Person's phone (+33…)",
     "sendRequest": "Send request",
-    "requestSent": "Request sent."
+    "requestSent": "Request sent.",
+    "circleMoveProposed": "{{who}} is proposing you join their 1st circle",
+    "acceptCircleMove": "Accept",
+    "declineCircleMove": "Decline"
   },
   "alerts": {
     "title": "Alerts",
@@ -120,5 +148,44 @@
     "title": "Messages",
     "intro": "Conversations with your Sentinels and pending requests.",
     "empty": "No message yet — the Messaging module isn't built yet."
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "avatar": "Profile photo",
+    "editable": "Editable info",
+    "phone": "Phone",
+    "addPhone": "Add your phone number",
+    "isMajor": "I am an adult",
+    "publicStatus": "Public status",
+    "status": "Account status",
+    "userType": "Account type",
+    "createdAt": "Created on",
+    "updatedAt": "Last updated",
+    "security": "Security",
+    "changePassword": "Change password",
+    "currentPassword": "Current password",
+    "newPasswordLabel": "New password",
+    "confirmNewPassword": "Confirm new password",
+    "passwordMismatch": "Passwords don't match",
+    "changePhone": "Change phone number",
+    "changeEmail": {
+      "title": "Change email",
+      "newEmail": "New email address",
+      "send": "Send confirmation link",
+      "sent": "Confirmation link sent. Check the inbox of your new email address.",
+      "confirmTitle": "Confirm your new email",
+      "confirmDone": "Your email has been updated. You can now log in.",
+      "confirmMissingToken": "Missing or invalid confirmation link."
+    },
+    "stepUp": {
+      "prompt": "Verify it's really you first.",
+      "usePassword": "Use my password",
+      "useGoogle": "Use Google",
+      "useCodePhone": "Send a code to my phone",
+      "useCodeEmail": "Send a code to my email",
+      "codeSentPhone": "A code was sent to your phone.",
+      "codeSentEmail": "A code was sent to your email."
+    }
   }
 }

@@ -1,0 +1,66 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_pw
+          MARIADB_DATABASE: mysentinelcircle
+          MARIADB_USER: mysentinelcircle
+          MARIADB_PASSWORD: ci_pw
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: mysql://mysentinelcircle:ci_pw@127.0.0.1:3306/mysentinelcircle_test
+      JWT_SECRET: ci-test-secret
+      JWT_EXPIRES_IN: 30d
+      GOOGLE_CLIENT_ID: ""
+      FRONTEND_URL: http://localhost:5173
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create mysentinelcircle_test database
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq mariadb-client
+          mysql -h127.0.0.1 -uroot -pci_root_pw -e "
+            CREATE DATABASE IF NOT EXISTS mysentinelcircle_test;
+            GRANT ALL PRIVILEGES ON mysentinelcircle_test.* TO 'mysentinelcircle'@'%';
+            FLUSH PRIVILEGES;"
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: E2e tests
+        run: npm run test:e2e

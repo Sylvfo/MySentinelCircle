@@ -21,6 +21,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import {
+  circleMoveAnsweredSms,
+  circleMoveProposedSms,
+  circleMovedSms,
   invitationAnsweredSms,
   parseSmsReply,
   requestAnsweredSms,
@@ -76,9 +79,11 @@ export class SentinelService {
   }
 
   // "My circles" with their (accepted + pending) Sentinels — the companion view.
-  // Guarantees the 1st circle exists, and lists it first.
+  // Guarantees the 1st circle and the reserve circle exist, and lists them
+  // first/last respectively.
   async listCircles(userId: string) {
     await this.ensurePrimaryCircle(userId);
+    await this.ensureReserveCircle(userId);
     const circles = await this.prisma.circle.findMany({
       where: { userCompanionId: userId },
       orderBy: { createdAt: 'asc' },
@@ -93,14 +98,11 @@ export class SentinelService {
         },
       },
     });
-    // Enum ordering can't put FIRST first via orderBy; sort it to the front here.
-    return circles.sort((a, b) =>
-      a.circleType === CircleType.FIRST
-        ? -1
-        : b.circleType === CircleType.FIRST
-          ? 1
-          : 0,
-    );
+    // Enum ordering can't express FIRST-first/RESERVED-last via orderBy;
+    // sort it here instead.
+    const rank = (t: CircleType) =>
+      t === CircleType.FIRST ? 0 : t === CircleType.RESERVED ? 2 : 1;
+    return circles.sort((a, b) => rank(a.circleType) - rank(b.circleType));
   }
 
   async updateCircle(userId: string, circleId: string, dto: UpdateCircleDto) {
@@ -110,22 +112,34 @@ export class SentinelService {
 
   // Circles are never hard-deleted (core schema principle) — this closes the
   // circle instead (status/closedAt), consistent with User/LinkSentinels.
+  // The 1st circle and the reserve circle are system-managed and can never
+  // be deleted. Any still-active Sentinels in the closing circle move to the
+  // reserve circle instead of being force-removed (e.g. the "choir" circle
+  // closes but those Sentinels stay reachable, just unassigned for now).
   async deleteCircle(userId: string, circleId: string) {
     const circle = await this.ensureCircleOwned(userId, circleId);
-    if (circle.circleType === CircleType.FIRST) {
-      throw new ConflictException('The 1st circle cannot be deleted');
+    if (
+      circle.circleType === CircleType.FIRST ||
+      circle.circleType === CircleType.RESERVED
+    ) {
+      throw new ConflictException('This circle cannot be deleted');
     }
-    const memberCount = await this.prisma.linkSentinels.count({
+    const activeLinks = await this.prisma.linkSentinels.findMany({
       where: { circleId, status: { in: ACTIVE_STATUSES } },
+      select: { id: true },
     });
-    if (memberCount > 0) {
-      throw new ConflictException('Empty the circle before deleting it');
+    if (activeLinks.length > 0) {
+      const reserve = await this.ensureReserveCircle(userId);
+      await this.prisma.linkSentinels.updateMany({
+        where: { id: { in: activeLinks.map((l) => l.id) } },
+        data: { circleId: reserve.id },
+      });
     }
     await this.prisma.circle.update({
       where: { id: circleId },
       data: { status: CircleStatus.CLOSED, closedAt: new Date() },
     });
-    return { deleted: true };
+    return { deleted: true, movedToReserve: activeLinks.length };
   }
 
   // ---- Me -> Sentinel invitation (site only) --------------------------------
@@ -135,7 +149,9 @@ export class SentinelService {
     circleId: string,
     dto: InviteSentinelDto,
   ) {
-    const circle = await this.ensureCircleOwned(userId, circleId);
+    const inviter = await this.getUser(userId);
+    this.assertCompleteAccount(inviter);
+    const circle = await this.ensureAssignableCircle(userId, circleId);
     const phone = dto.phone.trim();
 
     const linkedUser = await this.prisma.user.findUnique({ where: { phone } });
@@ -161,7 +177,6 @@ export class SentinelService {
       requestedAsLead: dto.requestedAsLead,
     });
 
-    const inviter = await this.getUser(userId);
     await this.sms.send(phone, sentinelInvitationSms(this.label(inviter)));
     return link;
   }
@@ -182,6 +197,7 @@ export class SentinelService {
     }
 
     const requester = await this.getUser(requesterId);
+    this.assertCompleteAccount(requester);
     const circle = await this.ensurePrimaryCircle(target.id);
     // The requester already has an account (this endpoint requires one), so
     // no Contact-style stand-in is needed — they're already a User row.
@@ -241,7 +257,12 @@ export class SentinelService {
 
   // ---- Respond from site ------------------------------------------------------
 
-  async respondToMembership(userId: string, linkId: string, accept: boolean) {
+  async respondToMembership(
+    userId: string,
+    linkId: string,
+    accept: boolean,
+    circleId?: string,
+  ) {
     const link = await this.prisma.linkSentinels.findUnique({
       where: { id: linkId },
       include: LINK_WITH_PARTIES,
@@ -260,7 +281,48 @@ export class SentinelService {
       throw new ForbiddenException('This request is not addressed to you');
     }
 
-    return this.applyResponse(link, accept, false);
+    // A Sentinel-initiated request lands in a placeholder circle while
+    // PENDING (see requestToBeSentinel) — the companion only picks the real
+    // circle now, at accept time, since they couldn't see the private circle
+    // list beforehand.
+    let overrides: { circleId: string; leadSlot: LeadSlot | null } | undefined;
+    if (accept && link.initiatedBy === LinkInitiator.SENTINEL) {
+      if (!circleId) {
+        throw new BadRequestException(
+          'Choose a circle to accept this Sentinel into',
+        );
+      }
+      const circle = await this.ensureAssignableCircle(userId, circleId);
+      // Explicit false: accepting never silently grants a Lead slot — that's
+      // a separate, deliberate promotion via updateMembership afterward.
+      const leadSlot = await this.resolveLeadSlot(
+        { id: circle.id, circleType: circle.circleType },
+        false,
+      );
+      overrides = { circleId: circle.id, leadSlot };
+    }
+
+    return this.applyResponse(link, accept, false, overrides);
+  }
+
+  // ---- Respond to a proposed move into the 1st circle ------------------------
+
+  // The Sentinel side of a 1st-circle move proposed via updateMembership.
+  // Accepting flips circleId to the proposed one; declining just clears the
+  // proposal — either way the link was never disturbed while pending.
+  async respondToCircleMove(userId: string, linkId: string, accept: boolean) {
+    const link = await this.prisma.linkSentinels.findUnique({
+      where: { id: linkId },
+      include: LINK_WITH_PARTIES,
+    });
+    if (!link) throw new NotFoundException('Membership not found');
+    if (link.userSentinelId !== userId) {
+      throw new ForbiddenException('This proposal is not addressed to you');
+    }
+    if (!link.proposedCircleId) {
+      throw new ConflictException('No pending circle move for this link');
+    }
+    return this.applyCircleMoveResponse(link, accept);
   }
 
   // ---- Respond by SMS (no account required) ---------------------------------
@@ -299,7 +361,26 @@ export class SentinelService {
       };
     }
 
-    // No pending link: a NON/STOP from an active Sentinel means "remove me".
+    // No fresh pending link: check for a 1st-circle move awaiting this
+    // Sentinel's answer (only ever set on an already-ACCEPTED link).
+    const moveProposal = await this.prisma.linkSentinels.findFirst({
+      where: {
+        status: LinkStatus.ACCEPTED,
+        proposedCircleId: { not: null },
+        linkAsSentinel: { phone },
+      },
+      include: LINK_WITH_PARTIES,
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (moveProposal) {
+      await this.applyCircleMoveResponse(moveProposal, intent === 'accept');
+      return {
+        matched: true as const,
+        action: intent === 'accept' ? 'circle_move_accepted' : 'circle_move_declined',
+      };
+    }
+
+    // No pending link/proposal: a NON/STOP from an active Sentinel means "remove me".
     if (intent === 'decline') {
       const active = await this.prisma.linkSentinels.findFirst({
         where: { status: LinkStatus.ACCEPTED, linkAsSentinel: { phone } },
@@ -352,6 +433,20 @@ export class SentinelService {
       orderBy: { createdAt: 'asc' },
     });
 
+    // proposedCircleId isn't a Prisma relation (a transient reference, not a
+    // permanent link — see schema.prisma), so its label is a small separate
+    // lookup rather than an `include`.
+    const proposedIds = links
+      .map((l) => l.proposedCircleId)
+      .filter((id): id is string => id !== null);
+    const proposedCircles = proposedIds.length
+      ? await this.prisma.circle.findMany({
+          where: { id: { in: proposedIds } },
+          select: { id: true, label: true },
+        })
+      : [];
+    const proposedById = new Map(proposedCircles.map((c) => [c.id, c]));
+
     return links.map((l) => ({
       linkId: l.id,
       sentinelType: l.sentinelType,
@@ -360,7 +455,11 @@ export class SentinelService {
         id: l.circle.id,
         label: l.circle.label,
         isPrimary: l.circle.circleType === CircleType.FIRST,
+        isReserve: l.circle.circleType === CircleType.RESERVED,
       },
+      proposedCircle: l.proposedCircleId
+        ? (proposedById.get(l.proposedCircleId) ?? null)
+        : null,
       companion: l.circle.userCompanion,
     }));
   }
@@ -378,7 +477,9 @@ export class SentinelService {
     let targetIsFirst = link.circle.circleType === CircleType.FIRST;
     if (dto.circleId && dto.circleId !== link.circleId) {
       const target = await this.ensureCircleOwned(userId, dto.circleId); // my own circles only
-      circleId = target.id;
+      if (target.status !== CircleStatus.ACTIVE) {
+        throw new BadRequestException('This circle is not active');
+      }
       targetIsFirst = target.circleType === CircleType.FIRST;
       // Moving into the 1st circle requires the Sentinel to have an account.
       if (targetIsFirst && link.linkAsSentinel.userType === UserType.ONLY_SMS) {
@@ -386,6 +487,28 @@ export class SentinelService {
           'A 1st-circle Sentinel must already have an account',
         );
       }
+
+      // The 1st circle needs the Sentinel's consent — they stay exactly
+      // where they are, awaiting an answer, instead of moving right away.
+      // Any other circle (including reserve) moves them immediately, just
+      // with a heads-up SMS. This is a standalone action: other fields on
+      // this same call (sentinelType/requestedAsLead) are ignored here.
+      const companion = await this.getUser(userId);
+      if (targetIsFirst) {
+        await this.sendSms(
+          link.linkAsSentinel.phone,
+          circleMoveProposedSms(this.label(companion)),
+        );
+        return this.prisma.linkSentinels.update({
+          where: { id: link.id },
+          data: { proposedCircleId: target.id },
+        });
+      }
+      await this.sendSms(
+        link.linkAsSentinel.phone,
+        circleMovedSms(target.label, this.label(companion)),
+      );
+      circleId = target.id;
     }
 
     // Lead slot only lives in the 1st circle. Moving to an "other" circle
@@ -437,6 +560,23 @@ export class SentinelService {
     return { deleted: true };
   }
 
+  // "Me" can block an existing Sentinel link at any time (invite, incoming
+  // request, or already-accepted) — unlike REMOVED, a BLOCKED link can never
+  // be deleted or reactivated (createOrReactivateLink rejects it
+  // permanently, see there). No SMS notification, unlike leave/decline.
+  async blockMembership(userId: string, linkId: string) {
+    const link = await this.getOwnedLink(userId, linkId);
+    if (link.status === LinkStatus.BLOCKED) {
+      throw new ConflictException('This link is already blocked');
+    }
+    await this.assertLeadPreserved(link);
+    await this.prisma.linkSentinels.update({
+      where: { id: link.id },
+      data: { status: LinkStatus.BLOCKED },
+    });
+    return { blocked: true };
+  }
+
   // ---- Internals ------------------------------------------------------------
 
   // Finds or creates a Sentinel-by-phone. Every party is a User row now (no
@@ -475,10 +615,18 @@ export class SentinelService {
         },
       },
     });
-    if (existing && ACTIVE_STATUSES.includes(existing.status)) {
-      throw new ConflictException(
-        'A pending or active Sentinel link already exists for this person',
-      );
+    if (existing) {
+      // BLOCKED is permanent — never reactivated, unlike DECLINED/REMOVED
+      // below (plan.txt CIRCLES & PERMISSIONS: blocking "prevents any future
+      // request between them").
+      if (existing.status === LinkStatus.BLOCKED) {
+        throw new ForbiddenException('This person cannot be linked again');
+      }
+      if (ACTIVE_STATUSES.includes(existing.status)) {
+        throw new ConflictException(
+          'A pending or active Sentinel link already exists for this person',
+        );
+      }
     }
 
     const leadSlot = await this.resolveLeadSlot(
@@ -532,14 +680,38 @@ export class SentinelService {
     return updated;
   }
 
+  // No auto-Lead on acceptance — same reasoning as respondToMembership's
+  // accept path: "Me" promotes to Lead separately afterward if they want.
+  private async applyCircleMoveResponse(link: LinkWithParties, accept: boolean) {
+    const updated = await this.prisma.linkSentinels.update({
+      where: { id: link.id },
+      data: accept
+        ? {
+            circleId: link.proposedCircleId!,
+            proposedCircleId: null,
+            leadSlot: null,
+          }
+        : { proposedCircleId: null }, // decline: nothing else changes
+    });
+    await this.sendSms(
+      link.userCompanion.phone,
+      circleMoveAnsweredSms(this.label(link.linkAsSentinel), accept),
+    );
+    return updated;
+  }
+
   private async applyResponse(
     link: LinkWithParties,
     accept: boolean,
     viaSms: boolean,
+    overrides?: { circleId: string; leadSlot: LeadSlot | null },
   ) {
     const updated = await this.prisma.linkSentinels.update({
       where: { id: link.id },
-      data: { status: accept ? LinkStatus.ACCEPTED : LinkStatus.DECLINED },
+      data: {
+        status: accept ? LinkStatus.ACCEPTED : LinkStatus.DECLINED,
+        ...overrides,
+      },
     });
 
     const companionLabel = this.label(link.userCompanion);
@@ -584,7 +756,9 @@ export class SentinelService {
       where: { id: linkId },
       include: {
         circle: { select: { userCompanionId: true, circleType: true } },
-        linkAsSentinel: { select: { userType: true } },
+        linkAsSentinel: {
+          select: { userType: true, phone: true, firstName: true },
+        },
       },
     });
     if (!link) throw new NotFoundException('Membership not found');
@@ -681,6 +855,52 @@ export class SentinelService {
         circleType: CircleType.FIRST,
       },
     });
+  }
+
+  // The single reserve circle for a companion, created on demand if missing.
+  // Holds Sentinel links that exist but aren't currently active in a real
+  // circle (a paused Sentinel, or the survivors of a deleted circle) — never
+  // a landing spot for a brand-new invite/request.
+  private async ensureReserveCircle(userCompanionId: string) {
+    const existing = await this.prisma.circle.findFirst({
+      where: { userCompanionId, circleType: CircleType.RESERVED },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (existing) return existing;
+    return this.prisma.circle.create({
+      data: {
+        userCompanionId,
+        label: 'Sentinelles en réserve',
+        circleType: CircleType.RESERVED,
+      },
+    });
+  }
+
+  // A circle a Sentinel can actually be assigned/invited into right now:
+  // owned by userId, ACTIVE, and not the reserve circle.
+  private async ensureAssignableCircle(userId: string, circleId: string) {
+    const circle = await this.ensureCircleOwned(userId, circleId);
+    if (circle.status !== CircleStatus.ACTIVE) {
+      throw new BadRequestException('This circle is not active');
+    }
+    if (circle.circleType === CircleType.RESERVED) {
+      throw new BadRequestException(
+        'A Sentinel cannot be assigned directly into the reserve circle',
+      );
+    }
+    return circle;
+  }
+
+  // plan.txt CORE FEATURES/Auth: an UNCOMPLETE account (email/Google signup,
+  // no phone yet) "can browse freely but can't have or be a Sentinel until a
+  // phone is added." Every Sentinel/target lookup elsewhere goes through a
+  // phone match, so gating just the caller of invite/request is enough.
+  private assertCompleteAccount(user: Pick<User, 'userType'>) {
+    if (user.userType === UserType.UNCOMPLETE) {
+      throw new ForbiddenException(
+        'Add a phone number to your account before using Sentinels',
+      );
+    }
   }
 
   private async getUser(userId: string): Promise<User> {

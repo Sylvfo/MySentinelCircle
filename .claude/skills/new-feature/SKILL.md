@@ -2,6 +2,7 @@
 name: new-feature
 description: Procedure to frame, plan, and implement a new MySentinelCircle feature, from need to documentation.
 ---
+Updated: 2026-08-21
 
 # New feature
 
@@ -23,6 +24,7 @@ Follow these steps in order, validating with Sylvie between each major step. Sca
 - Implement slice by slice.
 - If a bug shows up, invoke the `debug` skill instead of guessing a fix.
 - Never edit `backend/prisma/schema.prisma` directly — propose changes as Prisma code in the conversation (per the project's `CLAUDE.md`).
+- For any new service method with branching logic (conditions, error cases), write or update its `.spec.ts` in the same slice — not after the fact.
 
 ## 4. Test
 

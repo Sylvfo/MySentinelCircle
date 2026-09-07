@@ -12,6 +12,7 @@ enum UserType {
   ACCOUNT
   PAID_ACCOUNT
   ORGANISATION
+  UNCOMPLETE
 }
 
 enum UserStatus {
@@ -45,6 +46,7 @@ enum CircleType {
   BASIC
   FIRST
   ORGANISATION
+  RESERVED
 }
 
 enum CircleStatus {
@@ -106,6 +108,11 @@ model User {
   email        String? @unique
   passwordHash String?
   googleId     String? @unique
+  avatarPath String?
+  stepUpVerifiedAt        DateTime?
+  pendingEmail             String?
+  pendingEmailTokenHash    String?   @unique
+  pendingEmailExpiresAt    DateTime?  
 
   phone           String? @unique
   phoneVerifiedAt DateTime?
@@ -120,6 +127,10 @@ model User {
   otpCodeHash  String?
   otpExpiresAt DateTime?
   otpAttempts  Int       @default(0)
+  
+  passwordResetTokenHash  String?   @unique
+  passwordResetExpiresAt  DateTime?
+
 
   myCircles   Circle[]        @relation("MyCirclesAsCompanion")
   myUserSentinels LinkSentinels[] @relation("SentinelCompanion")
@@ -177,6 +188,8 @@ model LinkSentinels {
   userSentinelId  String
   userCompanionId String
   circleId    String
+  proposedCircleId String?   // set only while awaiting consent to move into the 1st circle
+
 
   linkAsSentinel User   @relation("LinkAsSentinel", fields: [userSentinelId], references: [id], onDelete: Restrict)
   userCompanion      User   @relation("SentinelCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)

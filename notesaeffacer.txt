@@ -20,3 +20,8 @@ Tooling
 
 Fixed the Makefile: replaced legacy docker-compose (v1, incompatible with current Docker) with docker compose (v2); added db-up/db-down/db-logs targets and a default all target.
 Backend and frontend both compile clean; MariaDB persistence verified end-to-end.
+
+
+
+
+Note pour toi : npm audit signale 3 vulnérabilités "high" côté prisma/deepmerge-ts, préexistantes (rien à voir avec ce que je viens d'installer) — le correctif proposé rétrograderait prisma en 6.12.0 (breaking change), donc je n'y touche pas sans ton feu vert séparément.

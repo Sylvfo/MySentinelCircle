@@ -138,24 +138,79 @@ CIRCLES & PERMISSIONS
 - Organizations bypass circle structure entirely when alerting with just the
   target's phone number, from within the app — the alert always routes to
   the 1st circle first.
+- Reserve circle: besides the 1st circle, every "Me" also has exactly one
+  system-managed "reserve" circle (circleType RESERVED), created on demand
+  and never deletable, same as the 1st circle. It holds accepted Sentinel
+  links that exist but aren't currently active in any real circle — a
+  Sentinel "Me" pauses without ending the relationship, or the survivors of
+  a circle "Me" deletes (e.g. the choir circle closes; its Sentinels move to
+  reserve instead of being force-removed). A Sentinel link can NEVER land in
+  the reserve circle at creation (invite or request) — it's reachable only
+  by a deliberate move afterward (manual pause, or a circle deletion cascade).
+  No Lead slot can exist there (Lead is 1st-circle-only, same rule as any
+  other outer circle). Once the alert module exists, the reserve circle must
+  be excluded from any circle-escalation/broadcast logic — it never receives
+  alerts.
+- Moving a Sentinel between circles: "Me" can move an already-accepted
+  Sentinel to any of their circles (a real one, or the reserve circle) as an
+  alternative to removing them outright — nobody has to just disappear from
+  "Me"'s circles. Moving into the 1st circle specifically needs the
+  Sentinel's consent first (a message, must accept) — same spirit as an
+  invite. While they wait, they stay exactly where they currently are; if
+  they decline, nothing changes. Moving into any other circle (a BASIC
+  circle, or reserve) is immediate, no consent needed — just a notification
+  telling them they were moved. Removing a Sentinel from the app/site side
+  shows a clear warning first (that relationship really ends), since Move is
+  now the non-destructive alternative.
 
 CORE FEATURES (MVP)
 --------------------
 1. Auth
-   - Every account requires BOTH an identity credential (email+password OR
-     Google account) AND a phone number at signup, verified via OTP. Phone
-     is never optional: it's the core assurance to users that the people in
-     their circles can actually be reached when an alert fires.
-   - Username is optional at signup, usable (alongside phone and email) as
-     an invitation target — see Circle management.
-   - Signup/login options: phone + SMS OTP (fast path), email + password,
-     or Google OAuth — phone verification is mandatory in all cases, even
-     when signing up via Google.
-   - Password reset via email link — does not depend on having the phone
-     (n/a for accounts that only use Google as their credential).
-   - If the phone number changes (lost/replaced device+SIM), the user logs
-     in via email+password and updates their phone number from account
-     settings; the new number is re-verified via OTP before use in alerts.
+   - Phone-only signup: a full, permanent account from just a phone number
+     + firstName, no email or Google identity required — phone is the
+     account's lifelong identifier, verified via OTP, never optional on
+     this path.
+   - Email+password and Google signup: phone is now OPTIONAL, to let
+     someone try the app with minimal friction ("just looking around"
+     mode). An account created this way with no phone is marked
+     `userType: UNCOMPLETE` (vs `ACCOUNT` once a phone is present) — it can
+     browse freely but can't have or be a Sentinel until a phone is added.
+     **Enforced**: `inviteSentinel`/`requestToBeSentinel` reject an
+     UNCOMPLETE caller (`sentinel.service.ts`'s `assertCompleteAccount`) —
+     every other Sentinel-side lookup goes through a phone match, so an
+     UNCOMPLETE account can never end up on the other side of a link
+     either. "Complete your profile with a phone later" is built:
+     `POST /user/phone/request` + `/user/phone/verify` promote
+     UNCOMPLETE -> ACCOUNT once verified (frontend: `AddPhonePanel`).
+   - Username: optional for phone-only signup. **Mandatory** for
+     email+password and Google signup — auto-suggested at signup,
+     editable, but can't be skipped or deferred (unlike lastName and phone
+     on those two paths, which can be added later). Visible to other users
+     as an invitation target — see Circle management. The phone number, by
+     contrast, is never shown to other users.
+   - On top of the phone, an account may additionally carry an email+
+     password and/or a linked Google identity as extra ways to log in or
+     recover access — neither is required, and either can be added later
+     (e.g. to unlock password reset).
+   - Signup/login options: phone + SMS OTP (the baseline, works for every
+     account with a phone), plus email + password or Google OAuth — phone
+     verification via OTP is mandatory whenever an account has a phone,
+     but an `UNCOMPLETE` account (no phone) logs in freely with no OTP step
+     at all, nothing to verify.
+   - Password reset via email link — only available for accounts that have
+     added an email+password credential (n/a for phone-only or Google-only
+     accounts, which have no passwordHash to reset).
+   - If the phone number changes (lost/replaced device+SIM), a user with
+     email+password or Google logs in that way and updates their phone
+     number from account settings; the new number is re-verified via OTP
+     before use in alerts. A phone-only account with no other credential
+     has no recovery path today if the phone is lost — open gap, not yet
+     designed.
+   - Known accepted gap in `claimOrCreateByPhone` (auth.service.ts): a
+     narrow race between the read and the write if two signups for the
+     same phone land concurrently. The create-fresh path is protected by
+     the DB's `phone` unique constraint; the claim-a-stub path isn't.
+     Not hardened for now — revisit later if it matters in practice.
 
 2. Circle management
    - Create circles, invite Sentinels/Companions, set per-member settings
@@ -167,7 +222,14 @@ CORE FEATURES (MVP)
      for a given "Me". Whichever side didn't initiate must validate before
      the link becomes active.
    - Every new Sentinel is assigned to a circle right away — a Sentinel
-     always belongs to exactly one circle from the moment the link exists.
+     always belongs to exactly one circle from the moment the link exists
+     (never the reserve circle — see CIRCLES & PERMISSIONS). For a
+     Sentinel-initiated request specifically, that initial circle is just a
+     technical placeholder (the 1st circle): since the requester can't see
+     "Me"'s private circle list to choose one, "Me" picks the real circle
+     when accepting the request, not before. Afterward, "Me" can move an
+     accepted link to any of their circles at any time, including into
+     reserve (a pause) or out of it.
    - Blocking has two levels: declining a single incoming request (link
      status -> DECLINED, that one request is refused but either side could
      try again later) vs blocking a user outright (link status -> BLOCKED
@@ -450,6 +512,20 @@ OPEN POINTS / TO REVISIT
   specified, flagged as TBD fields in DATA MODEL.
 - Whether a second/confident-but-non-parent contact makes sense for minors
   (raised as a "worth exploring" idea, not a decision).
+
+DEV-ONLY STUBS — NEED A REAL EXTERNAL PROVIDER
+-------------------------------------------------
+Coded and working in dev, but nothing actually reaches a real person until
+a real provider is wired in behind the existing pluggable interface (no
+caller-side changes needed once that happens):
+- Email sending (password reset link) — `ConsoleEmailSenderService` only,
+  logs the email to the backend console instead of sending it. Needs a
+  real provider (SendGrid, Mailgun, Amazon SES, etc.) behind
+  `EmailSender`/`EMAIL_SENDER`.
+- SMS sending (OTP codes, Sentinel invitations, alerts) —
+  `ConsoleSmsSenderService` only, logs to the backend console instead of
+  sending it. Needs a real operator/provider (Twilio likely default, see
+  TECH STACK) behind `SmsSender`/`SMS_SENDER`.
 
 STATUS
 ------

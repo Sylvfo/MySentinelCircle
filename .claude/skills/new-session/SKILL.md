@@ -2,6 +2,7 @@
 name: new-session
 description: Routine to start a work session on MySentinelCircle — sync the repo, resume or pick up work, and know how to wrap up.
 ---
+Updated: 2026-08-21
 
 # New session
 

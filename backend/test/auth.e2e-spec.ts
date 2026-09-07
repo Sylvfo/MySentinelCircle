@@ -1,0 +1,211 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import { App } from 'supertest/types';
+import { AppModule } from './../src/app.module';
+import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
+import { EMAIL_SENDER } from './../src/email/email-sender.interface';
+import { testEmail, testPhone, testUsername } from './helpers/test-data';
+
+interface AuthResponseBody {
+  accessToken?: string;
+  userId?: string;
+  email?: string | null;
+  phone?: string | null;
+}
+
+describe('Auth (e2e)', () => {
+  let app: INestApplication<App>;
+  let sentOtps: { phone: string; code: string }[];
+  let sentEmails: { to: string; subject: string; body: string }[];
+
+  beforeEach(async () => {
+    sentOtps = [];
+    sentEmails = [];
+
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(OTP_SENDER)
+      .useValue({
+        send: (phone: string, code: string) => {
+          sentOtps.push({ phone, code });
+          return Promise.resolve();
+        },
+      })
+      .overrideProvider(EMAIL_SENDER)
+      .useValue({
+        send: (to: string, subject: string, body: string) => {
+          sentEmails.push({ to, subject, body });
+          return Promise.resolve();
+        },
+      })
+      .compile();
+
+    app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('signs up by phone, verifies the OTP, and logs back in via phone+OTP', async () => {
+    const phone = testPhone();
+
+    const signupRes = await request(app.getHttpServer())
+      .post('/auth/signup/phone')
+      .send({ firstName: 'Ada', phone })
+      .expect(201);
+    const signupBody = signupRes.body as AuthResponseBody;
+    expect(signupBody.userId).toBeDefined();
+    expect(sentOtps).toHaveLength(1);
+
+    const verifyRes = await request(app.getHttpServer())
+      .post('/auth/otp/verify')
+      .send({ userId: signupBody.userId, code: sentOtps[0].code })
+      .expect(201);
+    const verifyBody = verifyRes.body as AuthResponseBody;
+    expect(verifyBody.accessToken).toBeDefined();
+
+    const loginRequestRes = await request(app.getHttpServer())
+      .post('/auth/otp/request')
+      .send({ phone })
+      .expect(201);
+    const loginRequestBody = loginRequestRes.body as AuthResponseBody;
+    expect(loginRequestBody.userId).toBe(signupBody.userId);
+    expect(sentOtps).toHaveLength(2);
+
+    const loginVerifyRes = await request(app.getHttpServer())
+      .post('/auth/otp/verify')
+      .send({ userId: signupBody.userId, code: sentOtps[1].code })
+      .expect(201);
+    const loginVerifyBody = loginVerifyRes.body as AuthResponseBody;
+    expect(loginVerifyBody.accessToken).toBeDefined();
+  });
+
+  it('rejects a second signup with an already-claimed phone', async () => {
+    const phone = testPhone();
+
+    await request(app.getHttpServer())
+      .post('/auth/signup/phone')
+      .send({ firstName: 'Ada', phone })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/auth/signup/phone')
+      .send({ firstName: 'Bea', phone })
+      .expect(409);
+  });
+
+  it('signs up by email, verifies the phone via OTP, and logs in with the password', async () => {
+    const phone = testPhone();
+    const email = testEmail();
+    const password = 'password123';
+
+    const signupRes = await request(app.getHttpServer())
+      .post('/auth/signup/email')
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email,
+        password,
+        phone,
+      })
+      .expect(201);
+    const signupBody = signupRes.body as AuthResponseBody;
+    expect(sentOtps).toHaveLength(1);
+
+    await request(app.getHttpServer())
+      .post('/auth/otp/verify')
+      .send({ userId: signupBody.userId, code: sentOtps[0].code })
+      .expect(201);
+
+    const loginRes = await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(201);
+    const loginBody = loginRes.body as AuthResponseBody;
+    expect(loginBody.accessToken).toBeDefined();
+  });
+
+  it('signs up by email with no phone, gets an access token immediately, and can call a protected route', async () => {
+    const email = testEmail();
+    const userName = testUsername();
+    const password = 'password123';
+
+    const signupRes = await request(app.getHttpServer())
+      .post('/auth/signup/email')
+      .send({ firstName: 'Ada', userName, email, password })
+      .expect(201);
+    const signupBody = signupRes.body as AuthResponseBody;
+    expect(signupBody.accessToken).toBeDefined();
+    expect(sentOtps).toHaveLength(0);
+
+    const meRes = await request(app.getHttpServer())
+      .get('/user/me')
+      .set('Authorization', `Bearer ${signupBody.accessToken}`)
+      .expect(200);
+    const meBody = meRes.body as AuthResponseBody;
+    expect(meBody.email).toBe(email);
+    expect(meBody.phone).toBeNull();
+
+    // logging back in works too, despite phoneVerifiedAt never being set
+    const loginRes = await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(201);
+    const loginBody = loginRes.body as AuthResponseBody;
+    expect(loginBody.accessToken).toBeDefined();
+  });
+
+  it('resets a forgotten password end-to-end and logs in with the new one', async () => {
+    const phone = testPhone();
+    const email = testEmail();
+    const password = 'password123';
+    const newPassword = 'newpassword456';
+
+    const signupRes = await request(app.getHttpServer())
+      .post('/auth/signup/email')
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email,
+        password,
+        phone,
+      })
+      .expect(201);
+    const signupBody = signupRes.body as AuthResponseBody;
+    await request(app.getHttpServer())
+      .post('/auth/otp/verify')
+      .send({ userId: signupBody.userId, code: sentOtps[0].code })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/auth/password-reset/request')
+      .send({ email })
+      .expect(201);
+    expect(sentEmails).toHaveLength(1);
+    const token = new URL(sentEmails[0].body).searchParams.get('token');
+    expect(token).toBeTruthy();
+
+    await request(app.getHttpServer())
+      .post('/auth/password-reset/confirm')
+      .send({ token, newPassword })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password: newPassword })
+      .expect(201);
+
+    // the old password must no longer work
+    await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(401);
+  });
+});
