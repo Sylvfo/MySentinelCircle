@@ -46,6 +46,7 @@ enum CircleType {
   BASIC
   FIRST
   ORGANISATION
+  RESERVED
 }
 
 enum CircleStatus {
@@ -57,6 +58,12 @@ enum LeadSlot {
   LEAD_1
   LEAD_2
   LEAD_3
+}
+
+enum MessagingMode {
+  NONE
+  INDIVIDUAL
+  GROUP
 }
 
 enum AlertStatus {
@@ -180,13 +187,15 @@ model LinkSentinels {
   requestedAsLead Boolean      @default(false)
   leadSlot        LeadSlot?
 
-  groupChat    Boolean @default(false)
-  chat         Boolean @default(false)
-  canSendPhone Boolean @default(false)
+  canMessageOwnCircle      Boolean       @default(true)
+  firstCircleMessagingMode MessagingMode @default(NONE)
+  canSendPhone             Boolean       @default(false)
 
   userSentinelId  String
   userCompanionId String
   circleId    String
+  proposedCircleId String?   // set only while awaiting consent to move into the 1st circle
+
 
   linkAsSentinel User   @relation("LinkAsSentinel", fields: [userSentinelId], references: [id], onDelete: Restrict)
   userCompanion      User   @relation("SentinelCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
@@ -266,9 +275,9 @@ model AlertParticipant {
   circle         Circle    @relation(fields: [circleId], references: [id], onDelete: Restrict)
   circleName     String
 
-  canSendPhoneAtAlert Boolean?
-  chatAtAlert         Boolean?
-  groupChatAtAlert    Boolean?
+  canSendPhoneAtAlert             Boolean?
+  canMessageOwnCircleAtAlert      Boolean?
+  firstCircleMessagingModeAtAlert MessagingMode?
 
   alertId String
   alert   Alert  @relation(fields: [alertId], references: [id], onDelete: Restrict)

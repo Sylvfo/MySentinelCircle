@@ -1,8 +1,8 @@
 ## Database Schema
 
-Updated: 2026-08-24 15:17
+Updated: 2026-10-21 14:28
 
-> Reflète l'état actuel de `schema.prisma` (branche `implement-testing`).
+> Reflète l'état actuel de `schema.prisma` (branche `sentinels`).
 
 Modèles actifs : `User`, `Circle`, `LinkSentinels`, `LinkSentinelsEvent`, `Alert`, `AlertParticipant`, `Conversation`, `ConversationParticipant`, `Message`.
 Principe central : rien n'est jamais vraiment supprimé — `User`/`Circle`/`LinkSentinels` se ferment ou s'anonymisent, mais restent référençables pour toujours. Pas de tables-copies (`CircleAlert`/`LinkSentinelAlert` n'existent plus), pas de journal d'événements séparé (`AlertEvent` a été remplacé par des timestamps d'étape directement sur `Alert`).
@@ -48,10 +48,13 @@ erDiagram
     string sentinelId FK
     string companionId FK
     string circleId FK
+    string proposedCircleId
     enum   status
     enum   sentinelType
     enum   initiatedBy
     enum   leadSlot
+    boolean canMessageOwnCircle
+    enum   firstCircleMessagingMode
   }
 
   LinkSentinelsEvent {
@@ -87,6 +90,8 @@ erDiagram
     enum   status
     boolean isLead
     boolean canSendPhoneAtAlert
+    boolean canMessageOwnCircleAtAlert
+    enum   firstCircleMessagingModeAtAlert
   }
 
   Conversation {
@@ -134,8 +139,11 @@ erDiagram
     string sentinelId FK
     string companionId FK
     string circleId FK
+    string proposedCircleId
     enum   status
     enum   sentinelType
+    boolean canMessageOwnCircle
+    enum   firstCircleMessagingMode
   }
   Circle {
     string id PK
@@ -162,6 +170,7 @@ erDiagram
 
 - `LinkAsSentinel` : les cercles où ce `User` est enregistré comme sentinelle.
 - `alertParticipations` : l'historique de toutes les alertes où ce `User` a été sollicité — via son `LinkSentinels`, sans copier son identité. `circleId`/`circleName` figent le cercle tel qu'il était à ce moment, car `LinkSentinels.circleId` peut changer après coup.
+- `canMessageOwnCircle` (bool, défaut `true`) / `firstCircleMessagingMode` (`NONE`/`INDIVIDUAL`/`GROUP`, défaut `NONE`) : réglages de messagerie posés par "Me" sur ce lien — respectivement la capacité de cette sentinelle à échanger avec le reste de son propre cercle, et sa capacité à joindre le 1er cercle pendant une alerte (1:1, groupe, ou pas du tout). Ne concernent que les sentinelles avec compte — sans objet pour une Sentinel SMS (`userType ONLY_SMS`), qui reste limitée aux réponses prédéfinies. Figés au moment T sur `AlertParticipant.canMessageOwnCircleAtAlert`/`firstCircleMessagingModeAtAlert` quand une alerte démarre.
 
 ## Vue "Companion"
 
@@ -223,6 +232,8 @@ erDiagram
 - `MyAlertsAsCompanion` : les alertes que ce `User` a déclenchées.
 - `firstCircle` sur `Alert` pointe directement sur `Circle` (permanent) — plus besoin de snapshot.
 - `Alert.launchedBy`/`closedBy` pointent directement sur `User` — couvre aussi bien le cas où c'est le companion lui-même (`AlertType.BYCOMPANION`) que le cas où c'est une sentinelle.
+- `circleType` (`BASIC | FIRST | ORGANISATION | RESERVED`) : `FIRST` et `RESERVED` sont tous deux gérés automatiquement (un seul par companion, créé à la demande, jamais supprimable). `RESERVED` regroupe les liens `LinkSentinels` acceptés mais pas actuellement dans un cercle réel — une sentinelle mise en pause, ou les survivantes d'un cercle supprimé (`deleteCircle` les y déplace au lieu de bloquer la suppression). Une sentinelle n'y atterrit jamais directement à la création (invitation ou demande) — seulement par déplacement manuel ou suppression de cercle.
+- `LinkSentinels.proposedCircleId` : référence transitoire (pas une vraie relation Prisma, comme `AlertParticipant.circleId`/`circleName`) posée par `updateMembership` quand "Me" déplace une sentinelle déjà acceptée vers le 1er cercle — le lien reste actif dans son cercle actuel le temps que la sentinelle réponde (`respondToCircleMove`, ou OUI/NON par SMS). Accepté : `circleId` devient `proposedCircleId`, qui repasse à `null`. Refusé : `proposedCircleId` repasse juste à `null`, rien d'autre ne change. Déplacer vers n'importe quel autre cercle (`BASIC`/`RESERVED`) reste immédiat, sans consentement — juste une notification.
 
 ---
 
@@ -260,6 +271,7 @@ erDiagram
     string sentinelId FK
     string companionId FK
     string circleId FK
+    string proposedCircleId
     enum   status
     enum   sentinelType
   }
@@ -335,6 +347,8 @@ erDiagram
     enum   status
     boolean isLead
     boolean canSendPhoneAtAlert
+    boolean canMessageOwnCircleAtAlert
+    enum   firstCircleMessagingModeAtAlert
   }
   Conversation {
     string id PK
@@ -358,7 +372,7 @@ erDiagram
 
 - **`LinkSentinels`** : lien vivant User↔Circle, une seule ligne par paire, jamais supprimée — juste son `status` change (`PENDING`/`ACCEPTED`/`REMOVED`/`BLOCKED`...).
 - **`LinkSentinelsEvent`** : journal append-only de chaque transition de statut — trace minimale de qui est entré/sorti d'un cercle, indépendamment de toute alerte.
-- **`AlertParticipant`** : ce qui s'est passé pour un `LinkSentinels` donné pendant une alerte donnée (contacté, répondu, lead, réglages de messagerie au moment T, cercle figé via `circleId`/`circleName`) — remplace l'ancien `LinkSentinelAlert`, sans jamais copier l'identité (nom/téléphone restent uniquement dans `User`).
+- **`AlertParticipant`** : ce qui s'est passé pour un `LinkSentinels` donné pendant une alerte donnée (contacté, répondu, lead, réglages de messagerie au moment T via `canSendPhoneAtAlert`/`canMessageOwnCircleAtAlert`/`firstCircleMessagingModeAtAlert`, cercle figé via `circleId`/`circleName`) — remplace l'ancien `LinkSentinelAlert`, sans jamais copier l'identité (nom/téléphone restent uniquement dans `User`).
 - **Étapes de l'alerte** : `Alert.launchedAt`/`activatedAt`/`closingAt`/`closedAt` — un timestamp par étape franchie, directement sur `Alert` (pas de table d'événements séparée ; ne garde que le dernier passage si une étape est revisitée).
 - **`Conversation` / `ConversationParticipant` / `Message`** : fil générique, réutilisable pour n'importe quel groupe de `User` à n'importe quel moment. `alertId` (optionnel) dit juste si elle est scopée à une alerte ou pas — le "genre" de conversation (1:1 permanent, groupe 1er cercle, cercle à cercle, sentinelle isolée) n'est pas stocké : il se déduit des participants, côté backend.
 

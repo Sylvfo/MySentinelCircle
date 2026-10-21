@@ -14,13 +14,18 @@
     "status": {
       "PENDING": "En attente",
       "ACCEPTED": "Acceptée",
-      "DECLINED": "Refusée"
+      "DECLINED": "Refusée",
+      "REMOVED": "Retirée",
+      "BLOCKED": "Bloquée"
     },
     "type": {
+      "ONLY_SMS": "SMS uniquement",
       "SENTINEL": "Sentinelle",
-      "SENTINEL_PLUS": "Sentinelle+"
+      "LEAD": "Sentinelle référente",
+      "FIRSTCIRCLE": "Sentinelle 1er cercle",
+      "UNCOMPLETE": "Incomplet"
     },
-    "reference": "Référence"
+    "leadSentinel": "Sentinelle référente"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -108,7 +113,10 @@
     "requestFrom": "{{who}} souhaite devenir votre sentinelle",
     "approve": "Approuver",
     "decline": "Refuser",
-    "removeMember": "Retirer"
+    "removeMember": "Retirer",
+    "confirmRemoveMember": "Attention, cette sentinelle ne fera plus partie de vos cercles.",
+    "move": "Déplacer",
+    "awaitingFirstCircleConsent": "En attente d'accord pour le 1er cercle"
   },
   "companions": {
     "title": "Companions",
@@ -126,7 +134,10 @@
     "requestIntro": "Entrez le numéro de la personne à surveiller ; elle recevra votre demande.",
     "targetPhone": "Téléphone de la personne (+33…)",
     "sendRequest": "Envoyer la demande",
-    "requestSent": "Demande envoyée."
+    "requestSent": "Demande envoyée.",
+    "circleMoveProposed": "{{who}} vous propose de rejoindre son 1er cercle",
+    "acceptCircleMove": "Accepter",
+    "declineCircleMove": "Refuser"
   },
   "alerts": {
     "title": "Alertes",

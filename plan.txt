@@ -138,6 +138,30 @@ CIRCLES & PERMISSIONS
 - Organizations bypass circle structure entirely when alerting with just the
   target's phone number, from within the app — the alert always routes to
   the 1st circle first.
+- Reserve circle: besides the 1st circle, every "Me" also has exactly one
+  system-managed "reserve" circle (circleType RESERVED), created on demand
+  and never deletable, same as the 1st circle. It holds accepted Sentinel
+  links that exist but aren't currently active in any real circle — a
+  Sentinel "Me" pauses without ending the relationship, or the survivors of
+  a circle "Me" deletes (e.g. the choir circle closes; its Sentinels move to
+  reserve instead of being force-removed). A Sentinel link can NEVER land in
+  the reserve circle at creation (invite or request) — it's reachable only
+  by a deliberate move afterward (manual pause, or a circle deletion cascade).
+  No Lead slot can exist there (Lead is 1st-circle-only, same rule as any
+  other outer circle). Once the alert module exists, the reserve circle must
+  be excluded from any circle-escalation/broadcast logic — it never receives
+  alerts.
+- Moving a Sentinel between circles: "Me" can move an already-accepted
+  Sentinel to any of their circles (a real one, or the reserve circle) as an
+  alternative to removing them outright — nobody has to just disappear from
+  "Me"'s circles. Moving into the 1st circle specifically needs the
+  Sentinel's consent first (a message, must accept) — same spirit as an
+  invite. While they wait, they stay exactly where they currently are; if
+  they decline, nothing changes. Moving into any other circle (a BASIC
+  circle, or reserve) is immediate, no consent needed — just a notification
+  telling them they were moved. Removing a Sentinel from the app/site side
+  shows a clear warning first (that relationship really ends), since Move is
+  now the non-destructive alternative.
 
 CORE FEATURES (MVP)
 --------------------
@@ -151,11 +175,13 @@ CORE FEATURES (MVP)
      mode). An account created this way with no phone is marked
      `userType: UNCOMPLETE` (vs `ACCOUNT` once a phone is present) — it can
      browse freely but can't have or be a Sentinel until a phone is added.
-     **Not yet enforced in code** — no real guard on Sentinel routes checks
-     `userType`/phone presence yet, this is documented intent for when the
-     `sentinel` module grows, not a built safeguard today. "Complete your
-     profile with a phone later" isn't built either — no endpoint for it
-     yet, future work.
+     **Enforced**: `inviteSentinel`/`requestToBeSentinel` reject an
+     UNCOMPLETE caller (`sentinel.service.ts`'s `assertCompleteAccount`) —
+     every other Sentinel-side lookup goes through a phone match, so an
+     UNCOMPLETE account can never end up on the other side of a link
+     either. "Complete your profile with a phone later" is built:
+     `POST /user/phone/request` + `/user/phone/verify` promote
+     UNCOMPLETE -> ACCOUNT once verified (frontend: `AddPhonePanel`).
    - Username: optional for phone-only signup. **Mandatory** for
      email+password and Google signup — auto-suggested at signup,
      editable, but can't be skipped or deferred (unlike lastName and phone
@@ -196,7 +222,14 @@ CORE FEATURES (MVP)
      for a given "Me". Whichever side didn't initiate must validate before
      the link becomes active.
    - Every new Sentinel is assigned to a circle right away — a Sentinel
-     always belongs to exactly one circle from the moment the link exists.
+     always belongs to exactly one circle from the moment the link exists
+     (never the reserve circle — see CIRCLES & PERMISSIONS). For a
+     Sentinel-initiated request specifically, that initial circle is just a
+     technical placeholder (the 1st circle): since the requester can't see
+     "Me"'s private circle list to choose one, "Me" picks the real circle
+     when accepting the request, not before. Afterward, "Me" can move an
+     accepted link to any of their circles at any time, including into
+     reserve (a pause) or out of it.
    - Blocking has two levels: declining a single incoming request (link
      status -> DECLINED, that one request is refused but either side could
      try again later) vs blocking a user outright (link status -> BLOCKED

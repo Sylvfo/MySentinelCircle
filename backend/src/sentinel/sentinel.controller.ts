@@ -16,6 +16,7 @@ import { UpdateCircleDto } from './dto/update-circle.dto';
 import { InviteSentinelDto } from './dto/invite-sentinel.dto';
 import { RequestSentinelDto } from './dto/request-sentinel.dto';
 import { UpdateMembershipDto } from './dto/update-membership.dto';
+import { AcceptMembershipDto } from './dto/accept-membership.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('sentinel')
@@ -90,8 +91,17 @@ export class SentinelController {
   // ---- Respond (site) -------------------------------------------------------
 
   @Post('memberships/:id/accept')
-  accept(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
-    return this.sentinel.respondToMembership(user.userId, id, true);
+  accept(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: AcceptMembershipDto,
+  ) {
+    return this.sentinel.respondToMembership(
+      user.userId,
+      id,
+      true,
+      dto.circleId,
+    );
   }
 
   @Post('memberships/:id/decline')
@@ -103,6 +113,17 @@ export class SentinelController {
   @Post('memberships/:id/leave')
   leave(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
     return this.sentinel.leaveMembershipAsSentinel(user.userId, id);
+  }
+
+  // A Sentinel answers a proposed move into the 1st circle (also doable by SMS).
+  @Post('memberships/:id/circle-move/accept')
+  acceptCircleMove(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+    return this.sentinel.respondToCircleMove(user.userId, id, true);
+  }
+
+  @Post('memberships/:id/circle-move/decline')
+  declineCircleMove(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+    return this.sentinel.respondToCircleMove(user.userId, id, false);
   }
 
   // ---- Membership management (owner side) -----------------------------------
@@ -122,6 +143,13 @@ export class SentinelController {
     @Param('id') id: string,
   ) {
     return this.sentinel.removeMembership(user.userId, id);
+  }
+
+  // "Me" only — ends the link permanently (never reactivatable), unlike
+  // decline/remove.
+  @Post('memberships/:id/block')
+  block(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+    return this.sentinel.blockMembership(user.userId, id);
   }
 
   // ---- Companions (people I watch over) -------------------------------------

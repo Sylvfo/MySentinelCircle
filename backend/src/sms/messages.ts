@@ -66,6 +66,32 @@ export function requestAnsweredSms(
     : `${targetLabel} a refuse votre demande de Sentinel sur ${APP}.`;
 }
 
+// "Me" proposes moving an already-accepted Sentinel into the 1st circle —
+// unlike other moves, this needs their consent (they stay put until they
+// answer). Can be approved/refused by SMS reply (or from the app).
+export function circleMoveProposedSms(companionLabel: string): string {
+  return (
+    `${companionLabel} vous propose de rejoindre son 1er cercle sur ${APP}. ` +
+    `Repondez OUI pour accepter, NON pour refuser.`
+  );
+}
+
+// "Me" moves an already-accepted Sentinel into any other circle — immediate,
+// no consent needed, just a heads-up.
+export function circleMovedSms(circleLabel: string, companionLabel: string): string {
+  return `${companionLabel} vous a deplace vers le cercle "${circleLabel}" sur ${APP}.`;
+}
+
+// Sent to "Me" once the Sentinel answers a 1st-circle move proposal.
+export function circleMoveAnsweredSms(
+  sentinelLabel: string,
+  accepted: boolean,
+): string {
+  return accepted
+    ? `${sentinelLabel} a rejoint votre 1er cercle sur ${APP}.`
+    : `${sentinelLabel} a refuse de rejoindre votre 1er cercle sur ${APP}.`;
+}
+
 // Reply-keyword parsing for SMS accept/decline. Case- and accent-insensitive
 // matching is done by the caller; keep these lowercase and unaccented.
 export const ACCEPT_KEYWORDS = ['oui', 'ok', 'accepte', 'yes', 'y', 'o'];

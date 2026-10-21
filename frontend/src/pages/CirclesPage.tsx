@@ -10,6 +10,7 @@ import {
   listCircles,
   listIncomingRequests,
   removeMembership,
+  updateMembership,
   type Circle,
   type IncomingRequest,
   type Membership,
@@ -45,32 +46,62 @@ export function CirclesPage() {
       <p style={{ color: 'var(--text-muted)' }}>{t('circles.intro')}</p>
       {error && <p className="form-error">{error}</p>}
 
-      <RequestsInbox requests={requests} onChange={reload} />
+      <RequestsInbox requests={requests} circles={circles} onChange={reload} />
       <CreateCircleForm onCreated={reload} onError={setError} />
 
       {circles.length === 0 ? (
         <div className="empty-state">{t('circles.empty')}</div>
       ) : (
-        circles.map((circle) => <CircleCard key={circle.id} circle={circle} onChange={reload} onError={setError} />)
+        circles.map((circle) => (
+          <CircleCard key={circle.id} circle={circle} circles={circles} onChange={reload} onError={setError} />
+        ))
       )}
     </div>
   );
 }
 
-function RequestsInbox({ requests, onChange }: { requests: IncomingRequest[]; onChange: () => void }) {
+function RequestsInbox({
+  requests,
+  circles,
+  onChange,
+}: {
+  requests: IncomingRequest[];
+  circles: Circle[];
+  onChange: () => void;
+}) {
   const { t } = useTranslation();
+  // A Sentinel-initiated request never carries its own circle — "Me" picks
+  // one from their own (real) circles when approving.
+  const assignableCircles = circles.filter((c) => c.circleType !== 'RESERVED');
+  const [choice, setChoice] = useState<Record<string, string>>({});
+
   if (requests.length === 0) return null;
+
+  const circleFor = (requestId: string) => choice[requestId] ?? assignableCircles[0]?.id ?? '';
 
   return (
     <section className="panel">
       <h2>{t('circles.requests')}</h2>
       {requests.map((r) => (
         <div key={r.id} className="row">
-          <span>
-            {t('circles.requestFrom', { who: r.linkAsSentinel.firstName })} — {r.circle.label}
-          </span>
+          <span>{t('circles.requestFrom', { who: r.linkAsSentinel.firstName })}</span>
           <span className="row-actions">
-            <button onClick={() => acceptMembership(r.id).then(onChange)}>{t('circles.approve')}</button>
+            <select
+              value={circleFor(r.id)}
+              onChange={(e) => setChoice((prev) => ({ ...prev, [r.id]: e.target.value }))}
+            >
+              {assignableCircles.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            <button
+              disabled={!circleFor(r.id)}
+              onClick={() => acceptMembership(r.id, circleFor(r.id)).then(onChange)}
+            >
+              {t('circles.approve')}
+            </button>
             <button className="ghost" onClick={() => declineMembership(r.id).then(onChange)}>
               {t('circles.decline')}
             </button>
@@ -113,7 +144,17 @@ function CreateCircleForm({ onCreated, onError }: { onCreated: () => void; onErr
   );
 }
 
-function CircleCard({ circle, onChange, onError }: { circle: Circle; onChange: () => void; onError: (m: string) => void }) {
+function CircleCard({
+  circle,
+  circles,
+  onChange,
+  onError,
+}: {
+  circle: Circle;
+  circles: Circle[];
+  onChange: () => void;
+  onError: (m: string) => void;
+}) {
   const { t } = useTranslation();
 
   const del = async () => {
@@ -146,7 +187,9 @@ function CircleCard({ circle, onChange, onError }: { circle: Circle; onChange: (
       {circle.userSentinels.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>{t('circles.noMembers')}</p>
       ) : (
-        circle.userSentinels.map((m) => <MemberRow key={m.id} m={m} onChange={onChange} onError={onError} />)
+        circle.userSentinels.map((m) => (
+          <MemberRow key={m.id} m={m} circles={circles} onChange={onChange} onError={onError} />
+        ))
       )}
 
       <InviteForm circleId={circle.id} isPrimary={isPrimary} onChange={onChange} onError={onError} />
@@ -154,10 +197,23 @@ function CircleCard({ circle, onChange, onError }: { circle: Circle; onChange: (
   );
 }
 
-function MemberRow({ m, onChange, onError }: { m: Membership; onChange: () => void; onError: (msg: string) => void }) {
+function MemberRow({
+  m,
+  circles,
+  onChange,
+  onError,
+}: {
+  m: Membership;
+  circles: Circle[];
+  onChange: () => void;
+  onError: (msg: string) => void;
+}) {
   const { t } = useTranslation();
+  const otherCircles = circles.filter((c) => c.id !== m.circleId);
+  const [moveTo, setMoveTo] = useState(otherCircles[0]?.id ?? '');
 
   const remove = async () => {
+    if (!window.confirm(t('circles.confirmRemoveMember'))) return;
     try {
       await removeMembership(m.id);
       onChange();
@@ -166,17 +222,50 @@ function MemberRow({ m, onChange, onError }: { m: Membership; onChange: () => vo
     }
   };
 
+  const move = async () => {
+    if (!moveTo) return;
+    try {
+      await updateMembership(m.id, { circleId: moveTo });
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
+  const proposedCircleLabel = m.proposedCircleId
+    ? circles.find((c) => c.id === m.proposedCircleId)?.label
+    : null;
+
   return (
     <div className="row member-row">
       <span>
         {m.linkAsSentinel.firstName}
         <span className={`badge status-${m.status.toLowerCase()}`}>{t(`sentinel.status.${m.status}`)}</span>
         <span className="badge">{t(`sentinel.type.${m.sentinelType}`)}</span>
-        {m.leadSlot && <span className="badge">{t('sentinel.reference')}</span>}
+        {m.leadSlot && <span className="badge">{t('sentinel.leadSentinel')}</span>}
+        {proposedCircleLabel && (
+          <span className="badge">{t('circles.awaitingFirstCircleConsent')}</span>
+        )}
       </span>
-      <button className="ghost" onClick={remove}>
-        {t('circles.removeMember')}
-      </button>
+      <span className="row-actions">
+        {otherCircles.length > 0 && (
+          <>
+            <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}>
+              {otherCircles.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            <button className="ghost" onClick={move}>
+              {t('circles.move')}
+            </button>
+          </>
+        )}
+        <button className="ghost" onClick={remove}>
+          {t('circles.removeMember')}
+        </button>
+      </span>
     </div>
   );
 }
@@ -232,7 +321,7 @@ function InviteForm({
               checked={requestedAsLead}
               onChange={(e) => setRequestedAsLead(e.target.checked)}
             />
-            {t('sentinel.reference')}
+            {t('sentinel.leadSentinel')}
           </label>
         )}
         <button type="submit" disabled={submitting || !phone.trim() || !name.trim()}>

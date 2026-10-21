@@ -1,6 +1,6 @@
 # Stack schema
 
-Updated: 2026-08-24 15:17
+Updated: 2026-10-21 14:40
 
 Conceptual overview of the whole MySentinelCircle stack — how the pieces fit together. For DB entities/relations see `backend/prisma/DB_schema.md`; for route-by-route detail see `API.md`.
 
@@ -12,7 +12,7 @@ domain name: mysentinelscircles.com.
 - **Frontend web**: React + TypeScript (Vite), i18next for translations
 - **Mobile**: React Native (planned, not started)
 - **ORM / DB**: Prisma + MariaDB, containerized (self-hosted, not a managed provider like Neon)
-- **SMS**: pluggable provider behind an interface (console sender in dev; Twilio likely default in prod)
+- **SMS**: pluggable provider behind an interface (`SMS_SENDER`/`OTP_SENDER`/`EMAIL_SENDER` tokens). Dev sender logs to console and, if `NOSMSNOW_URL` is set (`backend/.env`), also forwards to NoSMSNow (`nosmsnow/`, a dev-only proxy tool — not a real provider) so outbound OTP/SMS/email shows up there; its inbound webhook (`POST /sentinel/sms/inbound`) lets a Sentinel without an account answer by SMS (OUI/NON/STOP). Twilio likely default in prod.
 - **Real-time**: hybrid REST + WebSocket. WebSocket (NestJS gateway) for alerts, notifications, and messages — everything else stays REST. One WS gateway with rooms keyed by `conversationId`, reusing the single `Conversation`/`Message` model; alerts fan out to WS (connected users) and SMS (everyone else) in parallel. WS auth reuses the existing JWT, verified on socket connection.
 - **Rate limiting**: `@nestjs/throttler`, **implemented**. A single global default guard (`ThrottlerModule.forRoot([{ ttl: 60_000, limit: 20 }])` + `APP_GUARD` → `ThrottlerGuard`, both in `app.module.ts`) covers every route at 20 req/min/IP; `auth`'s routes additionally carry `@Throttle({ default: { limit: 5, ttl: 60_000 } })` (5 req/min/IP) since signup/login/OTP/password-reset are the brute-force-sensitive surface. No custom `RateLimitGuard`, no separate `*.documentation.ts` files — simpler than originally sketched. `alert` has no route-specific throttling yet (module is still a skeleton); revisit once it has real endpoints.
   Lesson from transcendance: behind nginx, the backend saw every client as the same IP, so concurrent signups all shared one throttle bucket and got blocked. Fix: nginx must set `X-Forwarded-For`/`X-Real-IP` (done, every `nginx/nginx.conf` location block sets it), NestJS must `app.set('trust proxy', 1)` (done, in `main.ts`). Throttling still keys on IP, not on the target identifier (phone/account) — several real users can legitimately share one IP (school network, hotel Organization Sentinels); not hardened yet.
@@ -30,12 +30,12 @@ flowchart LR
     subgraph Frontend["frontend/ (React + Vite)"]
         Pages["pages/*.tsx\n(Login, Signup, Dashboard, Circles, Companions, Alerts, Messages)"]
         AuthCtx["auth/AuthContext.tsx\n+ ProtectedRoute"]
-        ApiClient["api/*.ts\n(client, auth, sentinel)"]
+        ApiClient["api/*.ts\n(client, auth, user, sentinel)"]
     end
 
     subgraph Backend["backend/ (NestJS)"]
         Auth["AuthModule\n(OTP, email/pwd, Google OAuth, JWT)"]
-        User["UserModule (skeleton)"]
+        User["UserModule\n(profile, phone, password,\nstep-up, email change)"]
         Sentinel["SentinelModule\n(circles, LinkSentinels)"]
         Alert["AlertModule (skeleton)"]
         Org["OrganizationModule (skeleton)"]
@@ -76,8 +76,8 @@ One NestJS module per concern (`backend/src/`), per `plan.txt`'s BACKEND MODULES
 | Module | Role | Status |
 |---|---|---|
 | `auth` | Login/signup: phone+OTP, email+password, Google OAuth; issues JWT sessions. Kept separate from `user` so auth strategies evolve independently of profile data. | Implemented (controller, service, JWT strategy/guard, OTP sender interface) |
-| `user` | Create/modify account info; read own data incl. alert history; accept/decline incoming Sentinel invitations. | Skeleton |
-| `sentinel` | Register Sentinels (invite or request), define circles, per-Sentinel settings (`sentinelType`, reference/responsible flag for 1st circle). Keeps the default 1st circle with ≥1 reference Sentinel. | Implemented (controller, service, SMS-based sub-controller) |
+| `user` | Profile read/update, avatar upload, add/verify a phone, change password, step-up re-authentication (password/Google/code) before a sensitive action, email-change request+confirm flow. | Implemented (`UserController` + separate unguarded `EmailConfirmationController`, service) |
+| `sentinel` | Register Sentinels (invite or request), define circles (incl. the system-managed `FIRST`/`RESERVED` circles), per-Sentinel settings (`sentinelType` — Lead/FirstCircle/Sentinel/Sentinel SMS —, Lead-slot, messaging settings `canMessageOwnCircle`/`firstCircleMessagingMode`). Keeps the 1st circle's Lead slot(s) covered; relocates a closing circle's members to the reserve circle instead of blocking deletion. | Implemented (controller, service, SMS-based sub-controller, unit tests) |
 | `alert` | Send alerts (app WS + SMS), respond to an alert, notify relevant circles, notify everyone once closed. Only 1st circle members or "Me" can close it. Real-time updates over WS; everything else (history, etc.) over REST. | Skeleton |
 | `organization` | Authenticate the `OrganizationMember`, look up a target user by phone, raise an alert (with reason), notify the 1st circle, open the Organization↔1st-circle `Conversation`. | Skeleton |
 | `messaging` | Everyday Me↔Sentinel conversations outside any active alert; also backs in-alert conversations used by `alert` (1st circle chat, per-Sentinel+ isolated chat, Organization chat). Same model, different rules depending on context. Message delivery over WS (room per `conversationId`); conversation/history CRUD over REST. | Skeleton |
@@ -89,10 +89,10 @@ Skeleton = empty controller/service, module wired into `app.module.ts` but no lo
 
 ## Frontend structure
 
-- `pages/` — one component per route: `LoginPage`, `SignupPage`, `OtpVerifyPage`, `DashboardPage`, `CirclesPage`, `CompanionsPage`, `AlertsPage`, `MessagesPage`.
+- `pages/` — one component per route: `LoginPage`, `SignupPage`, `ForgotPasswordPage`, `ResetPasswordPage`, `OtpVerifyPage`, `ConfirmEmailChangePage`, `DashboardPage`, `CirclesPage`, `CompanionsPage`, `AlertsPage`, `MessagesPage`, `SettingsPage`.
 - `auth/AuthContext.tsx` + `ProtectedRoute.tsx` — holds the JWT/session, gates routes.
-- `api/client.ts` — thin `fetch` wrapper (`apiGet/Post/Patch/Delete`), attaches `Authorization: Bearer <token>` from `localStorage`, throws `ApiError` on non-2xx. `api/auth.ts` and `api/sentinel.ts` layer typed calls on top, one file per backend module consumed so far.
-- `components/` — shared UI (`AppShell`, `LanguageSwitcher`).
+- `api/client.ts` — thin `fetch` wrapper (`apiGet/Post/Patch/Delete`), attaches `Authorization: Bearer <token>` from `localStorage`, throws `ApiError` on non-2xx. `api/auth.ts`, `api/user.ts`, and `api/sentinel.ts` layer typed calls on top, one file per backend module consumed so far.
+- `components/` — shared UI (`AppShell`, `LanguageSwitcher`, `GoogleSignInButton`, `Modal`, `StepUp`).
 - `i18n/` — i18next setup + `locales/`.
 
 ## How frontend and backend connect
@@ -100,7 +100,7 @@ Skeleton = empty controller/service, module wired into `app.module.ts` but no lo
 - Frontend calls the backend over REST at `VITE_API_URL` (defaults to `http://localhost:3000` in host mode; overridden to `""` in Docker mode so calls are same-origin through nginx). Backend CORS is locked to `FRONTEND_URL` (defaults to `http://localhost:5173`; only exercised in host mode — same-origin requests through nginx don't trigger CORS at all).
 - Auth: OTP/email/Google flows hit `auth` endpoints, get back a JWT, stored in `localStorage` and attached as a bearer token on every subsequent call; `JwtAuthGuard` + `JwtStrategy` protect routes backend-side, `ProtectedRoute` gates pages frontend-side.
 - Real-time: alerts, notifications, and messages go over WebSocket instead of REST — the same JWT is reused to authenticate the socket on connect. Everything outside an active alert (except messages) stays REST. Rooms are keyed by `conversationId`, so one gateway serves every conversation context (1:1 companion↔sentinel, 1st-circle group, per-alert isolated chat, organization chat).
-- Each backend module a page needs gets its own `api/<module>.ts` file frontend-side — `api/sentinel.ts` exists because `CirclesPage`/`CompanionsPage` need it; `api/alert.ts`, `api/user.ts`, `api/messaging.ts` will follow once those backend modules stop being skeletons.
+- Each backend module a page needs gets its own `api/<module>.ts` file frontend-side — `api/sentinel.ts` and `api/user.ts` exist because `CirclesPage`/`CompanionsPage`/`SettingsPage` need them; `api/alert.ts`, `api/messaging.ts` will follow once those backend modules stop being skeletons.
 - All modules share one `PrismaService` → one MariaDB DB, containerized alongside backend/frontend/nginx via `docker-compose`; no service-to-service DB split.
 
 ## Regenerating this file
