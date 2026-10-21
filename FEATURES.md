@@ -1,6 +1,6 @@
 # Features
 
-Updated: 2026-08-24 15:18
+Updated: 2026-09-09 15:24
 
 ## Project phases
 
@@ -18,15 +18,15 @@ The project as a whole moves through these macro phases, in order — the databa
 
 | Feature | State | Issues |
 |---|---|---|
-| Authentication | 🟠 constructing | #11, #13, #14, #15 (closed) |
-| User | 🔵 todo | #26 (no label — module still an empty skeleton in code, see note below) |
-| Sentinel / Circles | 🔵 todo | #12 |
-| Organizations | 🔵 todo | #10 |
+| Authentication | 🟠 constructing | #13, #31 (open, no label — carried over, see note below); #11, #14, #15 (closed) |
+| User | 🔵 todo | #29, #31 (open, no label — carried over, see note below); #26 (closed) |
+| Sentinel / Circles | 🔵 todo | #12 (`state:todo` — carried as-is; see note below) |
+| Organizations | 🔵 todo | #10 (no label) |
 | Alert | ⚪ backlog | #18 (closed, unlabeled — module is still an empty skeleton in code; see note below) |
-| Messaging | ⚪ backlog | #19 |
-| Notifications | ⚪ backlog | #7 |
-| Internationalization (i18n) | 🟠 constructing | #16 |
-| Infrastructure & Architecture | 🟢 locked | #8, #9 — both closed this session (stack decisions + MariaDB/Docker/nginx/HTTPS all working end-to-end) |
+| Messaging | ⚪ backlog | #19 (no label) |
+| Notifications | ⚪ backlog | #7 (no label) |
+| Internationalization (i18n) | 🟠 constructing | #16 (no label — carried over) |
+| Infrastructure & Architecture | 🟢 locked | #8, #9 — both closed (stack decisions + MariaDB/Docker/nginx/HTTPS all working end-to-end) |
 
 A feature's state is the least-advanced state among its open issues — update it as issues move.
 
@@ -36,14 +36,14 @@ Issues about how we work with Claude and keep the project's own documentation in
 
 - #3 Setup Claude in project (closed)
 - #4 Set up Claude loop, hooks, verification skills
-- #5 Update plan
+- #5 Update plan (`state:todo`)
 - #6 Schémas (documentation upkeep) (closed)
 - #17 Divers (misc open points from `plan.txt`)
-- #20 Procedure plan
-- #24 sms-like-programm (NoSMSNow dev tool — built and tested)
-- #25 Testings — this session's whole test-infra + auth-coverage work (isolated `mysentinelcircle_test` DB, unit + e2e specs, CI) lives under this issue; still open on GitHub since closing/commenting is `deny`-locked for Claude, ask Sylvie to close it herself if she considers it done.
+- #20 Procedure plan (closed)
+- #24 sms-like-programm (NoSMSNow dev tool — built and tested; still open)
+- #25 Testings — this session's whole test-infra + auth-coverage work (isolated `mysentinelcircle_test` DB, unit + e2e specs, CI) lived under this issue; now closed on GitHub.
 
-> **Data-quality note (from `/docu features`, 2026-08-24 15:18)**: most open issues carry no `state:*` label at all (only #5, #11, #12 do now — #6 and #8 closed since the last sync) — the states shown above for unlabeled issues are carried over unchanged from before, not derived from a real label, since there's nothing to derive from. **#11 (Authentication) itself carries two conflicting labels** (`state:todo` and `state:constructing` simultaneously) — likely a stale label left on, not corrected here since it's a GitHub-side edit, not a doc regen. Also, **#18 (Alert) is closed but empty (no body) and the `alert` backend module is still an untouched skeleton** — looks like it may have been closed by mistake; worth checking. **New issues found this sync, not previously listed**: #24, #25 (added above), #26 (added to Product features above).
+> **Data-quality note (from `/docu features`, 2026-09-09 15:24)**: almost every open issue carries no `state:*` label at all (only #5 and #12 do now). For unlabeled open issues, the states shown above are carried over unchanged from the previous sync, not derived from a real label — there is nothing to derive from. **#12 (Sentinel / Circles) is still labeled `state:todo`**, but the module is by far the most built-out in the codebase (1210 lines, 13 routes, full lead-slot/link-lifecycle logic, 104 passing unit tests) — the label looks stale; Claude can't edit issue labels (`deny`-locked), so this needs Sylvie's own look. **#18 (Alert) is closed but empty (no body) and the `alert` backend module is still an untouched 17-line skeleton** — looks like it may have been closed by mistake; still worth checking. **#29 ("delete user") was open but untracked in this file until now** — added to the User row. **#31 ("auth/user to do later") is new since the last sync, open, unlabeled, and spans both Authentication and User** — added to both rows. **#11 (Authentication)'s previous conflicting-labels caveat no longer applies — that issue is now closed.**
 
 ## Legend
 

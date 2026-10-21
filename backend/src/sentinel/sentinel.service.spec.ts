@@ -10,6 +10,7 @@ import {
   LeadSlot,
   LinkInitiator,
   LinkStatus,
+  MessagingMode,
   SentinelType,
   UserType,
 } from '@prisma/client';
@@ -396,6 +397,7 @@ describe('SentinelService', () => {
     it('moves an accepted link into the reserve circle immediately and notifies the Sentinel', async () => {
       prisma.linkSentinels.findUnique.mockResolvedValueOnce({
         id: 'link-1',
+        status: LinkStatus.ACCEPTED,
         circleId: 'first-1',
         leadSlot: LeadSlot.LEAD_2,
         requestedAsLead: true,
@@ -439,6 +441,7 @@ describe('SentinelService', () => {
     it('blocks moving a Lead away when it would strand the 1st circle', async () => {
       prisma.linkSentinels.findUnique.mockResolvedValueOnce({
         id: 'link-1',
+        status: LinkStatus.ACCEPTED,
         circleId: 'first-1',
         leadSlot: LeadSlot.LEAD_1,
         requestedAsLead: true,
@@ -469,6 +472,7 @@ describe('SentinelService', () => {
     it('rejects moving into a closed circle', async () => {
       prisma.linkSentinels.findUnique.mockResolvedValueOnce({
         id: 'link-1',
+        status: LinkStatus.ACCEPTED,
         circleId: 'work-1',
         leadSlot: null,
         requestedAsLead: false,
@@ -493,6 +497,7 @@ describe('SentinelService', () => {
     it('proposes a move into the 1st circle instead of moving immediately', async () => {
       prisma.linkSentinels.findUnique.mockResolvedValueOnce({
         id: 'link-1',
+        status: LinkStatus.ACCEPTED,
         circleId: 'work-1',
         leadSlot: null,
         requestedAsLead: false,
@@ -524,6 +529,82 @@ describe('SentinelService', () => {
       );
       expect(result).toEqual({ id: 'link-1', proposedCircleId: 'first-1' });
       expect(prisma.linkSentinels.count).not.toHaveBeenCalled(); // no Lead-slot logic touched
+    });
+
+    it('rejects updating a link that is not ACCEPTED (e.g. a REMOVED one)', async () => {
+      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+        id: 'link-1',
+        status: LinkStatus.REMOVED,
+        circleId: 'work-1',
+        leadSlot: null,
+        requestedAsLead: false,
+        sentinelType: SentinelType.SENTINEL,
+        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
+        linkAsSentinel: { userType: UserType.ONLY_SMS },
+      });
+
+      await expect(
+        service.updateMembership('me', 'link-1', {
+          circleId: 'reserve-1',
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.circle.findUnique).not.toHaveBeenCalled();
+      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+    });
+
+    it('updates messaging settings for an account-holding Sentinel', async () => {
+      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+        id: 'link-1',
+        status: LinkStatus.ACCEPTED,
+        circleId: 'work-1',
+        leadSlot: null,
+        requestedAsLead: false,
+        sentinelType: SentinelType.SENTINEL,
+        canMessageOwnCircle: true,
+        firstCircleMessagingMode: MessagingMode.NONE,
+        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
+        linkAsSentinel: { userType: UserType.ACCOUNT },
+      });
+      prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
+
+      await service.updateMembership('me', 'link-1', {
+        canMessageOwnCircle: false,
+        firstCircleMessagingMode: MessagingMode.GROUP,
+      } as any);
+
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+        where: { id: 'link-1' },
+        data: {
+          circleId: 'work-1',
+          sentinelType: SentinelType.SENTINEL,
+          requestedAsLead: false,
+          leadSlot: null,
+          canMessageOwnCircle: false,
+          firstCircleMessagingMode: MessagingMode.GROUP,
+        },
+      });
+    });
+
+    it('rejects setting messaging settings on a Sentinel SMS (no account)', async () => {
+      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+        id: 'link-1',
+        status: LinkStatus.ACCEPTED,
+        circleId: 'work-1',
+        leadSlot: null,
+        requestedAsLead: false,
+        sentinelType: SentinelType.ONLY_SMS,
+        canMessageOwnCircle: true,
+        firstCircleMessagingMode: MessagingMode.NONE,
+        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
+        linkAsSentinel: { userType: UserType.ONLY_SMS },
+      });
+
+      await expect(
+        service.updateMembership('me', 'link-1', {
+          firstCircleMessagingMode: MessagingMode.INDIVIDUAL,
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
     });
   });
 

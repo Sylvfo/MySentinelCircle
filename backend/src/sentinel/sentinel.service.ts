@@ -472,6 +472,11 @@ export class SentinelService {
     dto: UpdateMembershipDto,
   ) {
     const link = await this.getOwnedLink(userId, linkId);
+    if (link.status !== LinkStatus.ACCEPTED) {
+      throw new BadRequestException(
+        'Only an accepted membership can be updated',
+      );
+    }
 
     let circleId = link.circleId;
     let targetIsFirst = link.circle.circleType === CircleType.FIRST;
@@ -537,6 +542,18 @@ export class SentinelService {
       await this.assertLeadPreserved(link);
     }
 
+    // Messaging settings only mean anything for an account-holding Sentinel
+    // — Sentinel SMS is always predefined-replies-only, regardless.
+    if (
+      (dto.canMessageOwnCircle !== undefined ||
+        dto.firstCircleMessagingMode !== undefined) &&
+      link.linkAsSentinel.userType === UserType.ONLY_SMS
+    ) {
+      throw new BadRequestException(
+        'Messaging settings only apply to an account-holding Sentinel',
+      );
+    }
+
     return this.prisma.linkSentinels.update({
       where: { id: link.id },
       data: {
@@ -544,6 +561,9 @@ export class SentinelService {
         sentinelType: dto.sentinelType ?? link.sentinelType,
         requestedAsLead,
         leadSlot,
+        canMessageOwnCircle: dto.canMessageOwnCircle ?? link.canMessageOwnCircle,
+        firstCircleMessagingMode:
+          dto.firstCircleMessagingMode ?? link.firstCircleMessagingMode,
       },
     });
   }

@@ -60,6 +60,12 @@ enum LeadSlot {
   LEAD_3
 }
 
+enum MessagingMode {
+  NONE
+  INDIVIDUAL
+  GROUP
+}
+
 enum AlertStatus {
   SENT
   LAUNCHED
@@ -181,9 +187,9 @@ model LinkSentinels {
   requestedAsLead Boolean      @default(false)
   leadSlot        LeadSlot?
 
-  groupChat    Boolean @default(false)
-  chat         Boolean @default(false)
-  canSendPhone Boolean @default(false)
+  canMessageOwnCircle      Boolean       @default(true)
+  firstCircleMessagingMode MessagingMode @default(NONE)
+  canSendPhone             Boolean       @default(false)
 
   userSentinelId  String
   userCompanionId String
@@ -269,9 +275,9 @@ model AlertParticipant {
   circle         Circle    @relation(fields: [circleId], references: [id], onDelete: Restrict)
   circleName     String
 
-  canSendPhoneAtAlert Boolean?
-  chatAtAlert         Boolean?
-  groupChatAtAlert    Boolean?
+  canSendPhoneAtAlert             Boolean?
+  canMessageOwnCircleAtAlert      Boolean?
+  firstCircleMessagingModeAtAlert MessagingMode?
 
   alertId String
   alert   Alert  @relation(fields: [alertId], references: [id], onDelete: Restrict)
