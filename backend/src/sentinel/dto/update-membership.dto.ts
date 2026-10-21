@@ -1,8 +1,9 @@
 import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
-import { SentinelType } from '@prisma/client';
+import { MessagingMode, SentinelType } from '@prisma/client';
 
 // "Me" adjusts an existing membership: change the Sentinel's type, the
-// Lead-slot request, or move them to another of "Me"'s circles.
+// Lead-slot request, the messaging settings, or move them to another of
+// "Me"'s circles.
 export class UpdateMembershipDto {
   @IsOptional()
   @IsEnum(SentinelType)
@@ -16,4 +17,14 @@ export class UpdateMembershipDto {
   @IsOptional()
   @IsString()
   circleId?: string;
+
+  // Messaging settings — only meaningful for account-holding Sentinels
+  // (see plan.txt CIRCLES & PERMISSIONS).
+  @IsOptional()
+  @IsBoolean()
+  canMessageOwnCircle?: boolean;
+
+  @IsOptional()
+  @IsEnum(MessagingMode)
+  firstCircleMessagingMode?: MessagingMode;
 }

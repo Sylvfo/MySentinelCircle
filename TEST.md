@@ -1,6 +1,6 @@
 # TEST.md
 
-Updated: 2026-08-24 15:06
+Updated: 2026-10-21 15:14
 
 ## When tests run
 
@@ -13,27 +13,64 @@ Updated: 2026-08-24 15:06
 
 ## Current test list
 
-### Unit — `backend/src/**/*.spec.ts` (28 tests)
+### Unit — `backend/src/**/*.spec.ts` (107 tests)
 
 - **`app.controller.spec.ts`** (1 test) — checks `GET /` responds `"Hello World!"`.
-- **`auth/auth.service.spec.ts`** (27 tests, `PrismaService`/`JwtService`/`ConfigService`/`OTP_SENDER`/`EMAIL_SENDER` mocked):
+- **`auth/auth.service.spec.ts`** (34 tests, `PrismaService`/`JwtService`/`ConfigService`/`OTP_SENDER`/`EMAIL_SENDER` mocked):
   - **`claimOrCreateByPhone`** (via `signupPhone`, 3 tests) — creates when no row exists, claims/upgrades an `ONLY_SMS` stub (same `id` kept), rejects 409 if already a real account.
-  - **`signupGoogle`** (1 test) — rejects 409 when the Google email is already used by another account.
-  - **`signupEmail`** (2 tests) — rejects 409 if the email is already taken; success (creates account + sends OTP).
-  - **`loginEmail`** (5 tests) — rejects when no account, no `passwordHash` (Google/phone-only account), wrong password, unverified phone; success (returns an `accessToken`).
-  - **`loginGoogle`** (4 tests) — rejects on invalid Google token, no linked account, unverified phone; success (returns an `accessToken`).
+  - **`signupGoogle`** (3 tests) — rejects 409 when the Google email or username is already taken; creates an `UNCOMPLETE` account (no phone) and returns a token on success.
+  - **`signupEmail`** (4 tests) — rejects 409 if the email or username is already taken; success with a phone (creates account + sends OTP); success without a phone (`UNCOMPLETE` account, token returned immediately).
+  - **`loginEmail`** (6 tests) — rejects when no account, no `passwordHash` (Google/phone-only account), wrong password, unverified phone; logs in an account with no phone at all even though `phoneVerifiedAt` is null; success (returns an `accessToken`).
+  - **`loginGoogle`** (5 tests) — rejects on invalid Google token, no linked account, unverified phone; logs in an account with no phone at all; success (returns an `accessToken`).
+  - **`linkGoogle`** (2 tests) — rejects when the Google identity is already linked to another user; links it to the caller on success.
   - **`verifyOtp`** (6 tests) — rejects when no pending OTP, too many attempts (≥5), expired code, wrong code (asserts the `otpAttempts` increment); succeeds on first verification (`phoneVerifiedAt` set) and succeeds when already verified (`phoneVerifiedAt` not overwritten).
   - **`requestPasswordReset`** (3 tests) — sends the email when the account has a `passwordHash`; does nothing (but returns the same generic message) when no account exists or the account has no `passwordHash`.
   - **`confirmPasswordReset`** (3 tests) — rejects when no account matches the token, when the token expired; success (password updated, token cleared).
+- **`user/user.service.spec.ts`** (37 tests, `PrismaService`/`OTP_SENDER`/`EMAIL_SENDER` mocked):
+  - **`updateProfile`** (4 tests) — rejects changing an already-set username or taking one in use; allows setting it when none yet; updates on success.
+  - **`changePassword`** (3 tests) — rejects with no password set or a wrong current password; updates on success.
+  - **`requestAddPhone`** (3 tests, + 2 more under "step-up required when changing an existing phone") — rejects a phone already claimed by a real account; sets the phone and sends an OTP when free; claims and anonymizes a passive `ONLY_SMS` stub; requires a fresh step-up to change an already-set phone, allowed once step-up is fresh.
+  - **`verifyAddPhone`** (6 tests) — rejects no pending code / too many attempts / expired / wrong code (increments `otpAttempts`); promotes `UNCOMPLETE` to `ACCOUNT` on success; leaves `userType` alone if it wasn't `UNCOMPLETE`.
+  - **`stepUpPassword`** (3 tests) — rejects no password set / wrong password; marks step-up verified on success.
+  - **`stepUpGoogle`** (3 tests) — rejects no linked Google identity / token for a different identity; marks step-up verified on success.
+  - **`stepUpCodeRequest`** (4 tests) — rejects the phone channel with no verified phone, the email channel with no email; sends a code to phone or email.
+  - **`stepUpCodeVerify`** (3 tests) — rejects no pending code / wrong code (increments `otpAttempts`); marks step-up verified on success.
+  - **`requestEmailChange`** (3 tests) — rejects stale step-up / an email already in use; stores the pending email and sends a confirmation link on success.
+  - **`confirmEmailChange`** (3 tests) — rejects an unknown/expired token, an expired pending-email request; applies the pending email on success.
+- **`sentinel/sentinel.service.spec.ts`** (34 tests, `PrismaService`/`SMS_SENDER` mocked):
+  - **`listCircles`** (1 test) — auto-creates the 1st and reserve circles if missing, sorted `FIRST → BASIC → RESERVED`.
+  - **`inviteSentinel`** (6 tests) — rejects inviting directly into the reserve circle, into a closed circle, an `UNCOMPLETE` (no-phone) caller; requires an existing account for a 1st-circle Sentinel; rejects re-inviting a `BLOCKED` link; bootstraps the first Sentinel of an empty 1st circle as `LEAD_1`.
+  - **`requestToBeSentinel`** (1 test) — rejects an `UNCOMPLETE` (no-phone) requester.
+  - **`respondToMembership`** (4 tests) — requires a `circleId` to accept a Sentinel-initiated request; moves the link into the chosen circle on accept; rejects accepting directly into the reserve circle; ignores `circleId` for a Companion-initiated invite.
+  - **`deleteCircle`** (3 tests) — cannot delete the 1st or reserve circle; relocates active Sentinels to the reserve circle instead of blocking deletion.
+  - **`updateMembership`** (8 tests) — moves an accepted link into the reserve circle and notifies the Sentinel; blocks moving a Lead away when it would strand the 1st circle; rejects moving into a closed circle; proposes (rather than moves) a move into the 1st circle; rejects updating a non-`ACCEPTED` link; updates messaging settings (`canMessageOwnCircle`/`firstCircleMessagingMode`) for an account-holding Sentinel; rejects setting them on a Sentinel SMS link.
+  - **`respondToCircleMove`** (4 tests) — accepts (moves into the proposed circle, clears the proposal) and declines (clears only the proposal); rejects a caller who isn't the Sentinel on the link; rejects when there's no pending proposal.
+  - **`removeMembership`** (1 test) — blocks removing the last Lead while other active members remain.
+  - **`blockMembership`** (5 tests) — blocks a `PENDING` or `ACCEPTED` link; rejects blocking an already-blocked link or someone else's link; blocks removing the last Lead while other active members remain.
+  - **`handleInboundSms` — circle move proposal** (2 tests) — resolves a pending circle-move proposal via OUI/NON; a genuine fresh `PENDING` invite/request wins over an existing move proposal.
 
-### E2e — `backend/test/**/*.e2e-spec.ts` (5 tests)
+### E2e — `backend/test/**/*.e2e-spec.ts` (26 tests)
 
 - **`app.e2e-spec.ts`** (1 test) — boots a real Nest instance (`AppModule`) against `mysentinelcircle_test`, checks `GET /` → 200 `"Hello World!"`.
-- **`auth.e2e-spec.ts`** (4 tests, `OTP_SENDER`/`EMAIL_SENDER` intercepted via `overrideProvider` to capture the real code/link instead of parsing console output):
+- **`auth.e2e-spec.ts`** (5 tests, `OTP_SENDER`/`EMAIL_SENDER` intercepted via `overrideProvider` to capture the real code/link instead of parsing console output):
   - Phone signup → OTP verification → phone+OTP login again, end to end over real HTTP requests.
   - Rejects a second signup on an already-claimed phone with 409.
   - Email signup → OTP verification → login with the password.
+  - Email signup with no phone → immediate access token → calls a protected route.
   - Full password reset (request → confirm → login with the new password; the old password no longer works afterwards).
+- **`user.e2e-spec.ts`** (4 tests):
+  - Completes an `UNCOMPLETE` profile with a phone, promoting it to `ACCOUNT`.
+  - Claims an existing `ONLY_SMS` Sentinel stub when adding its phone.
+  - Requires a fresh step-up before changing an already-set phone.
+  - Changes the email end-to-end: step-up, request, and confirm via the link.
+- **`sentinel.e2e-spec.ts`** (16 tests, `SMS_SENDER` intercepted to capture sent messages):
+  - **Circles** (3 tests) — always exposes the 1st/reserve circles sorted `FIRST → BASIC → RESERVED`; cannot delete either; deleting a normal circle relocates its active Sentinels to the reserve circle.
+  - **Invite flow** (2 tests) — an account-holding Sentinel is invited, appears in their invitations inbox, accepts from the app (first Sentinel of an empty 1st circle auto-becomes `LEAD_1`); a 1st-circle invite to someone with no account is rejected (400).
+  - **Request flow** (1 test) — a Sentinel-initiated request requires the companion to pick a `circleId` at accept time (rejected without one), then lands in the chosen circle.
+  - **Remove / Leave / Block** (3 tests) — companion-side removal (`REMOVED`); blocking a link permanently (re-invite rejected 403); removing the last Lead while other active members remain is rejected (409).
+  - **Circle move — 1st-circle consent** (1 test) — moving an accepted Sentinel into the 1st circle proposes instead of moving immediately; only moves once the Sentinel accepts via `circle-move/accept`.
+  - **Messaging settings** (2 tests) — `canMessageOwnCircle`/`firstCircleMessagingMode` update for an account-holding Sentinel; rejected (400) for a Sentinel SMS link.
+  - **Inbound SMS** (4 tests) — accepts (`OUI`) and declines (`NON`) a pending invitation; `STOP` opts an already-accepted Sentinel out (`REMOVED`); an unrecognized reply with no actionable link returns `matched: false`.
 
 ## Where to see results
 
@@ -43,10 +80,12 @@ Updated: 2026-08-24 15:06
 ## Tests still to write
 
 - **`loginGoogle`/`signupGoogle` in e2e** — not covered (would need a real Google token, not easily simulated in e2e; the branching logic is already covered at the unit level via a mocked `verifyGoogleIdToken`).
-- **`sentinel` module** (circles/memberships) — next priority once there's code to test (rules like "at least one Lead Sentinel per 1st circle", "one active `LinkSentinels` per pair").
+- **`auth.requestOtp`** — no dedicated unit test (only exercised indirectly through flows that call it); `verifyOtp` is fully covered.
+- **`sentinel` module gaps** — `leaveMembershipAsSentinel` (Sentinel-side opt-out from the app, as opposed to SMS `STOP`) and `listCompanions` have no dedicated test yet, unit or e2e. `createCircle`/`listIncomingRequests`/`listMyInvitations` are exercised indirectly as setup steps inside the e2e specs, but have no test asserting their own output shape directly.
+- **`user` module gaps** — `getProfile`, `setAvatar` have no dedicated tests (simple reads, lower risk).
 - **`alert` / `organization` / `messaging`** — still empty skeletons, nothing to test until there's code.
 
-`auth` coverage is now complete on both fronts: unit (the 6 previously-missing methods — `signupEmail`, `loginEmail`, `loginGoogle`, `verifyOtp`, `requestPasswordReset`, `confirmPasswordReset` — are all covered) and e2e (phone+OTP, email+password, and password-reset flows, end to end).
+All three built-out modules now have both unit and e2e coverage: `auth` (34 unit + 5 e2e), `user` (37 unit + 4 e2e), `sentinel` (34 unit + 16 e2e) — the e2e layer is what actually exercises the real HTTP routes, guards, and the SMS-webhook flows that unit tests mock around.
 
 ## Test infra (reference)
 

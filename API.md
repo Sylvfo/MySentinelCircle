@@ -1,6 +1,6 @@
 # API
 
-Updated: 2026-08-24 15:17
+Updated: 2026-10-21 14:34
 
 Route-by-route reference, generated from `backend/src/*/*.controller.ts`. For the conceptual picture see `STACK_SCHEMA.md`; for entities/relations see `backend/prisma/DB_schema.md`.
 
@@ -29,11 +29,28 @@ No global guard — each route is public except `/auth/me`. Every route below ex
 | POST | `/auth/otp/verify` | — | Verify the OTP code; marks the phone verified and returns a JWT. |
 | POST | `/auth/password-reset/request` | — | Request a password-reset email link. Always returns the same generic message, whether or not the account exists — never leaks account existence. |
 | POST | `/auth/password-reset/confirm` | — | Confirm a password reset with the token from the email link; sets the new password. |
-| GET | `/auth/me` | JWT | Current user's id/firstName/email/phone/phoneVerifiedAt/createdAt. |
+| POST | `/auth/link/google` | JWT | Attach a Google identity to the caller's own already-authenticated account (proof-of-ownership via JWT, not an unauthenticated "link by email match" route). |
+
+Note: `GET /auth/me` doesn't exist on `AuthController` — the current-user profile route lives on `user` as `GET /user/me` below.
 
 ## `user`
 
-Skeleton — no routes yet.
+`@UseGuards(JwtAuthGuard)` at the controller level — every route below requires a JWT, except `/user/confirm-email` (separate `EmailConfirmationController`, deliberately unguarded: the user clicks an email link, not necessarily logged in on that device).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/user/me` | JWT | Current user's profile. |
+| PATCH | `/user/me` | JWT | Update profile fields. |
+| POST | `/user/me/avatar` | JWT | Upload a profile avatar (multipart, jpg/png/webp, 5MB max). |
+| POST | `/user/phone/request` | JWT, throttled | Request an OTP to add/verify a phone number on the account. |
+| POST | `/user/phone/verify` | JWT, throttled | Verify the OTP from `phone/request`, completing the account. |
+| POST | `/user/me/change-password` | JWT, throttled | Change password (requires current password). |
+| POST | `/user/me/step-up/password` | JWT, throttled | Step-up re-authentication via password, before a sensitive action. |
+| POST | `/user/me/step-up/google` | JWT, throttled | Step-up re-authentication via Google ID token. |
+| POST | `/user/me/step-up/code/request` | JWT, throttled | Request an SMS/email code for step-up re-authentication. |
+| POST | `/user/me/step-up/code/verify` | JWT, throttled | Verify the step-up code from `step-up/code/request`. |
+| POST | `/user/me/change-email/request` | JWT, throttled | Request an email-change confirmation link to the new address. |
+| POST | `/user/confirm-email` | none (email-link flow) | Confirm an email change with the token from `change-email/request`'s link. |
 
 ## `sentinel`
 
@@ -49,11 +66,14 @@ Skeleton — no routes yet.
 | POST | `/sentinel/requests` | Request to become the Sentinel of the "Me" at a given phone number. |
 | GET | `/sentinel/requests` | Incoming Sentinel requests awaiting my approval. |
 | GET | `/sentinel/invitations` | Invitations addressed to me (I'm the invited Sentinel), awaiting my answer. |
-| POST | `/sentinel/memberships/:id/accept` | Accept a pending invitation/request addressed to me. |
+| POST | `/sentinel/memberships/:id/accept` | Accept a pending invitation/request addressed to me (picks the real target circle, via `circleId`). |
 | POST | `/sentinel/memberships/:id/decline` | Decline a pending invitation/request addressed to me. |
 | POST | `/sentinel/memberships/:id/leave` | Opt out of an active link, as the Sentinel. |
-| PATCH | `/sentinel/memberships/:id` | Update a membership I own (Sentinel type, Lead-slot request, move to another circle). |
-| DELETE | `/sentinel/memberships/:id` | Remove a Sentinel from one of my circles. |
+| POST | `/sentinel/memberships/:id/circle-move/accept` | As the Sentinel, accept a proposed move into "Me"'s 1st circle. |
+| POST | `/sentinel/memberships/:id/circle-move/decline` | As the Sentinel, decline a proposed move into "Me"'s 1st circle. |
+| PATCH | `/sentinel/memberships/:id` | Update a membership I own — Sentinel type, Lead-slot request, messaging settings (`canMessageOwnCircle`/`firstCircleMessagingMode`), or move to another circle (moves into the 1st circle instead propose and require the Sentinel's consent). Only an `ACCEPTED` membership can be updated. |
+| DELETE | `/sentinel/memberships/:id` | Remove a Sentinel from one of my circles (marks `REMOVED`, never hard-deleted). |
+| POST | `/sentinel/memberships/:id/block` | "Me" only — permanently block a link (never reactivatable afterward), unlike decline/remove. |
 | GET | `/sentinel/companions` | Reverse view — the people I watch over as a Sentinel. |
 
 ### `sentinel/sms` (sub-controller)
