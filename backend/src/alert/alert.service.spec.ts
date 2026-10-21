@@ -10,9 +10,9 @@ import {
   AlertType,
   CircleStatus,
   CircleType,
+  LeadSlot,
   LinkStatus,
   MessagingMode,
-  SentinelType,
 } from '@prisma/client';
 import { AlertService } from './alert.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -49,7 +49,9 @@ describe('AlertService', () => {
     canSendPhone: true,
     canMessageOwnCircle: true,
     firstCircleMessagingMode: MessagingMode.GROUP,
-    sentinelType: SentinelType.LEAD,
+    // isLead is driven by leadSlot, not sentinelType — SentinelType.LEAD is
+    // never actually assigned anywhere in sentinel.service.ts.
+    leadSlot: LeadSlot.LEAD_1,
     linkAsSentinel: {
       id: 'sentinel-1',
       firstName: 'Bob',
@@ -95,7 +97,18 @@ describe('AlertService', () => {
     it('raises an alert when the companion raises it for themself', async () => {
       prisma.alert.findFirst.mockResolvedValueOnce(null); // assertNoActiveAlert
       prisma.circle.findFirst.mockResolvedValueOnce(circle);
-      prisma.linkSentinels.findMany.mockResolvedValueOnce([linkRow()]);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        linkRow(),
+        linkRow({
+          id: 'link-2',
+          leadSlot: null,
+          linkAsSentinel: {
+            id: 'sentinel-2',
+            firstName: 'Cleo',
+            phone: '+41792222222',
+          },
+        }),
+      ]);
       prisma.user.findUnique.mockResolvedValueOnce({
         firstName: 'Alice',
         phone: '+41790000000',
@@ -120,6 +133,7 @@ describe('AlertService', () => {
           firstCircleId: 'circle-1',
         }),
       });
+      // isLead is driven by leadSlot, not sentinelType.
       expect(prisma.alertParticipant.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           status: AlertParticipantStatus.WAITING,
@@ -133,12 +147,21 @@ describe('AlertService', () => {
           userSentinelsId: 'link-1',
         }),
       });
-      expect(sms.send).toHaveBeenCalledTimes(1); // the sentinel only, not the companion
+      expect(prisma.alertParticipant.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          isLead: false,
+          userSentinelsId: 'link-2',
+        }),
+      });
+      expect(sms.send).toHaveBeenCalledTimes(2); // both sentinels, not the companion
       expect(sms.send).toHaveBeenCalledWith('+41791111111', expect.any(String));
+      expect(sms.send).toHaveBeenCalledWith('+41792222222', expect.any(String));
       expect(prisma.conversation.create).toHaveBeenCalledWith({
         data: {
           alertId: 'alert-1',
-          participants: { create: [{ userId: 'sentinel-1' }] },
+          participants: {
+            create: [{ userId: 'sentinel-1' }, { userId: 'sentinel-2' }],
+          },
         },
       });
     });
@@ -302,13 +325,20 @@ describe('AlertService', () => {
       participants: [],
     };
 
-    it('returns the alert for the companion', async () => {
+    it('returns the alert for the companion, including the 1st-circle conversation', async () => {
       prisma.alert.findUnique.mockResolvedValueOnce(loadedAlert);
 
       const result = await service.getAlert('alice-id', 'alert-1');
 
       expect(result).toEqual(loadedAlert);
       expect(prisma.linkSentinels.findFirst).not.toHaveBeenCalled();
+      expect(prisma.alert.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            conversations: { select: { id: true, closedAt: true } },
+          }),
+        }),
+      );
     });
 
     it('returns the alert for an accepted 1st-circle Sentinel', async () => {

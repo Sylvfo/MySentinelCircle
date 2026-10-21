@@ -12,7 +12,6 @@ import {
   CircleStatus,
   CircleType,
   LinkStatus,
-  SentinelType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
@@ -94,7 +93,7 @@ export class AlertService {
             canSendPhoneAtAlert: link.canSendPhone,
             canMessageOwnCircleAtAlert: link.canMessageOwnCircle,
             firstCircleMessagingModeAtAlert: link.firstCircleMessagingMode,
-            isLead: link.sentinelType === SentinelType.LEAD,
+            isLead: link.leadSlot !== null,
             alertId: created.id,
             userSentinelsId: link.id,
           },
@@ -214,6 +213,9 @@ export class AlertService {
             },
           },
         },
+        // So a client can find the 1st-circle chat's conversationId to call
+        // the `messaging` endpoints — the only conversation created so far.
+        conversations: { select: { id: true, closedAt: true } },
       },
     });
     if (!alert) throw new NotFoundException('Alert not found');
