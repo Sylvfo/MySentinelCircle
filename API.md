@@ -1,6 +1,6 @@
 # API
 
-Updated: 2026-10-21 14:34
+Updated: 2026-10-21 16:03
 
 Route-by-route reference, generated from `backend/src/*/*.controller.ts`. For the conceptual picture see `STACK_SCHEMA.md`; for entities/relations see `backend/prisma/DB_schema.md`.
 
@@ -84,7 +84,14 @@ Note: `GET /auth/me` doesn't exist on `AuthController` — the current-user prof
 
 ## `alert`
 
-Skeleton — no routes yet.
+`@UseGuards(JwtAuthGuard)` at the controller level — every route requires a JWT. MVP slice only: raise/close a simple alert and read it back; no Organization-raised alerts, Lead handoff, outer-circle escalation, or SMS reply parsing yet — see `plan.txt`'s Alert lifecycle for the full spec.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/alert` | Raise an alert (`companionId`, `alertType`, `reason`) — by "Me" for themself, or by an accepted 1st-circle Sentinel on "Me"'s behalf. Creates the `Alert` + one `AlertParticipant` per accepted 1st-circle `LinkSentinels` (freezing their messaging/lead permissions), opens the 1st-circle group `Conversation`, and SMS-notifies every participant plus the companion (if raised by a Sentinel). Rejects (409) if the companion already has a non-resolved alert. |
+| POST | `/alert/:id/close` | Close an alert — by "Me" or by an accepted 1st-circle Sentinel. Resolves the `Alert`, closes its `AlertParticipant`s and `Conversation`, and SMS-notifies every participant plus the companion (if closed by the circle). Rejects (409) if already resolved. |
+| GET | `/alert` | List my alerts (as companion or as a participant Sentinel), newest first. |
+| GET | `/alert/:id` | Get one alert with its participants — "Me" or a 1st-circle participant Sentinel only. |
 
 ## `organization`
 
@@ -92,7 +99,12 @@ Skeleton — no routes yet.
 
 ## `messaging`
 
-Skeleton — no routes yet.
+`@UseGuards(JwtAuthGuard)` at the controller level — every route requires a JWT. MVP slice only: send/list messages in an existing `Conversation` (currently only created by `alert`'s 1st-circle chat) — no conversation-creation route of its own yet, no WebSocket (clients poll `GET`).
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/messaging/conversations/:id/messages` | Send a message — caller must be an active (non-left) participant of an open (non-closed) conversation. |
+| GET | `/messaging/conversations/:id/messages` | List a conversation's messages, oldest first — caller must be an active participant (conversation may be closed). |
 
 ## Regenerating this file
 

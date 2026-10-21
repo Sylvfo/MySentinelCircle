@@ -1,6 +1,6 @@
 # TEST.md
 
-Updated: 2026-10-21 15:14
+Updated: 2026-10-21 16:03
 
 ## When tests run
 
@@ -13,7 +13,7 @@ Updated: 2026-10-21 15:14
 
 ## Current test list
 
-### Unit — `backend/src/**/*.spec.ts` (107 tests)
+### Unit — `backend/src/**/*.spec.ts` (126 tests)
 
 - **`app.controller.spec.ts`** (1 test) — checks `GET /` responds `"Hello World!"`.
 - **`auth/auth.service.spec.ts`** (34 tests, `PrismaService`/`JwtService`/`ConfigService`/`OTP_SENDER`/`EMAIL_SENDER` mocked):
@@ -48,6 +48,14 @@ Updated: 2026-10-21 15:14
   - **`removeMembership`** (1 test) — blocks removing the last Lead while other active members remain.
   - **`blockMembership`** (5 tests) — blocks a `PENDING` or `ACCEPTED` link; rejects blocking an already-blocked link or someone else's link; blocks removing the last Lead while other active members remain.
   - **`handleInboundSms` — circle move proposal** (2 tests) — resolves a pending circle-move proposal via OUI/NON; a genuine fresh `PENDING` invite/request wins over an existing move proposal.
+- **`alert/alert.service.spec.ts`** (14 tests, `PrismaService`/`SMS_SENDER` mocked; MVP slice — raise/close/read only):
+  - **`raiseAlert`** (4 tests) — the companion raising for themself (freezes `AlertParticipant`'s `...AtAlert` fields from `LinkSentinels`/`Circle`, opens the 1st-circle `Conversation`, SMS to the circle only); an accepted 1st-circle Sentinel raising on the companion's behalf (SMS to the circle **and** the companion); rejects a caller who's neither (403); rejects a companion who already has a non-resolved alert (409).
+  - **`closeAlert`** (5 tests) — the companion closing it themself (SMS to the circle only); an accepted 1st-circle Sentinel closing it (SMS to the circle **and** the companion); rejects a non-participant caller (403); rejects closing an already-resolved alert (409); rejects a missing alert (404).
+  - **`getAlert`** (4 tests) — returns the alert for the companion and for an accepted 1st-circle Sentinel; rejects a non-participant caller (403); rejects a missing alert (404).
+  - **`listMyAlerts`** (1 test) — queries alerts where the caller is the companion or a participant Sentinel, newest first.
+- **`messaging/messaging.service.spec.ts`** (5 tests, `PrismaService` mocked):
+  - **`sendMessage`** (3 tests) — creates a message for an active participant of an open conversation; rejects a non-participant (403); rejects sending into a closed conversation (409).
+  - **`listMessages`** (2 tests) — returns messages oldest-first for an active participant; rejects a non-participant (403).
 
 ### E2e — `backend/test/**/*.e2e-spec.ts` (26 tests)
 
@@ -83,9 +91,10 @@ Updated: 2026-10-21 15:14
 - **`auth.requestOtp`** — no dedicated unit test (only exercised indirectly through flows that call it); `verifyOtp` is fully covered.
 - **`sentinel` module gaps** — `leaveMembershipAsSentinel` (Sentinel-side opt-out from the app, as opposed to SMS `STOP`) and `listCompanions` have no dedicated test yet, unit or e2e. `createCircle`/`listIncomingRequests`/`listMyInvitations` are exercised indirectly as setup steps inside the e2e specs, but have no test asserting their own output shape directly.
 - **`user` module gaps** — `getProfile`, `setAvatar` have no dedicated tests (simple reads, lower risk).
-- **`alert` / `organization` / `messaging`** — still empty skeletons, nothing to test until there's code.
+- **`alert`/`messaging` gaps** — unit-only so far, no e2e spec yet (the plan behind this slice judged it unnecessary since no schema/migration changed — worth adding once the module grows). Null-phone edge cases (a participant or companion with no `phone`, silently skipped rather than erroring) aren't explicitly exercised. A partial-SMS-failure case (`Promise.allSettled` with one rejected send) isn't covered either. `alert`'s Organization-raised alerts, Lead handoff, outer-circle escalation, and SMS reply parsing are out of scope for this slice entirely (see `plan.txt`'s Alert lifecycle) — nothing to test until that code exists.
+- **`organization`** — still an empty skeleton, nothing to test until there's code.
 
-All three built-out modules now have both unit and e2e coverage: `auth` (34 unit + 5 e2e), `user` (37 unit + 4 e2e), `sentinel` (34 unit + 16 e2e) — the e2e layer is what actually exercises the real HTTP routes, guards, and the SMS-webhook flows that unit tests mock around.
+All built-out modules now have unit coverage: `auth` (34 unit + 5 e2e), `user` (37 unit + 4 e2e), `sentinel` (34 unit + 16 e2e), `alert` (14 unit), `messaging` (5 unit) — the e2e layer (where it exists) is what actually exercises the real HTTP routes, guards, and the SMS-webhook flows that unit tests mock around.
 
 ## Test infra (reference)
 

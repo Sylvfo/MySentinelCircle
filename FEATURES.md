@@ -1,6 +1,6 @@
 # Features
 
-Updated: 2026-10-21 15:21
+Updated: 2026-10-21 16:05
 
 ## Project phases
 
@@ -22,8 +22,8 @@ The project as a whole moves through these macro phases, in order — the databa
 | User | 🟣 testing | `backend/src/user` (728 lines) + `user.service.spec.ts` (37 tests) | #29, #31 (open); #26 (closed) |
 | Sentinel / Circles | 🟣 testing | `backend/src/sentinel` (1241 lines) + `sentinel.service.spec.ts` (34 tests) | #12 (open, still `state:todo` on GitHub — stale, see note below) |
 | Organizations | 🔵 todo | `backend/src/organization` — 17-line skeleton | #10 (open, no label) |
-| Alert | ⚪ backlog | `backend/src/alert` — 17-line skeleton | #18 (closed, unlabeled — see note below) |
-| Messaging | ⚪ backlog | `backend/src/messaging` — 17-line skeleton | #19 (open, no label) |
+| Alert | 🟣 testing | `backend/src/alert` (361 lines) + `alert.service.spec.ts` (14 tests) — MVP slice: raise/close/read only | #18 (closed, unlabeled) |
+| Messaging | 🟣 testing | `backend/src/messaging` (93 lines) + `messaging.service.spec.ts` (5 tests) — MVP slice: send/list only, no conversation-creation route of its own | #19 (open, no label — see note below) |
 | Notifications | ⚪ backlog | no backend module yet | #7 (open, no label) |
 | Internationalization (i18n) | 🟠 constructing | cross-cutting (frontend `i18n/locales`), no single backend module to evaluate — carried over | #16 (open, no label) |
 | Infrastructure & Architecture | 🟢 locked | hand-set by Sylvie, not code-derived (see Legend) | #8, #9 — both closed (stack decisions + MariaDB/Docker/nginx/HTTPS all working end-to-end) |
@@ -45,7 +45,7 @@ Issues about how we work with Claude and keep the project's own documentation in
 
 > **Methodology change (2026-10-21)**: starting this sync, feature state is derived from the code (per module, under `backend/src/`), not from the GitHub issue label — see the `docu` skill's `features` target. The label-derived history up to the 2026-09-09 sync is superseded.
 >
-> **Label/code mismatches found, worth Sylvie's own look on GitHub** (Claude can't edit issue labels, `deny`-locked): **#12 (Sentinel / Circles)** is still labeled `state:todo` on GitHub, but the code shows `testing` (1241 lines, 13 routes, full lead-slot/link-lifecycle logic, 34 passing unit tests) — relabel it `state:testing` if you agree. **#18 (Alert)** is closed but empty (no body), and the `alert` backend module is still an untouched 17-line skeleton — looks like it may have been closed by mistake.
+> **Label/code mismatches found, worth Sylvie's own look on GitHub** (Claude can't edit issue labels, `deny`-locked): **#12 (Sentinel / Circles)** is still labeled `state:todo` on GitHub, but the code shows `testing` (1241 lines, 13 routes, full lead-slot/link-lifecycle logic, 34 passing unit tests) — relabel it `state:testing` if you agree. **#18 (Alert)** was flagged in the previous sync as "closed but the module is an untouched skeleton, maybe closed by mistake" — that's resolved now, the module has real MVP code behind it, so the closed state is accurate. **#19 (Messaging)** is still open, but the code now shows `testing` (MVP send/list slice) — worth closing or commenting once you've looked at it.
 >
 > **Issues column also carries forward from the previous sync**: #29 ("delete user") was open but untracked in this file before 2026-09-09 — now under User. #31 ("auth/user to do later") spans both Authentication and User.
 

@@ -376,7 +376,8 @@ export class SentinelService {
       await this.applyCircleMoveResponse(moveProposal, intent === 'accept');
       return {
         matched: true as const,
-        action: intent === 'accept' ? 'circle_move_accepted' : 'circle_move_declined',
+        action:
+          intent === 'accept' ? 'circle_move_accepted' : 'circle_move_declined',
       };
     }
 
@@ -561,7 +562,8 @@ export class SentinelService {
         sentinelType: dto.sentinelType ?? link.sentinelType,
         requestedAsLead,
         leadSlot,
-        canMessageOwnCircle: dto.canMessageOwnCircle ?? link.canMessageOwnCircle,
+        canMessageOwnCircle:
+          dto.canMessageOwnCircle ?? link.canMessageOwnCircle,
         firstCircleMessagingMode:
           dto.firstCircleMessagingMode ?? link.firstCircleMessagingMode,
       },
@@ -702,7 +704,10 @@ export class SentinelService {
 
   // No auto-Lead on acceptance — same reasoning as respondToMembership's
   // accept path: "Me" promotes to Lead separately afterward if they want.
-  private async applyCircleMoveResponse(link: LinkWithParties, accept: boolean) {
+  private async applyCircleMoveResponse(
+    link: LinkWithParties,
+    accept: boolean,
+  ) {
     const updated = await this.prisma.linkSentinels.update({
       where: { id: link.id },
       data: accept
