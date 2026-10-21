@@ -128,7 +128,7 @@ describe('Messaging (e2e)', () => {
       .expect(201);
 
     const alertRes = await request(app.getHttpServer())
-      .post('/alert')
+      .post('/alert/raise')
       .set('Authorization', auth(companion.accessToken))
       .send({
         companionId: companion.userId,

@@ -161,7 +161,7 @@ describe('Alert (e2e)', () => {
       sentSms.length = 0; // ignore invite/accept notifications
 
       const res = await request(app.getHttpServer())
-        .post('/alert')
+        .post('/alert/raise')
         .set('Authorization', auth(companion.accessToken))
         .send({
           companionId: companion.userId,
@@ -199,7 +199,7 @@ describe('Alert (e2e)', () => {
       sentSms.length = 0;
 
       await request(app.getHttpServer())
-        .post('/alert')
+        .post('/alert/raise')
         .set('Authorization', auth(sentinels[0].accessToken))
         .send({
           companionId: companion.userId,
@@ -215,13 +215,53 @@ describe('Alert (e2e)', () => {
       );
     });
 
-    it('rejects a caller who is neither the companion nor an accepted 1st-circle Sentinel', async () => {
+    it('lets an accepted outer-circle Sentinel raise it too — it still notifies the 1st circle', async () => {
+      const companion = await signupAccount('Ada');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+      const outerSentinel = await signupAccount('Zoe');
+
+      const circleRes = await request(app.getHttpServer())
+        .post('/sentinel/circles')
+        .set('Authorization', auth(companion.accessToken))
+        .send({ label: 'Travail' })
+        .expect(201);
+      const workCircle = circleRes.body as CircleBody;
+      const inviteRes = await request(app.getHttpServer())
+        .post(`/sentinel/circles/${workCircle.id}/invite`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ phone: outerSentinel.phone, name: 'Zoe' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/sentinel/memberships/${(inviteRes.body as LinkBody).id}/accept`)
+        .set('Authorization', auth(outerSentinel.accessToken))
+        .send({})
+        .expect(201);
+      sentSms.length = 0;
+
+      const res = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(outerSentinel.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.MISSING,
+          reason: 'Pas vu au travail depuis 3 jours',
+        })
+        .expect(201);
+      expect((res.body as AlertBody).launchedById).toBe(outerSentinel.userId);
+
+      // Notifies the 1st circle (not the "Travail" circle itself) + the companion.
+      expect(sentSms.map((s) => s.phone).sort()).toEqual(
+        [sentinels[0].phone, companion.phone].sort(),
+      );
+    });
+
+    it('rejects a caller who is neither the companion nor an accepted Sentinel of theirs', async () => {
       const companion = await signupAccount('Ada');
       await buildFirstCircle(companion.accessToken, 0); // provisions the 1st circle, no members
       const stranger = await signupAccount('Eve');
 
       await request(app.getHttpServer())
-        .post('/alert')
+        .post('/alert/raise')
         .set('Authorization', auth(stranger.accessToken))
         .send({
           companionId: companion.userId,
@@ -236,7 +276,7 @@ describe('Alert (e2e)', () => {
       await buildFirstCircle(companion.accessToken, 1);
 
       await request(app.getHttpServer())
-        .post('/alert')
+        .post('/alert/raise')
         .set('Authorization', auth(companion.accessToken))
         .send({
           companionId: companion.userId,
@@ -246,7 +286,7 @@ describe('Alert (e2e)', () => {
         .expect(201);
 
       await request(app.getHttpServer())
-        .post('/alert')
+        .post('/alert/raise')
         .set('Authorization', auth(companion.accessToken))
         .send({
           companionId: companion.userId,
@@ -263,7 +303,7 @@ describe('Alert (e2e)', () => {
       userId: string;
     }) {
       const res = await request(app.getHttpServer())
-        .post('/alert')
+        .post('/alert/raise')
         .set('Authorization', auth(companion.accessToken))
         .send({
           companionId: companion.userId,
@@ -338,7 +378,7 @@ describe('Alert (e2e)', () => {
       await buildFirstCircle(companion.accessToken, 1);
 
       const first = await request(app.getHttpServer())
-        .post('/alert')
+        .post('/alert/raise')
         .set('Authorization', auth(companion.accessToken))
         .send({
           companionId: companion.userId,
@@ -352,7 +392,7 @@ describe('Alert (e2e)', () => {
         .expect(201);
 
       const second = await request(app.getHttpServer())
-        .post('/alert')
+        .post('/alert/raise')
         .set('Authorization', auth(companion.accessToken))
         .send({
           companionId: companion.userId,
@@ -362,7 +402,7 @@ describe('Alert (e2e)', () => {
         .expect(201);
 
       const listRes = await request(app.getHttpServer())
-        .get('/alert')
+        .get('/alert/mine')
         .set('Authorization', auth(companion.accessToken))
         .expect(200);
       const ids = (listRes.body as AlertBody[]).map((a) => a.id);

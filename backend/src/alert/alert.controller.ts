@@ -9,7 +9,10 @@ import { CreateAlertDto } from './dto/create-alert.dto';
 export class AlertController {
   constructor(private readonly alert: AlertService) {}
 
-  @Post()
+  // Not POST/GET on the bare /alert root — nginx's reverse-proxy location
+  // blocks for every backend module require a trailing path segment (see
+  // nginx/nginx.conf), so Alert's routes avoid the collection root too.
+  @Post('raise')
   raise(@CurrentUser() user: { userId: string }, @Body() dto: CreateAlertDto) {
     return this.alert.raiseAlert(user.userId, dto);
   }
@@ -19,7 +22,7 @@ export class AlertController {
     return this.alert.closeAlert(user.userId, id);
   }
 
-  @Get()
+  @Get('mine')
   listMine(@CurrentUser() user: { userId: string }) {
     return this.alert.listMyAlerts(user.userId);
   }

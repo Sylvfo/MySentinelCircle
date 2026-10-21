@@ -166,35 +166,37 @@ describe('AlertService', () => {
       });
     });
 
-    it('raises an alert when an accepted 1st-circle Sentinel raises it, and also notifies the companion', async () => {
+    it('raises an alert when any accepted Sentinel raises it (not necessarily 1st-circle), and also notifies the companion', async () => {
       prisma.alert.findFirst.mockResolvedValueOnce(null);
       prisma.circle.findFirst.mockResolvedValueOnce(circle);
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' }); // assertCanRaise
-      prisma.linkSentinels.findMany.mockResolvedValueOnce([linkRow()]);
-      prisma.user.findUnique.mockResolvedValueOnce({
-        firstName: 'Alice',
-        phone: '+41790000000',
-      });
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({
+        id: 'outer-link',
+      }); // assertCanRaise
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([linkRow()]); // the 1st circle's own accepted links
+      prisma.user.findUnique
+        .mockResolvedValueOnce({ firstName: 'Alice', phone: '+41790000000' }) // companion
+        .mockResolvedValueOnce({ firstName: 'Dana' }); // the outer-circle raiser
       prisma.alert.create.mockResolvedValueOnce({ id: 'alert-1' });
 
-      await service.raiseAlert('sentinel-1', {
+      await service.raiseAlert('outer-sentinel-id', {
         companionId: 'alice-id',
         alertType: AlertType.NOCONTACT,
         reason: 'sans nouvelles',
       });
 
+      // No circleId in this query — an outer-circle Sentinel is authorized too.
       expect(prisma.linkSentinels.findFirst).toHaveBeenCalledWith({
         where: {
-          userSentinelId: 'sentinel-1',
-          circleId: 'circle-1',
+          userSentinelId: 'outer-sentinel-id',
+          userCompanionId: 'alice-id',
           status: LinkStatus.ACCEPTED,
         },
       });
-      expect(sms.send).toHaveBeenCalledTimes(2); // the circle + the companion
+      expect(sms.send).toHaveBeenCalledTimes(2); // the 1st circle + the companion
       expect(sms.send).toHaveBeenCalledWith('+41790000000', expect.any(String));
     });
 
-    it('rejects when the caller is neither the companion nor an accepted 1st-circle Sentinel', async () => {
+    it('rejects when the caller has no accepted Sentinel link to the companion at all', async () => {
       prisma.alert.findFirst.mockResolvedValueOnce(null);
       prisma.circle.findFirst.mockResolvedValueOnce(circle);
       prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);

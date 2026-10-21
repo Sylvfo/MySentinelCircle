@@ -53,11 +53,7 @@ export class AlertService {
     });
     if (!circle) throw new NotFoundException('1st circle not found');
 
-    await this.assertIsCompanionOrFirstCircleMember(
-      callerId,
-      dto.companionId,
-      circle.id,
-    );
+    await this.assertCanRaise(callerId, dto.companionId);
 
     const links = await this.prisma.linkSentinels.findMany({
       where: { circleId: circle.id, status: LinkStatus.ACCEPTED },
@@ -122,16 +118,17 @@ export class AlertService {
       dto.reason,
     );
 
-    if (callerId !== dto.companionId) {
-      const raiser = links.find((l) => l.linkAsSentinel.id === callerId);
-      if (companion?.phone) {
-        await this.sms.send(
-          companion.phone,
-          alertRaisedToCompanionSms(
-            raiser?.linkAsSentinel.firstName ?? 'Un Sentinel',
-          ),
-        );
-      }
+    if (callerId !== dto.companionId && companion?.phone) {
+      // The raiser may be any Sentinel (not necessarily 1st-circle), so
+      // they're not necessarily among `links` — look their name up directly.
+      const raiser = await this.prisma.user.findUnique({
+        where: { id: callerId },
+        select: { firstName: true },
+      });
+      await this.sms.send(
+        companion.phone,
+        alertRaisedToCompanionSms(raiser?.firstName ?? 'Un Sentinel'),
+      );
     }
 
     return alert;
@@ -261,7 +258,28 @@ export class AlertService {
     }
   }
 
-  // Shared by raiseAlert/closeAlert: "Me" or an accepted 1st-circle Sentinel.
+  // raiseAlert only: "Me", or ANY of their accepted Sentinels, any circle —
+  // per plan.txt, an outer-circle Sentinel's only alert power is to raise
+  // the initial alert, which always notifies the 1st circle regardless of
+  // which circle the raiser is actually in.
+  private async assertCanRaise(callerId: string, companionId: string) {
+    if (callerId === companionId) return;
+    const link = await this.prisma.linkSentinels.findFirst({
+      where: {
+        userSentinelId: callerId,
+        userCompanionId: companionId,
+        status: LinkStatus.ACCEPTED,
+      },
+    });
+    if (!link) {
+      throw new ForbiddenException(
+        'Not authorized to raise an alert for this companion',
+      );
+    }
+  }
+
+  // closeAlert/getAlert only: "Me" or an accepted 1st-circle Sentinel —
+  // only the 1st circle (or "Me") ever manages or closes an alert.
   private async assertIsCompanionOrFirstCircleMember(
     callerId: string,
     companionId: string,
