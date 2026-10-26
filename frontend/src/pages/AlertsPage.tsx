@@ -2,8 +2,19 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
-import { closeAlert, listAlerts, raiseAlert, type AlertSummary, type AlertType } from '../api/alert';
+import {
+  closeAlert,
+  getAlert,
+  listAlerts,
+  raiseAlert,
+  requestCircle,
+  respondToAlert,
+  type AlertDetail,
+  type AlertSummary,
+  type AlertType,
+} from '../api/alert';
 import { listCompanions, type Companion } from '../api/sentinel';
+import { listMessages, sendMessage, type Message } from '../api/messaging';
 
 // BYCOMPANION is reserved for "Me" raising for themself (RaiseForSelfPanel) —
 // it wouldn't make sense coming from a Sentinel raising on someone else's behalf.
@@ -46,17 +57,7 @@ export function AlertsPage() {
       ) : (
         <section className="panel">
           {alerts.map((a) => (
-            <div key={a.id} className="row">
-              <span>
-                {t(`alerts.type.${a.alertType}`)}
-                <span className="badge">{t(`alerts.status.${a.alertStatus}`)}</span>
-              </span>
-              {a.alertStatus !== 'RESOLVED' && (
-                <button className="ghost" onClick={() => closeAlert(a.id).then(reload)}>
-                  {t('alerts.close')}
-                </button>
-              )}
-            </div>
+            <AlertRow key={a.id} alert={a} onChange={reload} />
           ))}
         </section>
       )}
@@ -190,6 +191,234 @@ function RaiseForCompanionForm({ onRaised }: { onRaised: () => Promise<void> }) 
         />
         <button type="submit" disabled={submitting || !companionId || !reason.trim()}>
           {t('alerts.submit')}
+        </button>
+      </div>
+      {error && <p className="form-error">{error}</p>}
+    </form>
+  );
+}
+
+function AlertRow({ alert, onChange }: { alert: AlertSummary; onChange: () => Promise<void> }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div>
+      <div className="row">
+        <span>
+          {t(`alerts.type.${alert.alertType}`)}
+          <span className="badge">{t(`alerts.status.${alert.alertStatus}`)}</span>
+        </span>
+        <span className="row-actions">
+          <button className="ghost" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? t('alerts.detail.hide') : t('alerts.detail.show')}
+          </button>
+          {alert.alertStatus !== 'RESOLVED' && (
+            <button className="ghost" onClick={() => closeAlert(alert.id).then(onChange)}>
+              {t('alerts.close')}
+            </button>
+          )}
+        </span>
+      </div>
+      {expanded && <AlertDetailPanel alertId={alert.id} />}
+    </div>
+  );
+}
+
+function AlertDetailPanel({ alertId }: { alertId: string }) {
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const [detail, setDetail] = useState<AlertDetail | null>(null);
+  // null = chat not accessible to this caller (e.g. the companion, by design).
+  const [messages, setMessages] = useState<Message[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const conversationId = detail?.conversations[0]?.id;
+
+  const reloadMessages = async (convId: string) => {
+    try {
+      setMessages(await listMessages(convId));
+    } catch {
+      setMessages(null);
+    }
+  };
+
+  const loadDetail = async () => {
+    try {
+      const d = await getAlert(alertId);
+      setDetail(d);
+      const convId = d.conversations[0]?.id;
+      if (convId) await reloadMessages(convId);
+      else setMessages(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
+  useEffect(() => {
+    loadDetail().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertId]);
+
+  const submitMessage = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!conversationId || !draft.trim()) return;
+    setSending(true);
+    try {
+      await sendMessage(conversationId, draft.trim());
+      setDraft('');
+      await reloadMessages(conversationId);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
+  if (!detail) return error ? <p className="form-error">{error}</p> : null;
+
+  const senderName = (senderId: string) => {
+    if (senderId === user?.id) return t('alerts.detail.me');
+    const participant = detail.participants.find((p) => p.userSentinels.linkAsSentinel.id === senderId);
+    return participant?.userSentinels.linkAsSentinel.firstName ?? '…';
+  };
+
+  const myParticipant = detail.participants.find((p) => p.userSentinels.linkAsSentinel.id === user?.id);
+  const isCompanion = user?.id === detail.userCompanion.id;
+  const isAlertManager = isCompanion || myParticipant?.circleId === detail.firstCircleId;
+  const canRequestCircle = isAlertManager && detail.alertStatus !== 'RESOLVED';
+  const canRespond = myParticipant?.status === 'CONTACTED' && detail.alertStatus !== 'RESOLVED';
+
+  return (
+    <div className="alert-detail">
+      <p>{t('alerts.detail.about', { name: detail.userCompanion.firstName })}</p>
+      <p>
+        <strong>{t('alerts.detail.reason')} :</strong> {detail.messageAlert}
+      </p>
+
+      <h3>{t('alerts.detail.participants')}</h3>
+      <ul>
+        {detail.participants.map((p) => (
+          <li key={p.id}>
+            {p.userSentinels.linkAsSentinel.firstName}
+            {p.isLead && <span className="badge">{t('alerts.detail.lead')}</span>}
+            <span style={{ color: 'var(--text-muted)' }}> — {p.circleName}</span>
+            {p.response && (
+              <span style={{ color: 'var(--text-muted)' }}> · {t('alerts.detail.response', { response: p.response })}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {canRespond && (
+        <section className="panel">
+          <p>{t('alerts.detail.respond.prompt')}</p>
+          <div className="row">
+            <button onClick={() => respondToAlert(alertId, true).then(loadDetail)}>
+              {t('alerts.detail.respond.yes')}
+            </button>
+            <button className="ghost" onClick={() => respondToAlert(alertId, false).then(loadDetail)}>
+              {t('alerts.detail.respond.no')}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {canRequestCircle && <RequestCircleForm alertId={alertId} circles={detail.userCompanion.myCircles} onChange={loadDetail} />}
+
+      {messages !== null && conversationId && (
+        <div className="alert-chat">
+          <h3>{t('alerts.detail.chatTitle')}</h3>
+          {messages.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
+          ) : (
+            <ul className="alert-chat-messages">
+              {messages.map((m) => (
+                <li key={m.id}>
+                  <strong>{senderName(m.senderId)}</strong> : {m.body}
+                </li>
+              ))}
+            </ul>
+          )}
+          <form className="row" onSubmit={submitMessage}>
+            <input
+              placeholder={t('alerts.detail.messagePlaceholder')}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <button type="submit" disabled={sending || !draft.trim()}>
+              {t('alerts.detail.send')}
+            </button>
+          </form>
+        </div>
+      )}
+      {error && <p className="form-error">{error}</p>}
+    </div>
+  );
+}
+
+function RequestCircleForm({
+  alertId,
+  circles,
+  onChange,
+}: {
+  alertId: string;
+  circles: { id: string; label: string }[];
+  onChange: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [circleId, setCircleId] = useState(circles[0]?.id ?? '');
+  const [question, setQuestion] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (circles.length === 0) {
+    return (
+      <section className="panel">
+        <h3>{t('alerts.detail.requestCircle.title')}</h3>
+        <div className="empty-state">{t('alerts.detail.requestCircle.noCircles')}</div>
+      </section>
+    );
+  }
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await requestCircle(alertId, { circleId, question: question.trim() });
+      setQuestion('');
+      await onChange();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form className="panel inline-form" onSubmit={submit}>
+      <h3>{t('alerts.detail.requestCircle.title')}</h3>
+      <div className="row wrap">
+        <select value={circleId} onChange={(e) => setCircleId(e.target.value)}>
+          {circles.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        <input
+          required
+          placeholder={t('alerts.detail.requestCircle.questionPlaceholder')}
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+        />
+        <button type="submit" disabled={submitting || !circleId || !question.trim()}>
+          {t('alerts.detail.requestCircle.submit')}
         </button>
       </div>
       {error && <p className="form-error">{error}</p>}

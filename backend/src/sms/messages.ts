@@ -138,6 +138,24 @@ export function alertClosedToCompanionSms(): string {
   return `Votre 1er cercle a cloture l'alerte vous concernant sur ${APP}.`;
 }
 
+// Sent to every accepted Sentinel of a specific outer circle the 1st circle
+// chooses to involve during an active alert — a targeted yes/no question,
+// not a blanket notification like alertRaisedSms.
+export function alertCircleRequestSms(
+  companionLabel: string,
+  question: string,
+): string {
+  return (
+    `${APP} - Alerte en cours concernant ${companionLabel}. ${question} ` +
+    `Repondez OUI ou NON.`
+  );
+}
+
+// Acknowledgement sent back after any alert-related SMS reply is recorded.
+export function alertReplyAckSms(): string {
+  return `Merci, votre reponse a bien ete prise en compte sur ${APP}.`;
+}
+
 export type SmsReplyIntent = 'accept' | 'decline' | 'unknown';
 
 export function parseSmsReply(body: string): SmsReplyIntent {

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -30,7 +31,13 @@ describe('AlertService', () => {
     };
     circle: { findFirst: jest.Mock };
     linkSentinels: { findFirst: jest.Mock; findMany: jest.Mock };
-    alertParticipant: { create: jest.Mock; updateMany: jest.Mock };
+    alertParticipant: {
+      create: jest.Mock;
+      updateMany: jest.Mock;
+      upsert: jest.Mock;
+      update: jest.Mock;
+      findFirst: jest.Mock;
+    };
     conversation: { create: jest.Mock; updateMany: jest.Mock };
     user: { findUnique: jest.Mock };
     $transaction: jest.Mock;
@@ -71,7 +78,13 @@ describe('AlertService', () => {
       },
       circle: { findFirst: jest.fn() },
       linkSentinels: { findFirst: jest.fn(), findMany: jest.fn() },
-      alertParticipant: { create: jest.fn(), updateMany: jest.fn() },
+      alertParticipant: {
+        create: jest.fn(),
+        updateMany: jest.fn(),
+        upsert: jest.fn(),
+        update: jest.fn(),
+        findFirst: jest.fn(),
+      },
       conversation: { create: jest.fn(), updateMany: jest.fn() },
       user: { findUnique: jest.fn() },
       $transaction: jest.fn((arg: unknown) =>
@@ -352,6 +365,253 @@ describe('AlertService', () => {
     });
   });
 
+  describe('requestCircle', () => {
+    const alertRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'alert-1',
+      alertStatus: AlertStatus.LAUNCHED,
+      userCompanionId: 'alice-id',
+      firstCircleId: 'circle-1',
+      ...overrides,
+    });
+
+    const outerCircle = {
+      id: 'outer-1',
+      label: 'Voisins',
+      userCompanionId: 'alice-id',
+      circleType: CircleType.BASIC,
+      status: CircleStatus.ACTIVE,
+    };
+
+    const outerLink = (overrides: Record<string, unknown> = {}) => ({
+      id: 'outer-link-1',
+      canSendPhone: true,
+      canMessageOwnCircle: true,
+      firstCircleMessagingMode: MessagingMode.NONE,
+      leadSlot: null,
+      linkAsSentinel: { id: 'neighbor-1', phone: '+41793333333' },
+      ...overrides,
+    });
+
+    it('fans out to the chosen outer circle’s accepted Sentinels and activates the alert', async () => {
+      prisma.alert.findUnique
+        .mockResolvedValueOnce(alertRow()) // requestCircle's own lookup
+        .mockResolvedValueOnce(alertRow()); // getAlert's final re-fetch
+      prisma.circle.findFirst.mockResolvedValueOnce(outerCircle);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([outerLink()]);
+      prisma.user.findUnique.mockResolvedValueOnce({ firstName: 'Alice' });
+
+      const result = await service.requestCircle('alice-id', 'alert-1', {
+        circleId: 'outer-1',
+        question: 'Est-elle chez vous ?',
+      });
+
+      expect(result).toEqual(alertRow());
+      expect(prisma.linkSentinels.findFirst).not.toHaveBeenCalled(); // caller is the companion
+      expect(prisma.alertParticipant.upsert).toHaveBeenCalledWith({
+        where: {
+          alertId_userSentinelsId: {
+            alertId: 'alert-1',
+            userSentinelsId: 'outer-link-1',
+          },
+        },
+        update: expect.objectContaining({
+          status: AlertParticipantStatus.WAITING,
+          circleId: 'outer-1',
+          circleName: 'Voisins',
+        }),
+        create: expect.objectContaining({
+          alertId: 'alert-1',
+          userSentinelsId: 'outer-link-1',
+          circleId: 'outer-1',
+          circleName: 'Voisins',
+        }),
+      });
+      expect(prisma.alert.update).toHaveBeenCalledWith({
+        where: { id: 'alert-1' },
+        data: expect.objectContaining({ alertStatus: AlertStatus.ACTIVE }),
+      });
+      expect(sms.send).toHaveBeenCalledWith('+41793333333', expect.any(String));
+      expect(prisma.alertParticipant.updateMany).toHaveBeenCalledWith({
+        where: {
+          alertId: 'alert-1',
+          userSentinelsId: { in: ['outer-link-1'] },
+        },
+        data: expect.objectContaining({
+          status: AlertParticipantStatus.CONTACTED,
+        }),
+      });
+    });
+
+    it('does not re-bump an already-ACTIVE alert’s activatedAt', async () => {
+      prisma.alert.findUnique
+        .mockResolvedValueOnce(alertRow({ alertStatus: AlertStatus.ACTIVE }))
+        .mockResolvedValueOnce(alertRow({ alertStatus: AlertStatus.ACTIVE }));
+      prisma.circle.findFirst.mockResolvedValueOnce(outerCircle);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([outerLink()]);
+      prisma.user.findUnique.mockResolvedValueOnce({ firstName: 'Alice' });
+
+      await service.requestCircle('alice-id', 'alert-1', {
+        circleId: 'outer-1',
+        question: 'x',
+      });
+
+      expect(prisma.alert.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects targeting a circle that is not a BASIC circle of this companion', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(alertRow());
+      prisma.circle.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.requestCircle('alice-id', 'alert-1', {
+          circleId: 'first-circle',
+          question: 'x',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.alertParticipant.upsert).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the target circle has no accepted Sentinel', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(alertRow());
+      prisma.circle.findFirst.mockResolvedValueOnce(outerCircle);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([]);
+
+      await expect(
+        service.requestCircle('alice-id', 'alert-1', {
+          circleId: 'outer-1',
+          question: 'x',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects escalating an already-resolved alert', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(
+        alertRow({ alertStatus: AlertStatus.RESOLVED }),
+      );
+
+      await expect(
+        service.requestCircle('alice-id', 'alert-1', {
+          circleId: 'outer-1',
+          question: 'x',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects a caller who is neither the companion nor an accepted 1st-circle Sentinel', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(alertRow());
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.requestCircle('stranger-id', 'alert-1', {
+          circleId: 'outer-1',
+          question: 'x',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('respond', () => {
+    it('records an in-app yes/no reply for a Sentinel still awaiting an answer', async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce({
+        id: 'participant-1',
+      });
+      prisma.alertParticipant.update.mockResolvedValueOnce({
+        id: 'participant-1',
+        status: AlertParticipantStatus.RESPONDED,
+        response: 'OUI',
+      });
+
+      // Deliberately NOT mocking prisma.alert.findUnique/linkSentinels.findFirst
+      // here: respond() must return the updated participant directly, never
+      // routing through getAlert() — the caller may be an outer-circle
+      // Sentinel, who getAlert()'s own "Me or 1st circle only" gate would
+      // otherwise reject right after their response was already recorded.
+      const result = await service.respond('sentinel-1', 'alert-1', {
+        accepted: true,
+      });
+
+      expect(prisma.alertParticipant.findFirst).toHaveBeenCalledWith({
+        where: {
+          alertId: 'alert-1',
+          status: AlertParticipantStatus.CONTACTED,
+          userSentinels: { userSentinelId: 'sentinel-1' },
+        },
+      });
+      expect(prisma.alertParticipant.update).toHaveBeenCalledWith({
+        where: { id: 'participant-1' },
+        data: expect.objectContaining({
+          status: AlertParticipantStatus.RESPONDED,
+          response: 'OUI',
+        }),
+      });
+      expect(prisma.alert.findUnique).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        id: 'participant-1',
+        status: AlertParticipantStatus.RESPONDED,
+        response: 'OUI',
+      });
+    });
+
+    it('rejects when the caller has no pending request on this alert', async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.respond('sentinel-1', 'alert-1', { accepted: false }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.alertParticipant.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('tryHandleInboundSms', () => {
+    it('records a matching reply and sends an acknowledgement', async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce({
+        id: 'participant-1',
+      });
+      prisma.alertParticipant.update.mockResolvedValueOnce({
+        id: 'participant-1',
+      });
+
+      const result = await service.tryHandleInboundSms(
+        '+41793333333',
+        'OUI je l’ai vue',
+      );
+
+      expect(prisma.alertParticipant.findFirst).toHaveBeenCalledWith({
+        where: {
+          status: AlertParticipantStatus.CONTACTED,
+          userSentinels: { linkAsSentinel: { phone: '+41793333333' } },
+          alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+        },
+        orderBy: { contactedAt: 'desc' },
+      });
+      expect(prisma.alertParticipant.update).toHaveBeenCalledWith({
+        where: { id: 'participant-1' },
+        data: expect.objectContaining({
+          status: AlertParticipantStatus.RESPONDED,
+          response: 'OUI je l’ai vue',
+        }),
+      });
+      expect(sms.send).toHaveBeenCalledWith('+41793333333', expect.any(String));
+      expect(result).toEqual({ matched: true, action: 'alert_confirmed' });
+    });
+
+    it('returns null without matching when the reply is not a recognizable OUI/NON', async () => {
+      const result = await service.tryHandleInboundSms('+41793333333', 'allo?');
+
+      expect(result).toBeNull();
+      expect(prisma.alertParticipant.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('returns null when no alert ask is pending for this phone', async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.tryHandleInboundSms('+41793333333', 'NON');
+
+      expect(result).toBeNull();
+      expect(sms.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getAlert', () => {
     const loadedAlert = {
       id: 'alert-1',
@@ -370,6 +630,15 @@ describe('AlertService', () => {
       expect(prisma.alert.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({
           include: expect.objectContaining({
+            userCompanion: {
+              select: {
+                id: true,
+                firstName: true,
+                myCircles: expect.objectContaining({
+                  select: { id: true, label: true },
+                }),
+              },
+            },
             conversations: { select: { id: true, closedAt: true } },
           }),
         }),

@@ -82,6 +82,11 @@
       "generic": "Erreur",
       "signup": "Erreur lors de la création du compte",
       "invalidCode": "Code invalide"
+    },
+    "devLogin": {
+      "divider": "Connexion rapide (dev)",
+      "placeholder": "Numéro de téléphone",
+      "submit": "Connexion rapide"
     }
   },
   "dashboard": {
@@ -116,6 +121,8 @@
     "removeMember": "Retirer",
     "confirmRemoveMember": "Attention, cette sentinelle ne fera plus partie de vos cercles.",
     "move": "Déplacer",
+    "makeLead": "Désigner référent·e",
+    "removeLead": "Retirer référent·e",
     "awaitingFirstCircleConsent": "En attente d'accord pour le 1er cercle"
   },
   "companions": {
@@ -171,6 +178,31 @@
       "EMERGENCY": "Urgence",
       "NOCONTACT": "Sans nouvelles",
       "UNKNOWN": "Alerte"
+    },
+    "detail": {
+      "show": "Détails",
+      "hide": "Masquer",
+      "about": "Concerne : {{name}}",
+      "reason": "Raison",
+      "participants": "Sentinelles prévenues",
+      "lead": "Référent·e",
+      "chatTitle": "Chat du 1er cercle",
+      "noMessages": "Aucun message pour l'instant.",
+      "messagePlaceholder": "Écrire un message...",
+      "send": "Envoyer",
+      "me": "Moi",
+      "response": "Réponse : {{response}}",
+      "requestCircle": {
+        "title": "Solliciter un autre cercle",
+        "noCircles": "Aucun autre cercle à solliciter.",
+        "questionPlaceholder": "Ex. Est-elle chez vous ?",
+        "submit": "Envoyer la demande"
+      },
+      "respond": {
+        "prompt": "On vous demande de répondre à propos de cette alerte.",
+        "yes": "Oui",
+        "no": "Non"
+      }
     }
   },
   "messages": {

@@ -82,6 +82,11 @@
       "generic": "Error",
       "signup": "Error while creating the account",
       "invalidCode": "Invalid code"
+    },
+    "devLogin": {
+      "divider": "Quick login (dev)",
+      "placeholder": "Phone number",
+      "submit": "Quick login"
     }
   },
   "dashboard": {
@@ -116,6 +121,8 @@
     "removeMember": "Remove",
     "confirmRemoveMember": "Warning, this Sentinel will no longer be part of any of your circles.",
     "move": "Move",
+    "makeLead": "Make Lead Sentinel",
+    "removeLead": "Remove as Lead",
     "awaitingFirstCircleConsent": "Awaiting acceptance for the 1st circle"
   },
   "companions": {
@@ -171,6 +178,31 @@
       "EMERGENCY": "Emergency",
       "NOCONTACT": "No contact",
       "UNKNOWN": "Alert"
+    },
+    "detail": {
+      "show": "Details",
+      "hide": "Hide",
+      "about": "About: {{name}}",
+      "reason": "Reason",
+      "participants": "Notified Sentinels",
+      "lead": "Lead",
+      "chatTitle": "1st circle chat",
+      "noMessages": "No message yet.",
+      "messagePlaceholder": "Write a message...",
+      "send": "Send",
+      "me": "Me",
+      "response": "Response: {{response}}",
+      "requestCircle": {
+        "title": "Ask another circle",
+        "noCircles": "No other circle to ask.",
+        "questionPlaceholder": "E.g. Is she at your place?",
+        "submit": "Send the request"
+      },
+      "respond": {
+        "prompt": "You've been asked to respond about this alert.",
+        "yes": "Yes",
+        "no": "No"
+      }
     }
   },
   "messages": {

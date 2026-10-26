@@ -22,12 +22,15 @@ export interface AlertParticipant {
   id: string;
   status: string;
   isLead: boolean;
+  circleId: string;
   circleName: string;
+  response: string | null;
   userSentinelsId: string;
   userSentinels: { linkAsSentinel: { id: string; firstName: string } };
 }
 
 export interface AlertDetail extends AlertSummary {
+  userCompanion: { id: string; firstName: string; myCircles: { id: string; label: string }[] };
   participants: AlertParticipant[];
   conversations: { id: string; closedAt: string | null }[];
 }
@@ -42,3 +45,11 @@ export const closeAlert = (id: string) => apiPost<AlertSummary>(`/alert/${id}/cl
 export const listAlerts = () => apiGet<AlertSummary[]>('/alert/mine');
 
 export const getAlert = (id: string) => apiGet<AlertDetail>(`/alert/${id}`);
+
+export const requestCircle = (id: string, data: { circleId: string; question: string }) =>
+  apiPost<AlertDetail>(`/alert/${id}/request-circle`, data);
+
+// Returns the updated participant, not the full alert detail — the caller
+// may be an outer-circle Sentinel, who can't view the full alert.
+export const respondToAlert = (id: string, accepted: boolean) =>
+  apiPost<AlertParticipant>(`/alert/${id}/respond`, { accepted });

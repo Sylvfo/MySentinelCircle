@@ -13,13 +13,14 @@ const NAV_ITEMS = [
 ];
 
 export function AppShell() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const { t } = useTranslation();
 
   return (
     <div className="app-shell">
       <nav className="app-nav">
         <div className="brand">MySentinelCircle</div>
+        {user && <div className="user-name">{user.firstName}</div>}
         {NAV_ITEMS.map((item) => (
           <NavLink key={item.to} to={item.to} className={({ isActive }) => (isActive ? 'active' : '')}>
             {t(item.key)}

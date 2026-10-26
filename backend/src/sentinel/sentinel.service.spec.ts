@@ -17,9 +17,11 @@ import {
 import { SentinelService } from './sentinel.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
+import { AlertService } from '../alert/alert.service';
 
 describe('SentinelService', () => {
   let service: SentinelService;
+  let alert: { tryHandleInboundSms: jest.Mock };
   let prisma: {
     circle: {
       findFirst: jest.Mock;
@@ -62,12 +64,14 @@ describe('SentinelService', () => {
       user: { findUnique: jest.fn(), create: jest.fn() },
     };
     sms = { send: jest.fn() };
+    alert = { tryHandleInboundSms: jest.fn().mockResolvedValue(null) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SentinelService,
         { provide: PrismaService, useValue: prisma },
         { provide: SMS_SENDER, useValue: sms },
+        { provide: AlertService, useValue: alert },
       ],
     }).compile();
 
@@ -845,6 +849,41 @@ describe('SentinelService', () => {
       expect(result).toEqual({ matched: true, action: 'accepted' });
       // The move-proposal lookup must never run once the fresh PENDING link matched.
       expect(prisma.linkSentinels.findFirst).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('handleInboundSms — alert escalation fallback', () => {
+    it('defers to AlertService when a live alert ask matches, before the STOP/leave fallback', async () => {
+      prisma.linkSentinels.findFirst
+        .mockResolvedValueOnce(null) // no fresh PENDING invite/request
+        .mockResolvedValueOnce(null); // no circle-move proposal
+      alert.tryHandleInboundSms.mockResolvedValueOnce({
+        matched: true,
+        action: 'alert_declined',
+      });
+
+      const result = await service.handleInboundSms('+33611111111', 'NON');
+
+      expect(alert.tryHandleInboundSms).toHaveBeenCalledWith(
+        '+33611111111',
+        'NON',
+      );
+      expect(result).toEqual({ matched: true, action: 'alert_declined' });
+      // The STOP/leave fallback's own lookup must never run once the alert matched —
+      // otherwise a "NON" meant for an alert ask would get misread as "remove me".
+      expect(prisma.linkSentinels.findFirst).toHaveBeenCalledTimes(2);
+    });
+
+    it('falls through to the STOP/leave fallback when no alert ask is pending', async () => {
+      prisma.linkSentinels.findFirst
+        .mockResolvedValueOnce(null) // no fresh PENDING invite/request
+        .mockResolvedValueOnce(null) // no circle-move proposal
+        .mockResolvedValueOnce(null); // STOP/leave: no active link either
+      alert.tryHandleInboundSms.mockResolvedValueOnce(null);
+
+      const result = await service.handleInboundSms('+33611111111', 'NON');
+
+      expect(result).toEqual({ matched: false, reason: 'no_actionable_link' });
     });
   });
 });

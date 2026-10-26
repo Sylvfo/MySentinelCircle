@@ -10,6 +10,7 @@ import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
+import { DevLoginDto } from './dto/dev-login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 
@@ -61,6 +62,14 @@ export class AuthController {
   @Post('otp/verify')
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtp(dto);
+  }
+
+  // Dev-only — AuthService.devLoginByPhone refuses in production regardless
+  // of how this route is reached.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('dev-login')
+  devLogin(@Body() dto: DevLoginDto) {
+    return this.authService.devLoginByPhone(dto);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
