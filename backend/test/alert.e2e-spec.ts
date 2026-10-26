@@ -257,7 +257,7 @@ describe('Alert (e2e)', () => {
 
     it('rejects a caller who is neither the companion nor an accepted Sentinel of theirs', async () => {
       const companion = await signupAccount('Ada');
-      await buildFirstCircle(companion.accessToken, 0); // provisions the 1st circle, no members
+      await buildFirstCircle(companion.accessToken, 1); // a Lead Sentinel, so this tests authorization, not the lead rule
       const stranger = await signupAccount('Eve');
 
       await request(app.getHttpServer())
@@ -269,6 +269,36 @@ describe('Alert (e2e)', () => {
           reason: 'x',
         })
         .expect(403);
+    });
+
+    it('rejects raising when the companion has no 1st circle yet', async () => {
+      const companion = await signupAccount('Ada');
+      // Never called GET /sentinel/circles — the 1st circle doesn't exist yet.
+
+      await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        })
+        .expect(409);
+    });
+
+    it('rejects raising when the 1st circle exists but has no Lead Sentinel', async () => {
+      const companion = await signupAccount('Ada');
+      await buildFirstCircle(companion.accessToken, 0); // provisions the 1st circle, no members
+
+      await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        })
+        .expect(409);
     });
 
     it('rejects raising a second alert while one is already active', async () => {

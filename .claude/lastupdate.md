@@ -1,38 +1,74 @@
 # Last update
 
-**Date**: 2026-08-24
-**Branch**: `auth-and-user`
+**Date**: 2026-10-26
+**Branch**: `Alertes`
 
 ## Done this session
 
-Closed out the 5-slice plan for changing an *existing* email/password/phone (saved at `/home/syl/.claude/plans/on-continue-la-r-flexion-fluffy-candy.md`) — all 5 tranches now implemented, backend + frontend:
-
-- **Tranche A — change password**: `POST /user/me/change-password`, frontend form in a `Modal`. Done in an earlier part of this session.
-- **Tranche B — `Modal` component**: `frontend/src/components/Modal.tsx`, reused by all the flows below. Done earlier.
-- **Tranche C — generic "step-up" identity re-verification**: answers "what if I lost my phone" — prove it's still you via *any* credential the account already has (password, Google re-auth, or a code to whichever channel — phone or email — is still accessible), not the specific one being changed. Backend: `stepUpVerifiedAt` on `User` (10-min TTL), 4 endpoints (`me/step-up/password`, `/google`, `/code/request`, `/code/verify`). Frontend: new `frontend/src/components/StepUp.tsx` (`StepUpPanel`), picks the available method from `me.hasPassword`/`hasGoogle`/verified phone/email.
-- **Tranche D — change email**: fresh step-up required, then a confirmation link sent to the *new* address (`pendingEmail`/`pendingEmailTokenHash`/`pendingEmailExpiresAt` on `User`, 60-min TTL) — email only changes once clicked. New public route `POST /user/confirm-email` (separate `EmailConfirmationController`, no guard — same reasoning as password-reset). Frontend: `ChangeEmailFlow` in `SettingsPage.tsx` + new public page `frontend/src/pages/ConfirmEmailChangePage.tsx` at route `/confirm-email?token=...`.
-- **Tranche E — change an already-set phone**: no new backend route — `requestAddPhone` now calls `assertStepUpFresh` when the caller already has a phone (skipped for a first-time add on an `UNCOMPLETE` account, since there's no "old" channel to prove there). Frontend: `ChangePhoneFlow` (step-up, then reuses the existing `AddPhonePanel`), triggered by a new "change phone" button next to the phone display in `SettingsPage.tsx`.
-- **Schema migration** `20260824181400_add_stepup_and_pending_email` — written by hand (not via `prisma migrate dev`, which fails non-interactively on the unique-constraint prompt for `pendingEmailTokenHash`) and applied via `migrate deploy`; confirmed already applied to both `mysentinelcircle_test` and the dev DB.
-- **`api/user.ts`**: `Me.hasGoogle` added, plus `stepUpPassword`/`stepUpGoogle`/`stepUpCodeRequest`/`stepUpCodeVerify`/`requestEmailChange`/`confirmEmailChange`.
-- **i18n**: `settings.changePhone`, `settings.changeEmail.*`, `settings.stepUp.*` added to both `en.json`/`fr.json`.
-
-**Fixed a real bug surfaced by a fresh e2e run** (not a regression from this session's work): `test/helpers/test-data.ts`'s `testPhone()` generated `+336XXXXXXXX` from a timestamp, and some digit combinations aren't in an actually-allocated French mobile block — `class-validator`'s `@IsPhoneNumber()` checks real allocation data (`libphonenumber-js/max`), so these "valid-looking" numbers were rejected. Since tests run back-to-back, nearby timestamps landed in the same invalid block, causing a correlated wave of failures across `auth.e2e-spec.ts`/`user.e2e-spec.ts`. Fixed: `testPhone()` now generates a random suffix and retries until it passes the same validator the app uses. Also fixed a real (separate, already-known) regression: `auth.e2e-spec.ts` still called the removed `GET /auth/me` — updated to `GET /user/me`.
-
-**Verified**: 73 backend unit tests + 10 e2e tests all green (`npm run test`, `npm run test:e2e`). Frontend `tsc --noEmit` and `npm run lint` both clean. Partial manual curl smoke-test of the new endpoints against the Docker dev stack (signup → step-up via password → email-change request) confirmed working up to the point of an unrelated tool interruption; **not yet clicked through in an actual browser** — no browser tool was available this session, so the modals/flows in `SettingsPage.tsx` haven't been visually confirmed end-to-end. Also had to restart the Docker `backend` container mid-session for the usual `nest --watch` `EADDRINUSE` hot-reload crash.
+- **Two Docker dev-setup issues investigated, one fixed**:
+  - `docker logs mysentinelcircle-backend` occasionally stops capturing app stdout — reproduced the trigger
+    (several rapid file edits in quick succession crash `nest start --watch` with `EADDRINUSE` from a race
+    between two concurrent recompiles), but a single crash didn't actually break logging afterward in testing —
+    it's an intermittent quirk of `nest --watch` under Docker, not something fixable via `docker-compose.yml`/
+    `Dockerfile`. `docker restart mysentinelcircle-backend` remains a reliable workaround when logs look stale —
+    no further action planned.
+  - `NOSMSNOW_URL` unreachable from the containerized backend (`localhost` there means the container itself) —
+    **fixed**: added `extra_hosts: ["host.docker.internal:host-gateway"]` and
+    `NOSMSNOW_URL: http://host.docker.internal:4001` to the `backend` service in `docker-compose.yml` (Sylvie
+    applied it herself, per the infra-file procedure). Verified end-to-end: raised a test alert, the SMS lines
+    appeared in Sylvie's own `nosmsnow` terminal. Note: NoSMSNow must run in a real open terminal — it exits the
+    moment its stdin closes (by design, ends the REPL), so it can't be started detached/backgrounded — documented
+    in `NOSMSNOW.md`, which now also explains the Docker-mode config.
+- **New business rule in `alert.service.ts`**: `raiseAlert` now rejects (409, clear message) if the companion's
+  1st circle doesn't exist yet or has no accepted Lead Sentinel — per `plan.txt`, the 1st circle must always keep
+  ≥1 Lead Sentinel, and without one nobody's actually in charge to drive the alert. This replaces the previous
+  confusing 404 ("1st circle not found") for the same underlying situation — direct fix for the edge case flagged
+  last session. Reuses the already-fetched `links` array (checks `leadSlot !== null`) rather than an extra query.
+  Added 2 unit tests (no circle at all; circle exists but no accepted lead) and 2 e2e tests, and fixed one
+  existing e2e test that had accidentally been testing the old 404 path instead of the 403 authorization path it
+  was meant to. Verified live through nginx: a companion with a Lead Sentinel still raises fine (201); an
+  untouched test account with no circle now gets a clear 409 instead of a bare 404.
+  - Verified: 128/128 unit tests, 42/42 e2e tests, lint clean. `API.md`/`TEST.md` updated.
+- Walked through the Alert escalation mechanics with Sylvie to confirm shared understanding before planning the
+  next slice: there's no binary "escalation mode" — while an alert is active, the 1st circle can send a targeted
+  yes/no request to any *specific* outer circle, any number of times; the 0–10 availability scale is a separate
+  vocabulary used only when recruiting someone into an active search, not for plain sightings.
+- Helped Sylvie past a couple of git/shell snags (a `git add *` that silently matched nothing because her
+  terminal was in `nosmsnow/`, not the repo root; a `git commit -m "..."` broken by unescaped double quotes
+  inside the message — resolved via a heredoc). No commit has actually landed yet this session (see below) —
+  `e60d7a7` ("working and testing alerts") is still the last real commit, from before this session started.
 
 ## Left to do / not yet addressed
 
-- **Browser smoke test of tranches C/D/E frontend** — step-up panel (all 4 methods), change-email flow incl. the `/confirm-email` link, change-phone flow. Not yet done, should happen before considering this fully closed.
-- **Sentinel-gating** (`userType === ACCOUNT`/phone required before Sentinel actions) — still just documented intent in `plan.txt`, no code guard.
+- **Next backend slice, by Sylvie's explicit choice**: outer-circle escalation (1st circle asking a specific
+  outer circle "is José home?") + the SMS predefined-reply mechanism (0–10 availability scale, Sentinel SMS's
+  quick keyword replies). Shared understanding of the mechanics confirmed this session (see above) — not
+  implemented yet.
+- **Browser smoke test of tranches C/D/E frontend** (step-up panel, change-email flow, change-phone flow) — still
+  not done.
+- **Self-service account deletion/closure** (GitHub issue #29) — still open, nothing started.
 - `claimOrCreateByPhone` race condition — accepted gap, documented in `plan.txt`, not fixed.
-- Real SMS/email provider — still console-only stubs.
-- `alert`/`organization`/`messaging` backend modules — still empty skeletons.
-- GitHub issues (#11/#14/#15/#24/#25/#26) not closed/commented — Claude can't write to GitHub issues (`deny`-locked), Sylvie would need to do it herself if she considers any of them done.
-- `npm audit`: 3 high-severity transitive vulnerabilities via `prisma`/`deepmerge-ts`, fix would downgrade `prisma` to 6.12.0 (breaking) — flagged, not touched.
+- Real SMS/email provider — still console-only stubs (NoSMSNow is a dev-only proxy, see `NOSMSNOW.md`). Discussed
+  with Sylvie how small the eventual Twilio swap would be (one new `SmsSender` implementation + one wiring line,
+  thanks to the existing pluggable interface) — not started.
+- `organization` backend module — still an empty skeleton.
+- GitHub issues to check by hand (Claude can't write to issues, `deny`-locked): **#12** still labeled `state:todo`
+  but code is `testing` — relabel; **#19** (Messaging) open but code is now `testing` — consider closing/commenting;
+  **#24** (sms-like-programm) and **#25** (testing infra) looked closeable as of 2026-08-25; **#29** still open.
+- `backend/test-users.local.md` still says sentinel-gating is "not-yet-enforced" — stale, it's implemented.
+- `npm audit`: 3 high-severity transitive vulnerabilities via `prisma`/`deepmerge-ts` — not touched.
 
 ## Git — uncommitted at the time of this pause
 
-- Modified: `.claude/settings.json`, `backend/prisma/schema.prisma`, `backend/src/user/user.controller.ts`/`user.module.ts`/`user.service.ts`/`user.service.spec.ts`, `backend/test/auth.e2e-spec.ts`/`helpers/test-data.ts`/`user.e2e-spec.ts`, `frontend/src/App.tsx`, `frontend/src/api/user.ts`, `frontend/src/i18n/locales/{en,fr}.json`, `frontend/src/pages/SettingsPage.tsx`.
-- New/untracked: `backend/prisma/migrations/20260824181400_add_stepup_and_pending_email/`, `backend/src/user/dto/{change-email-request,change-password,confirm-email-change,step-up-code-request,step-up-code-verify,step-up-google,step-up-password}.dto.ts`, `backend/src/user/email-confirmation.controller.ts`, `frontend/src/components/{Modal,StepUp}.tsx`, `frontend/src/pages/ConfirmEmailChangePage.tsx`.
+No commit has landed this session — `e60d7a7` is still `HEAD`. Current working tree has a mix of staged (from an
+earlier `git add -A` of Sylvie's) and freshly-modified-again files:
+- **Infra** (locked, applied by Sylvie herself): `docker-compose.yml` (`extra_hosts`/`NOSMSNOW_URL` fix).
+- **Alert backend** (today's Lead Sentinel rule): `backend/src/alert/{alert.service,alert.service.spec}.ts`,
+  `backend/test/alert.e2e-spec.ts`.
+- **Alert frontend + docs** (from the previous session, still never committed): `frontend/src/{api/alert.ts,
+  index.css, pages/AlertsPage.tsx, i18n/locales/{en,fr}.json}`, `API.md`, `TEST.md`, `NOSMSNOW.md`.
+- **Pre-existing, unrelated to Alert work**: `.claude/settings.json`, `.claude/skills/docu/SKILL.md`,
+  `notesaeffacer.txt` (deleted), `.claude/settings.local.json.bak`.
 
-Not committed/pushed — ask Sylvie before doing either.
+Not committed/pushed — ask Sylvie before doing either. Given the quoting issue she hit last time, suggest a
+heredoc or `git commit` without `-m` (opens her editor) next attempt.

@@ -199,7 +199,8 @@ describe('AlertService', () => {
     it('rejects when the caller has no accepted Sentinel link to the companion at all', async () => {
       prisma.alert.findFirst.mockResolvedValueOnce(null);
       prisma.circle.findFirst.mockResolvedValueOnce(circle);
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([linkRow()]); // lead-check passes
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(null); // assertCanRaise
 
       await expect(
         service.raiseAlert('stranger-id', {
@@ -208,6 +209,38 @@ describe('AlertService', () => {
           reason: 'x',
         }),
       ).rejects.toThrow(ForbiddenException);
+      expect(prisma.alert.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects raising when the companion has no 1st circle yet', async () => {
+      prisma.alert.findFirst.mockResolvedValueOnce(null);
+      prisma.circle.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.raiseAlert('alice-id', {
+          companionId: 'alice-id',
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.linkSentinels.findMany).not.toHaveBeenCalled();
+      expect(prisma.alert.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects raising when the 1st circle exists but has no accepted Lead Sentinel', async () => {
+      prisma.alert.findFirst.mockResolvedValueOnce(null);
+      prisma.circle.findFirst.mockResolvedValueOnce(circle);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        linkRow({ leadSlot: null }),
+      ]);
+
+      await expect(
+        service.raiseAlert('alice-id', {
+          companionId: 'alice-id',
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        }),
+      ).rejects.toThrow(ConflictException);
       expect(prisma.alert.create).not.toHaveBeenCalled();
     });
 

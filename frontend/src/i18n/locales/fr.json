@@ -142,7 +142,36 @@
   "alerts": {
     "title": "Alertes",
     "intro": "Alertes en cours et historique.",
-    "empty": "Aucune alerte pour l'instant — le module Alert n'est pas encore codé."
+    "empty": "Aucune alerte pour l'instant.",
+    "status": {
+      "SENT": "Envoyée",
+      "LAUNCHED": "En cours",
+      "ACTIVE": "En cours",
+      "CLOSING": "En cours de clôture",
+      "RESOLVED": "Terminée"
+    },
+    "close": "Clôturer",
+    "raiseForSelf": "Lancer une alerte pour moi-même",
+    "confirmRaise": "Déclencher une alerte ? Votre 1er cercle sera prévenu immédiatement.",
+    "defaultReason": "Alerte déclenchée depuis l'application.",
+    "activeAlertNotice": "Une alerte est en cours. Votre 1er cercle a été prévenu.",
+    "raiseForCompanion": "Alerter pour un proche",
+    "raiseForCompanionIntro": "Déclenchez une alerte pour quelqu'un que vous protégez.",
+    "companionLabel": "Personne concernée",
+    "noCompanions": "Vous ne surveillez personne pour l'instant.",
+    "reasonLabel": "Raison",
+    "reasonPlaceholder": "Décrivez brièvement la situation",
+    "submit": "Envoyer l'alerte",
+    "raised": "Alerte envoyée.",
+    "type": {
+      "BYCOMPANION": "Appel à l'aide",
+      "LITTLEWORRY": "Petite inquiétude",
+      "MISSING": "Personne introuvable",
+      "INCIDENT": "Incident signalé",
+      "EMERGENCY": "Urgence",
+      "NOCONTACT": "Sans nouvelles",
+      "UNKNOWN": "Alerte"
+    }
   },
   "messages": {
     "title": "Messages",

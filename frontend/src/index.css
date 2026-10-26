@@ -318,3 +318,65 @@ button, input {
   color: var(--danger);
   border-color: var(--danger);
 }
+
+/* Alerts */
+.app-content button.alert-btn {
+  display: block;
+  width: 100%;
+  padding: 1.1rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  background: var(--danger);
+  border-radius: 10px;
+}
+
+.alert-active {
+  border-color: var(--danger);
+}
+
+.alert-active p {
+  font-weight: 600;
+  color: var(--danger);
+}
+
+/* Minimal mobile pass — scoped to this breakpoint, desktop layout untouched.
+   Alert screens are the first mobile-conscious UI in this app. */
+@media (max-width: 640px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .app-nav {
+    width: auto;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .app-nav .brand {
+    margin-bottom: 0;
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .app-nav a {
+    flex-shrink: 0;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .app-nav .lang-switcher,
+  .app-nav .logout-btn {
+    margin-top: 0;
+    margin-left: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .app-content {
+    max-width: none;
+    padding: 1rem;
+  }
+}

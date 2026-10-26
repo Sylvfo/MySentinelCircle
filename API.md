@@ -1,6 +1,6 @@
 # API
 
-Updated: 2026-10-21 16:03
+Updated: 2026-10-26 11:19
 
 Route-by-route reference, generated from `backend/src/*/*.controller.ts`. For the conceptual picture see `STACK_SCHEMA.md`; for entities/relations see `backend/prisma/DB_schema.md`.
 
@@ -84,14 +84,14 @@ Note: `GET /auth/me` doesn't exist on `AuthController` — the current-user prof
 
 ## `alert`
 
-`@UseGuards(JwtAuthGuard)` at the controller level — every route requires a JWT. MVP slice only: raise/close a simple alert and read it back; no Organization-raised alerts, Lead handoff, outer-circle escalation, or SMS reply parsing yet — see `plan.txt`'s Alert lifecycle for the full spec.
+`@UseGuards(JwtAuthGuard)` at the controller level — every route requires a JWT. MVP slice only: raise/close a simple alert and read it back; no Organization-raised alerts, Lead handoff, outer-circle escalation, or SMS reply parsing yet — see `plan.txt`'s Alert lifecycle for the full spec. Note: unlike every other module, `alert` has no route on its bare collection root (`raise`/`mine` instead of `POST`/`GET /alert`) — `nginx/nginx.conf`'s reverse-proxy `location` blocks all require a trailing path segment, and this is the only module whose natural REST routes would otherwise sit exactly on that root.
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/alert` | Raise an alert (`companionId`, `alertType`, `reason`) — by "Me" for themself, or by an accepted 1st-circle Sentinel on "Me"'s behalf. Creates the `Alert` + one `AlertParticipant` per accepted 1st-circle `LinkSentinels` (freezing their messaging/lead permissions), opens the 1st-circle group `Conversation`, and SMS-notifies every participant plus the companion (if raised by a Sentinel). Rejects (409) if the companion already has a non-resolved alert. |
+| POST | `/alert/raise` | Raise an alert (`companionId`, `alertType`, `reason`) — by "Me" for themself, or by any of their accepted Sentinels (any circle, not just the 1st — per `plan.txt`, an outer-circle Sentinel's only alert power is to raise the initial one). Creates the `Alert` + one `AlertParticipant` per accepted 1st-circle `LinkSentinels` (freezing their messaging/lead permissions — raising always notifies the 1st circle, regardless of which circle the raiser is in), opens the 1st-circle group `Conversation`, and SMS-notifies every 1st-circle participant plus the companion (if raised by a Sentinel). Rejects (409) if the companion already has a non-resolved alert, or if their 1st circle doesn't exist yet or has no accepted Lead Sentinel (per `plan.txt`: the 1st circle must always keep ≥1 Lead Sentinel — without one, nobody is in charge to drive the alert). |
 | POST | `/alert/:id/close` | Close an alert — by "Me" or by an accepted 1st-circle Sentinel. Resolves the `Alert`, closes its `AlertParticipant`s and `Conversation`, and SMS-notifies every participant plus the companion (if closed by the circle). Rejects (409) if already resolved. |
-| GET | `/alert` | List my alerts (as companion or as a participant Sentinel), newest first. |
-| GET | `/alert/:id` | Get one alert with its participants — "Me" or a 1st-circle participant Sentinel only. |
+| GET | `/alert/mine` | List my alerts (as companion or as a participant Sentinel), newest first. |
+| GET | `/alert/:id` | Get one alert with its participants and the id of its 1st-circle `Conversation` (to call the `messaging` endpoints below) — "Me" or a 1st-circle participant Sentinel only. |
 
 ## `organization`
 

@@ -59,18 +59,33 @@ npm start          # or: node server.js
 It listens on `NOSMSNOW_PORT` (default `4001`) and forwards inbound
 webhooks to `BACKEND_URL` (default `http://localhost:3000`).
 
+**Run it in a real terminal you keep open** — it exits the moment its
+stdin closes (that's what ends the REPL), so it can't be started detached
+or backgrounded.
+
 In `backend/.env`, set:
 ```
 NOSMSNOW_URL="http://localhost:4001"
 ```
+This is correct for host-mode dev (`npm run start:dev` outside Docker).
 Leave it unset to skip NoSMSNow entirely — sends still log to the
 backend's own terminal either way.
+
+**Docker mode**: the containerized backend can't reach `localhost:4001`
+(that's the container itself, not your machine). `docker-compose.yml`'s
+`backend` service overrides this for you —
+`NOSMSNOW_URL: http://host.docker.internal:4001` plus an `extra_hosts`
+entry mapping `host.docker.internal` to the host gateway — so just run
+`nosmsnow` on your machine as above and it's reachable from the container
+with no extra config. `backend/.env`'s own value above is only used in
+host-mode dev; it's irrelevant when running via `docker compose`.
 
 ## Typical dev loop
 
 1. `cd nosmsnow && npm start`
-2. Start the backend normally (`npm run start:dev` in `backend/`).
-3. Trigger something that sends an SMS (e.g. an alert launch, once that
-   module exists) — watch it print in the NoSMSNow terminal.
+2. Start the backend normally (`npm run start:dev` in `backend/`, or
+   `docker compose up -d backend` — see Docker mode above).
+3. Trigger something that sends an SMS (e.g. `POST /alert/raise`) — watch
+   it print in the NoSMSNow terminal.
 4. Reply as the sentinel: `nosmsnow> <their phone> OUI`.
 5. Watch the backend terminal / DB to confirm it processed the reply.

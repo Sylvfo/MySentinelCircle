@@ -51,16 +51,29 @@ export class AlertService {
         status: CircleStatus.ACTIVE,
       },
     });
-    if (!circle) throw new NotFoundException('1st circle not found');
+
+    // Per plan.txt, the 1st circle must always keep >=1 Lead Sentinel —
+    // without one, nobody would actually be in charge to drive the alert,
+    // so raising isn't allowed yet. Covers both "no 1st circle at all"
+    // (trivially no lead) and "1st circle exists but no accepted lead".
+    const links = circle
+      ? await this.prisma.linkSentinels.findMany({
+          where: { circleId: circle.id, status: LinkStatus.ACCEPTED },
+          include: {
+            linkAsSentinel: {
+              select: { id: true, firstName: true, phone: true },
+            },
+          },
+        })
+      : [];
+    if (!circle || !links.some((link) => link.leadSlot !== null)) {
+      throw new ConflictException(
+        'This companion’s 1st circle has no Lead Sentinel yet — an alert can’t be raised',
+      );
+    }
 
     await this.assertCanRaise(callerId, dto.companionId);
 
-    const links = await this.prisma.linkSentinels.findMany({
-      where: { circleId: circle.id, status: LinkStatus.ACCEPTED },
-      include: {
-        linkAsSentinel: { select: { id: true, firstName: true, phone: true } },
-      },
-    });
     const companion = await this.prisma.user.findUnique({
       where: { id: dto.companionId },
       select: { firstName: true, phone: true },
