@@ -146,6 +146,9 @@ model User {
 
   launchedAlerts Alert[]      @relation("AlertLaunchedBy")
   closedAlerts   Alert[]      @relation("AlertClosedBy")
+  requestedAlertParticipations AlertParticipant[] @relation("AlertParticipantRequestedBy")
+  statusUpdatedAlerts          Alert[]            @relation("AlertStatusUpdatedBy")
+  labelUpdatedAlerts           Alert[]            @relation("AlertLabelUpdatedBy")
 
   conversationMemberships ConversationParticipant[]
   sentMessages            Message[]
@@ -237,6 +240,13 @@ model Alert {
 
   statusByCompanion   String?
   statusByFirstCircle String?
+  statusUpdatedById String?
+  statusUpdatedBy   User?     @relation("AlertStatusUpdatedBy", fields: [statusUpdatedById], references: [id], onDelete: Restrict)
+  statusUpdatedAt   DateTime?
+
+  labelUpdatedById String?
+  labelUpdatedBy   User?     @relation("AlertLabelUpdatedBy", fields: [labelUpdatedById], references: [id], onDelete: Restrict)
+  labelUpdatedAt   DateTime?
 
   userCompanionId String
   userCompanion   User @relation("MyAlertsAsCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
@@ -264,6 +274,8 @@ model AlertParticipant {
 
   status AlertParticipantStatus @default(WAITING)
 
+  requestedById String?
+  requestedBy   User?   @relation("AlertParticipantRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
   contactedAt DateTime?
   answeredAt  DateTime?
   closedAt    DateTime?

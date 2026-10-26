@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { linkGoogle, loginEmail, loginGoogle, requestOtp } from '../api/auth';
+import { devLogin, linkGoogle, loginEmail, loginGoogle, requestOtp } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
@@ -16,6 +16,7 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [devPhone, setDevPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const { applyToken } = useAuth();
@@ -67,6 +68,23 @@ export function LoginPage() {
       navigate('/otp', { state: { userId, phone } });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Dev-only quick login (no password/OTP) — import.meta.env.DEV is false
+  // in a production build, so this block never ships.
+  const handleDevLoginSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { accessToken } = await devLogin(devPhone);
+      await applyToken(accessToken);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t('auth.errors.login'));
     } finally {
       setSubmitting(false);
     }
@@ -140,6 +158,23 @@ export function LoginPage() {
       <p className="switch-link">
         {t('auth.noAccount')} <Link to="/signup">{t('auth.createAccount')}</Link>
       </p>
+
+      {import.meta.env.DEV && (
+        <div style={{ marginTop: '1rem' }}>
+          <div className="auth-divider">{t('auth.devLogin.divider')}</div>
+          <form onSubmit={handleDevLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <input
+              type="tel"
+              placeholder={t('auth.devLogin.placeholder')}
+              value={devPhone}
+              onChange={(e) => setDevPhone(e.target.value)}
+            />
+            <button type="submit" disabled={submitting || !devPhone.trim()}>
+              {t('auth.devLogin.submit')}
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
+import { AlertService } from '../alert/alert.service';
 import {
   circleMoveAnsweredSms,
   circleMoveProposedSms,
@@ -62,6 +63,7 @@ export class SentinelService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
+    private readonly alert: AlertService,
   ) {}
 
   // ---- Circles (companion side) ----------------------------------------------
@@ -376,11 +378,19 @@ export class SentinelService {
       await this.applyCircleMoveResponse(moveProposal, intent === 'accept');
       return {
         matched: true as const,
-        action: intent === 'accept' ? 'circle_move_accepted' : 'circle_move_declined',
+        action:
+          intent === 'accept' ? 'circle_move_accepted' : 'circle_move_declined',
       };
     }
 
-    // No pending link/proposal: a NON/STOP from an active Sentinel means "remove me".
+    // No sentinel-link-domain match: maybe this phone has a live alert ask
+    // waiting on them. Checked *before* the blanket "NON means leave" fallback
+    // below — a time-boxed alert question is a more specific match than that
+    // catch-all, same precedence logic as the two checks above it.
+    const alertMatch = await this.alert.tryHandleInboundSms(phone, body);
+    if (alertMatch) return alertMatch;
+
+    // No pending link/proposal/alert ask: a NON/STOP from an active Sentinel means "remove me".
     if (intent === 'decline') {
       const active = await this.prisma.linkSentinels.findFirst({
         where: { status: LinkStatus.ACCEPTED, linkAsSentinel: { phone } },
@@ -561,7 +571,8 @@ export class SentinelService {
         sentinelType: dto.sentinelType ?? link.sentinelType,
         requestedAsLead,
         leadSlot,
-        canMessageOwnCircle: dto.canMessageOwnCircle ?? link.canMessageOwnCircle,
+        canMessageOwnCircle:
+          dto.canMessageOwnCircle ?? link.canMessageOwnCircle,
         firstCircleMessagingMode:
           dto.firstCircleMessagingMode ?? link.firstCircleMessagingMode,
       },
@@ -702,7 +713,10 @@ export class SentinelService {
 
   // No auto-Lead on acceptance — same reasoning as respondToMembership's
   // accept path: "Me" promotes to Lead separately afterward if they want.
-  private async applyCircleMoveResponse(link: LinkWithParties, accept: boolean) {
+  private async applyCircleMoveResponse(
+    link: LinkWithParties,
+    accept: boolean,
+  ) {
     const updated = await this.prisma.linkSentinels.update({
       where: { id: link.id },
       data: accept

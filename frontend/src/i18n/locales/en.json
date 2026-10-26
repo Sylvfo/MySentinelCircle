@@ -82,6 +82,11 @@
       "generic": "Error",
       "signup": "Error while creating the account",
       "invalidCode": "Invalid code"
+    },
+    "devLogin": {
+      "divider": "Quick login (dev)",
+      "placeholder": "Phone number",
+      "submit": "Quick login"
     }
   },
   "dashboard": {
@@ -116,6 +121,8 @@
     "removeMember": "Remove",
     "confirmRemoveMember": "Warning, this Sentinel will no longer be part of any of your circles.",
     "move": "Move",
+    "makeLead": "Make Lead Sentinel",
+    "removeLead": "Remove as Lead",
     "awaitingFirstCircleConsent": "Awaiting acceptance for the 1st circle"
   },
   "companions": {
@@ -142,7 +149,71 @@
   "alerts": {
     "title": "Alerts",
     "intro": "Active alerts and history.",
-    "empty": "No alert yet — the Alert module isn't built yet."
+    "empty": "No alert yet.",
+    "status": {
+      "SENT": "Sent",
+      "LAUNCHED": "Active",
+      "ACTIVE": "Active",
+      "CLOSING": "Closing",
+      "RESOLVED": "Resolved"
+    },
+    "close": "Close",
+    "raiseForSelf": "Raise an alert for myself",
+    "confirmRaise": "Raise an alert now? Your 1st circle will be notified immediately.",
+    "defaultReason": "Alert raised from the app.",
+    "activeAlertNotice": "An alert is active. Your 1st circle has been notified.",
+    "raiseForCompanion": "Raise an alert for someone I protect",
+    "raiseForCompanionIntro": "Raise an alert on behalf of someone you protect.",
+    "companionLabel": "Person concerned",
+    "noCompanions": "You're not watching over anyone yet.",
+    "reasonLabel": "Reason",
+    "reasonPlaceholder": "Briefly describe the situation",
+    "submit": "Send the alert",
+    "raised": "Alert sent.",
+    "type": {
+      "BYCOMPANION": "Calling for help",
+      "LITTLEWORRY": "Minor concern",
+      "MISSING": "Person missing",
+      "INCIDENT": "Incident reported",
+      "EMERGENCY": "Emergency",
+      "NOCONTACT": "No contact",
+      "UNKNOWN": "Alert"
+    },
+    "detail": {
+      "show": "Details",
+      "hide": "Hide",
+      "about": "About: {{name}}",
+      "participants": "Notified Sentinels",
+      "lead": "Lead",
+      "chatTitle": "1st circle chat",
+      "noMessages": "No message yet.",
+      "messagePlaceholder": "Write a message...",
+      "send": "Send",
+      "me": "Me",
+      "response": "Response: {{response}}",
+      "requestCircle": {
+        "title": "Ask another circle",
+        "noCircles": "No other circle to ask.",
+        "questionPlaceholder": "E.g. Is she at your place?",
+        "submit": "Send the request"
+      },
+      "respond": {
+        "prompt": "You've been asked to respond about this alert.",
+        "yes": "Yes",
+        "no": "No"
+      },
+      "statusByCompanion": "Status (companion)",
+      "statusByFirstCircle": "Status (1st circle)",
+      "status": {
+        "none": "No status yet.",
+        "placeholder": "E.g. Everything's fine, thanks"
+      },
+      "labelField": "Alert name",
+      "labelPlaceholder": "E.g. Searching for Léa",
+      "requestedBy": "requested by {{name}}",
+      "updatedBy": "— {{name}}",
+      "messageHistoryTitle": "Message history (1st circle)"
+    }
   },
   "messages": {
     "title": "Messages",

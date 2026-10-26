@@ -1,6 +1,6 @@
 # TEST.md
 
-Updated: 2026-10-21 15:14
+Updated: 2026-10-26 16:52
 
 ## When tests run
 
@@ -13,10 +13,10 @@ Updated: 2026-10-21 15:14
 
 ## Current test list
 
-### Unit — `backend/src/**/*.spec.ts` (107 tests)
+### Unit — `backend/src/**/*.spec.ts` (152 tests)
 
 - **`app.controller.spec.ts`** (1 test) — checks `GET /` responds `"Hello World!"`.
-- **`auth/auth.service.spec.ts`** (34 tests, `PrismaService`/`JwtService`/`ConfigService`/`OTP_SENDER`/`EMAIL_SENDER` mocked):
+- **`auth/auth.service.spec.ts`** (35 tests, `PrismaService`/`JwtService`/`ConfigService`/`OTP_SENDER`/`EMAIL_SENDER` mocked):
   - **`claimOrCreateByPhone`** (via `signupPhone`, 3 tests) — creates when no row exists, claims/upgrades an `ONLY_SMS` stub (same `id` kept), rejects 409 if already a real account.
   - **`signupGoogle`** (3 tests) — rejects 409 when the Google email or username is already taken; creates an `UNCOMPLETE` account (no phone) and returns a token on success.
   - **`signupEmail`** (4 tests) — rejects 409 if the email or username is already taken; success with a phone (creates account + sends OTP); success without a phone (`UNCOMPLETE` account, token returned immediately).
@@ -37,7 +37,7 @@ Updated: 2026-10-21 15:14
   - **`stepUpCodeVerify`** (3 tests) — rejects no pending code / wrong code (increments `otpAttempts`); marks step-up verified on success.
   - **`requestEmailChange`** (3 tests) — rejects stale step-up / an email already in use; stores the pending email and sends a confirmation link on success.
   - **`confirmEmailChange`** (3 tests) — rejects an unknown/expired token, an expired pending-email request; applies the pending email on success.
-- **`sentinel/sentinel.service.spec.ts`** (34 tests, `PrismaService`/`SMS_SENDER` mocked):
+- **`sentinel/sentinel.service.spec.ts`** (36 tests, `PrismaService`/`SMS_SENDER`/`AlertService` mocked):
   - **`listCircles`** (1 test) — auto-creates the 1st and reserve circles if missing, sorted `FIRST → BASIC → RESERVED`.
   - **`inviteSentinel`** (6 tests) — rejects inviting directly into the reserve circle, into a closed circle, an `UNCOMPLETE` (no-phone) caller; requires an existing account for a 1st-circle Sentinel; rejects re-inviting a `BLOCKED` link; bootstraps the first Sentinel of an empty 1st circle as `LEAD_1`.
   - **`requestToBeSentinel`** (1 test) — rejects an `UNCOMPLETE` (no-phone) requester.
@@ -48,8 +48,23 @@ Updated: 2026-10-21 15:14
   - **`removeMembership`** (1 test) — blocks removing the last Lead while other active members remain.
   - **`blockMembership`** (5 tests) — blocks a `PENDING` or `ACCEPTED` link; rejects blocking an already-blocked link or someone else's link; blocks removing the last Lead while other active members remain.
   - **`handleInboundSms` — circle move proposal** (2 tests) — resolves a pending circle-move proposal via OUI/NON; a genuine fresh `PENDING` invite/request wins over an existing move proposal.
+  - **`handleInboundSms` — alert escalation fallback** (2 tests) — defers to `AlertService.tryHandleInboundSms` when a live alert ask matches, *before* the blanket "NON/STOP means leave" fallback (so a Sentinel's `NON` to an alert question is never misread as asking to be removed); falls through to that fallback when no alert ask is pending.
+- **`alert/alert.service.spec.ts`** (38 tests, `PrismaService`/`SMS_SENDER` mocked):
+  - **`raiseAlert`** (6 tests) — the companion raising for themself (freezes `AlertParticipant`'s `...AtAlert` fields from `LinkSentinels`/`Circle`, opens the 1st-circle `Conversation`, SMS to the 1st circle only); any accepted Sentinel raising on the companion's behalf — not necessarily 1st-circle (SMS to the 1st circle **and** the companion); rejects a caller with no accepted link to the companion at all (403); rejects a companion who already has a non-resolved alert (409); rejects when the companion has no 1st circle yet (409); rejects when the 1st circle exists but has no accepted Lead Sentinel (409) — per `plan.txt`, the 1st circle must always keep ≥1 Lead Sentinel.
+  - **`closeAlert`** (5 tests) — the companion closing it themself (SMS to the circle only); an accepted 1st-circle Sentinel closing it (SMS to the circle **and** the companion); rejects a non-participant caller (403); rejects closing an already-resolved alert (409); rejects a missing alert (404).
+  - **`requestCircle`** (6 tests) — fans out an `AlertParticipant` per accepted Sentinel of the chosen outer (`BASIC`) circle and bumps `LAUNCHED` → `ACTIVE`/`activatedAt`; doesn't re-bump an already-`ACTIVE` alert; rejects a circle that isn't a `BASIC` circle of this companion (400); rejects a circle with no accepted Sentinel (400); rejects escalating an already-resolved alert (409); rejects a caller who is neither the companion nor an accepted 1st-circle Sentinel (403).
+  - **`respond`** (2 tests) — records an in-app yes/no reply for a `CONTACTED` participant and returns the updated participant directly (not the full `getAlert()` detail, which an outer-circle Sentinel can't view); rejects a caller with no pending request on this alert (403).
+  - **`getMyParticipation`** (2 tests) — returns the caller's own participation plus minimal alert context (companion name, the alert's name, the raise reason, and both status notes), for a participant of *any* circle, not just the 1st; rejects a caller with no participation on this alert at all (403).
+  - **`updateStatus`** (5 tests) — sets `statusByCompanion` when the caller is the companion; sets `statusByFirstCircle` (and records who, via `statusUpdatedById`/`statusUpdatedAt`) when the caller is an accepted 1st-circle Sentinel — two separate fields, not one shared one; stays writable on an already-resolved alert; rejects a caller who is neither (403); rejects a missing alert (404).
+  - **`updateLabel`** (4 tests) — lets any accepted 1st-circle Sentinel rename the alert (`label`), not just the Lead; rejects an outer-circle Sentinel (403); rejects the companion (403) — only the 1st circle renames; rejects a missing alert (404).
+  - **`tryHandleInboundSms`** (3 tests) — records a matching OUI/NON reply against the most recent `CONTACTED` participant for that phone and sends an acknowledgement; returns `null` (not a "no match" object, so `SentinelService` can fall through) for an unrecognizable reply; returns `null` when no alert ask is pending for that phone.
+  - **`getAlert`** (4 tests) — returns the alert (incl. the companion's name and their other `BASIC` circles via `userCompanion`, plus `statusUpdatedBy`/`labelUpdatedBy`, per-participant `requestedBy`, and embedded message history) for the companion and for an accepted 1st-circle Sentinel; rejects a non-participant caller (403); rejects a missing alert (404).
+  - **`listMyAlerts`** (1 test) — queries alerts where the caller is the companion or a participant Sentinel, newest first.
+- **`messaging/messaging.service.spec.ts`** (5 tests, `PrismaService` mocked):
+  - **`sendMessage`** (3 tests) — creates a message for an active participant of an open conversation; rejects a non-participant (403); rejects sending into a closed conversation (409).
+  - **`listMessages`** (2 tests) — returns messages oldest-first for an active participant; rejects a non-participant (403).
 
-### E2e — `backend/test/**/*.e2e-spec.ts` (26 tests)
+### E2e — `backend/test/**/*.e2e-spec.ts` (57 tests)
 
 - **`app.e2e-spec.ts`** (1 test) — boots a real Nest instance (`AppModule`) against `mysentinelcircle_test`, checks `GET /` → 200 `"Hello World!"`.
 - **`auth.e2e-spec.ts`** (5 tests, `OTP_SENDER`/`EMAIL_SENDER` intercepted via `overrideProvider` to capture the real code/link instead of parsing console output):
@@ -71,6 +86,17 @@ Updated: 2026-10-21 15:14
   - **Circle move — 1st-circle consent** (1 test) — moving an accepted Sentinel into the 1st circle proposes instead of moving immediately; only moves once the Sentinel accepts via `circle-move/accept`.
   - **Messaging settings** (2 tests) — `canMessageOwnCircle`/`firstCircleMessagingMode` update for an account-holding Sentinel; rejected (400) for a Sentinel SMS link.
   - **Inbound SMS** (4 tests) — accepts (`OUI`) and declines (`NON`) a pending invitation; `STOP` opts an already-accepted Sentinel out (`REMOVED`); an unrecognized reply with no actionable link returns `matched: false`.
+- **`alert.e2e-spec.ts`** (27 tests, `SMS_SENDER` intercepted; built on a real 1st circle (and, for escalation, a real outer circle too) via the `sentinel` routes):
+  - **`POST /alert/raise`** (7 tests) — the companion raises for themself (SMS to the circle only, `isLead` correct per participant); an accepted 1st-circle Sentinel raises on the companion's behalf (SMS to the circle **and** the companion); an accepted *outer*-circle Sentinel can raise too — it still only notifies the 1st circle (not the outer circle itself); rejects a caller with no accepted link to the companion at all, given a 1st circle with a Lead (403); rejects a second concurrent raise (409); rejects when the companion has no 1st circle yet (409); rejects when the 1st circle exists but has no Lead Sentinel (409).
+  - **`POST /alert/:id/close`** (4 tests) — closed by the companion or by an accepted 1st-circle Sentinel; rejects a non-participant (403); rejects closing an already-resolved alert (409).
+  - **`POST /alert/:id/request-circle`** (6 tests) — asks a specific outer circle, notifies its accepted Sentinels by SMS, and bumps the alert to `ACTIVE`; a Sentinel's SMS `NON` reply is recorded against the alert *and confirmed not to affect their circle membership* (still `ACCEPTED` afterward) — the regression test for the inbound-SMS precedence fix in `sentinel.service.ts`; an account-holding Sentinel can respond in-app instead (`POST /alert/:id/respond`, returns the updated participant, not the full alert); rejects responding with no pending request (403); rejects targeting a circle that isn't this companion's own outer circle (400); rejects a caller who is neither the companion nor an accepted 1st-circle Sentinel (403).
+  - **`GET /alert/:id/my-participation`** (2 tests) — lets a solicited outer-circle Sentinel see their own participation and just enough alert context, where `GET /alert/:id` itself 403s them; rejects a caller with no participation on this alert at all (403).
+  - **`PATCH /alert/:id/status`** (3 tests) — the companion and a 1st-circle Sentinel each write their own status note (`statusByCompanion`/`statusByFirstCircle`), both visible to an outer-circle Sentinel via `my-participation` (not who else was contacted or how they answered); stays writable by both after the alert is closed; rejects a caller who is neither (403).
+  - **`PATCH /alert/:id/label`** (3 tests) — any accepted 1st-circle Sentinel (not just the Lead) renames the alert, visible to an outer-circle Sentinel via `my-participation`; rejects an outer-circle Sentinel (403); rejects the companion (403).
+  - **`GET /alert/:id` — attribution and message history** (1 test) — `requestedBy` correctly shows the companion for a 1st-circle participant (raised themself) and the triggering 1st-circle Sentinel for an outer-circle participant (via `request-circle`); the companion reads a 1st-circle Sentinel's chat message through `GET /alert/:id`'s embedded `conversations[].messages`, while still getting 403 calling `messaging`'s routes on that conversation directly.
+  - **`GET /alert/mine`** (1 test) — lists the companion's alerts newest-first.
+- **`messaging.e2e-spec.ts`** (4 tests, built on a real alert's 1st-circle conversation):
+  - A 1st-circle Sentinel sends and reads messages in the alert's conversation; the companion is rejected (403, by design — not a chat participant, see `alert`'s `GET /alert/:id` for their read path instead); a stranger with no link to the companion is rejected (403); sending into a closed (post-close) conversation is rejected (409) while reading its history still works.
 
 ## Where to see results
 
@@ -83,9 +109,10 @@ Updated: 2026-10-21 15:14
 - **`auth.requestOtp`** — no dedicated unit test (only exercised indirectly through flows that call it); `verifyOtp` is fully covered.
 - **`sentinel` module gaps** — `leaveMembershipAsSentinel` (Sentinel-side opt-out from the app, as opposed to SMS `STOP`) and `listCompanions` have no dedicated test yet, unit or e2e. `createCircle`/`listIncomingRequests`/`listMyInvitations` are exercised indirectly as setup steps inside the e2e specs, but have no test asserting their own output shape directly.
 - **`user` module gaps** — `getProfile`, `setAvatar` have no dedicated tests (simple reads, lower risk).
-- **`alert` / `organization` / `messaging`** — still empty skeletons, nothing to test until there's code.
+- **`alert`/`messaging` gaps** — null-phone edge cases (a participant or companion with no `phone`, silently skipped rather than erroring) aren't explicitly exercised, nor is a partial-SMS-failure case (`Promise.allSettled` with one rejected send). Escalating more than one outer circle in sequence on the same alert (ask circle A, then circle B) isn't covered. `statusUpdatedBy`/`labelUpdatedBy`/`requestedBy` only track the latest writer, not a full revision history (Sylvie's deliberate call, not a gap to fill). `alert`'s Organization-raised alerts, Lead handoff, and the 0–10 availability-reply scale are still out of scope entirely (see `plan.txt`'s Alert lifecycle) — nothing to test until that code exists. `messaging` has no conversation-creation route of its own yet to test — only `alert` creates one so far.
+- **`organization`** — still an empty skeleton, nothing to test until there's code.
 
-All three built-out modules now have both unit and e2e coverage: `auth` (34 unit + 5 e2e), `user` (37 unit + 4 e2e), `sentinel` (34 unit + 16 e2e) — the e2e layer is what actually exercises the real HTTP routes, guards, and the SMS-webhook flows that unit tests mock around.
+All built-out modules now have both unit and e2e coverage: `auth` (35 unit + 5 e2e), `user` (37 unit + 4 e2e), `sentinel` (36 unit + 16 e2e), `alert` (38 unit + 27 e2e), `messaging` (5 unit + 4 e2e) — the e2e layer is what actually exercises the real HTTP routes, guards, and cross-module flows (e.g. an alert's `Conversation` created by `alert`, messaged into via `messaging`; or an inbound SMS webhook routed from `sentinel` into `alert`) that unit tests mock around.
 
 ## Test infra (reference)
 

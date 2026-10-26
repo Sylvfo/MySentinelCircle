@@ -39,3 +39,7 @@ export const requestPasswordReset = (email: string) =>
 
 export const confirmPasswordReset = (token: string, newPassword: string) =>
   apiPost<{ message: string }>('/auth/password-reset/confirm', { token, newPassword });
+
+// Dev-only — backend refuses in production regardless.
+export const devLogin = (phone: string) =>
+  apiPost<{ accessToken: string }>('/auth/dev-login', { phone });

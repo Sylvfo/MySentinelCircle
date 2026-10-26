@@ -1,6 +1,6 @@
 # Features
 
-Updated: 2026-10-21 15:21
+Updated: 2026-10-26 17:03
 
 ## Project phases
 
@@ -18,12 +18,12 @@ The project as a whole moves through these macro phases, in order — the databa
 
 | Feature | State | Code evidence | Issues (traceability only) |
 |---|---|---|---|
-| Authentication | 🟣 testing | `backend/src/auth` (723 lines) + `auth.service.spec.ts` (35 tests) | #13, #31 (open); #11, #14, #15 (closed) |
+| Authentication | 🟣 testing | `backend/src/auth` (754 lines) + `auth.service.spec.ts` (35 tests) | #13, #31 (open); #11, #14, #15 (closed) |
 | User | 🟣 testing | `backend/src/user` (728 lines) + `user.service.spec.ts` (37 tests) | #29, #31 (open); #26 (closed) |
-| Sentinel / Circles | 🟣 testing | `backend/src/sentinel` (1241 lines) + `sentinel.service.spec.ts` (34 tests) | #12 (open, still `state:todo` on GitHub — stale, see note below) |
+| Sentinel / Circles | 🟣 testing | `backend/src/sentinel` (1263 lines) + `sentinel.service.spec.ts` (36 tests) | #12 (open, still `state:todo` on GitHub — stale, see note below) |
 | Organizations | 🔵 todo | `backend/src/organization` — 17-line skeleton | #10 (open, no label) |
-| Alert | ⚪ backlog | `backend/src/alert` — 17-line skeleton | #18 (closed, unlabeled — see note below) |
-| Messaging | ⚪ backlog | `backend/src/messaging` — 17-line skeleton | #19 (open, no label) |
+| Alert | 🟣 testing | `backend/src/alert` (821 lines) + `alert.service.spec.ts` (38 tests) — raise/close/read, outer-circle escalation (SMS + in-app reply), a per-side live status and a renameable label (both attributed to their last writer), a lightweight read path for solicited outer-circle Sentinels | #18 (closed, unlabeled) |
+| Messaging | 🟣 testing | `backend/src/messaging` (93 lines) + `messaging.service.spec.ts` (5 tests) — send/list in an existing `Conversation`, no conversation-creation route of its own; the companion reads the same history read-only through `alert`'s `GET /alert/:id` instead, since they're deliberately never a participant of the 1st-circle chat | #19 (open, no label — see note below) |
 | Notifications | ⚪ backlog | no backend module yet | #7 (open, no label) |
 | Internationalization (i18n) | 🟠 constructing | cross-cutting (frontend `i18n/locales`), no single backend module to evaluate — carried over | #16 (open, no label) |
 | Infrastructure & Architecture | 🟢 locked | hand-set by Sylvie, not code-derived (see Legend) | #8, #9 — both closed (stack decisions + MariaDB/Docker/nginx/HTTPS all working end-to-end) |
@@ -45,7 +45,7 @@ Issues about how we work with Claude and keep the project's own documentation in
 
 > **Methodology change (2026-10-21)**: starting this sync, feature state is derived from the code (per module, under `backend/src/`), not from the GitHub issue label — see the `docu` skill's `features` target. The label-derived history up to the 2026-09-09 sync is superseded.
 >
-> **Label/code mismatches found, worth Sylvie's own look on GitHub** (Claude can't edit issue labels, `deny`-locked): **#12 (Sentinel / Circles)** is still labeled `state:todo` on GitHub, but the code shows `testing` (1241 lines, 13 routes, full lead-slot/link-lifecycle logic, 34 passing unit tests) — relabel it `state:testing` if you agree. **#18 (Alert)** is closed but empty (no body), and the `alert` backend module is still an untouched 17-line skeleton — looks like it may have been closed by mistake.
+> **Label/code mismatches found, worth Sylvie's own look on GitHub** (Claude can't edit issue labels, `deny`-locked): **#12 (Sentinel / Circles)** is still labeled `state:todo` on GitHub, but the code shows `testing` (1263 lines, 13 routes, full lead-slot/link-lifecycle logic, 36 passing unit tests) — relabel it `state:testing` if you agree. **#18 (Alert)** was flagged in an earlier sync as "closed but the module is an untouched skeleton, maybe closed by mistake" — long resolved, the module now has a full feature set (escalation, attribution, message history for the companion) behind it, so the closed state is accurate. **#19 (Messaging)** is still open, but the code is `testing` (send/list slice, used by `alert`'s 1st-circle chat) — worth closing or commenting once you've looked at it.
 >
 > **Issues column also carries forward from the previous sync**: #29 ("delete user") was open but untracked in this file before 2026-09-09 — now under User. #31 ("auth/user to do later") spans both Authentication and User.
 

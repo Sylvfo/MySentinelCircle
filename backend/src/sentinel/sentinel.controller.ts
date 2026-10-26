@@ -117,12 +117,18 @@ export class SentinelController {
 
   // A Sentinel answers a proposed move into the 1st circle (also doable by SMS).
   @Post('memberships/:id/circle-move/accept')
-  acceptCircleMove(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+  acceptCircleMove(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
     return this.sentinel.respondToCircleMove(user.userId, id, true);
   }
 
   @Post('memberships/:id/circle-move/decline')
-  declineCircleMove(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+  declineCircleMove(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
     return this.sentinel.respondToCircleMove(user.userId, id, false);
   }
 

@@ -26,6 +26,7 @@ import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
+import { DevLoginDto } from './dto/dev-login.dto';
 
 const OTP_TTL_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
@@ -160,6 +161,20 @@ export class AuthService {
       throw new NotFoundException('No account linked to this Google identity');
 
     this.assertPhoneVerified(user);
+    return { accessToken: this.issueToken(user.id) };
+  }
+
+  // Dev-only shortcut: log in as any account by phone number, no
+  // password/OTP. Never available in production, regardless of how this
+  // route is reached — checked here, not just left to routing/env wiring.
+  async devLoginByPhone(dto: DevLoginDto) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Not available in production');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { phone: dto.phone },
+    });
+    if (!user) throw new NotFoundException('No account with this phone number');
     return { accessToken: this.issueToken(user.id) };
   }
 

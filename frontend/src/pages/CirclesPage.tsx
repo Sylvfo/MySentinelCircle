@@ -168,6 +168,13 @@ function CircleCard({
   };
 
   const isPrimary = circle.circleType === 'FIRST';
+  // Removed/declined/blocked links stay in the DB (never hard-deleted) but
+  // don't belong in the active member list — re-adding someone just means
+  // inviting their phone number again via the form below, which reactivates
+  // their existing link (see backend's createOrReactivateLink).
+  const liveMembers = circle.userSentinels.filter(
+    (m) => m.status === 'ACCEPTED' || m.status === 'PENDING',
+  );
 
   return (
     <section className="panel">
@@ -184,11 +191,18 @@ function CircleCard({
       </div>
 
       <h3>{t('circles.members')}</h3>
-      {circle.userSentinels.length === 0 ? (
+      {liveMembers.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>{t('circles.noMembers')}</p>
       ) : (
-        circle.userSentinels.map((m) => (
-          <MemberRow key={m.id} m={m} circles={circles} onChange={onChange} onError={onError} />
+        liveMembers.map((m) => (
+          <MemberRow
+            key={m.id}
+            m={m}
+            circles={circles}
+            isPrimary={isPrimary}
+            onChange={onChange}
+            onError={onError}
+          />
         ))
       )}
 
@@ -200,11 +214,13 @@ function CircleCard({
 function MemberRow({
   m,
   circles,
+  isPrimary,
   onChange,
   onError,
 }: {
   m: Membership;
   circles: Circle[];
+  isPrimary: boolean;
   onChange: () => void;
   onError: (msg: string) => void;
 }) {
@@ -232,6 +248,15 @@ function MemberRow({
     }
   };
 
+  const toggleLead = async () => {
+    try {
+      await updateMembership(m.id, { requestedAsLead: !m.leadSlot });
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
   const proposedCircleLabel = m.proposedCircleId
     ? circles.find((c) => c.id === m.proposedCircleId)?.label
     : null;
@@ -248,6 +273,11 @@ function MemberRow({
         )}
       </span>
       <span className="row-actions">
+        {isPrimary && m.status === 'ACCEPTED' && (
+          <button className="ghost" onClick={toggleLead}>
+            {m.leadSlot ? t('circles.removeLead') : t('circles.makeLead')}
+          </button>
+        )}
         {otherCircles.length > 0 && (
           <>
             <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}>

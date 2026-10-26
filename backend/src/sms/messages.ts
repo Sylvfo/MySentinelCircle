@@ -78,7 +78,10 @@ export function circleMoveProposedSms(companionLabel: string): string {
 
 // "Me" moves an already-accepted Sentinel into any other circle — immediate,
 // no consent needed, just a heads-up.
-export function circleMovedSms(circleLabel: string, companionLabel: string): string {
+export function circleMovedSms(
+  circleLabel: string,
+  companionLabel: string,
+): string {
   return `${companionLabel} vous a deplace vers le cercle "${circleLabel}" sur ${APP}.`;
 }
 
@@ -106,6 +109,52 @@ export const DECLINE_KEYWORDS = [
   'arreter',
   'n',
 ];
+
+// Sent to every 1st-circle Sentinel when an alert is raised for their
+// Companion.
+export function alertRaisedSms(companionLabel: string, reason: string): string {
+  return (
+    `Alerte sur ${APP} : ${companionLabel} a besoin de vous. ` +
+    `Raison : ${reason}`
+  );
+}
+
+// Sent directly to "Me" when a Sentinel raises an alert on their behalf.
+export function alertRaisedToCompanionSms(raiserLabel: string): string {
+  return (
+    `${raiserLabel} a declenche une alerte vous concernant sur ${APP}. ` +
+    `Votre 1er cercle a ete prevenu.`
+  );
+}
+
+// Sent to every participant once an alert closes — "no exceptions" per
+// plan.txt Alert lifecycle.
+export function alertClosedSms(companionLabel: string): string {
+  return `L'alerte concernant ${companionLabel} sur ${APP} est terminee. Merci pour votre aide.`;
+}
+
+// Sent to "Me" when the 1st circle (not "Me" themself) closed the alert.
+export function alertClosedToCompanionSms(): string {
+  return `Votre 1er cercle a cloture l'alerte vous concernant sur ${APP}.`;
+}
+
+// Sent to every accepted Sentinel of a specific outer circle the 1st circle
+// chooses to involve during an active alert — a targeted yes/no question,
+// not a blanket notification like alertRaisedSms.
+export function alertCircleRequestSms(
+  companionLabel: string,
+  question: string,
+): string {
+  return (
+    `${APP} - Alerte en cours concernant ${companionLabel}. ${question} ` +
+    `Repondez OUI ou NON.`
+  );
+}
+
+// Acknowledgement sent back after any alert-related SMS reply is recorded.
+export function alertReplyAckSms(): string {
+  return `Merci, votre reponse a bien ete prise en compte sur ${APP}.`;
+}
 
 export type SmsReplyIntent = 'accept' | 'decline' | 'unknown';
 
