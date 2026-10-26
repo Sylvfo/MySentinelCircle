@@ -25,6 +25,10 @@ interface LinkBody {
 
 interface AlertBody {
   id: string;
+  label: string;
+  messageAlert: string;
+  statusByCompanion: string | null;
+  statusByFirstCircle: string | null;
   alertStatus: AlertStatus;
   alertType: AlertType;
   userCompanionId: string;
@@ -43,11 +47,19 @@ interface AlertParticipantBody {
   canSendPhoneAtAlert: boolean | null;
   canMessageOwnCircleAtAlert: boolean | null;
   userSentinelsId: string;
+  requestedBy: { id: string; firstName: string } | null;
   userSentinels: {
     userSentinelId: string;
     leadSlot: string | null;
     linkAsSentinel: { id: string; firstName: string };
   };
+}
+
+interface AlertMessageBody {
+  id: string;
+  body: string;
+  createdAt: string;
+  sender: { id: string; firstName: string };
 }
 
 interface AlertDetailBody extends AlertBody {
@@ -56,8 +68,14 @@ interface AlertDetailBody extends AlertBody {
     firstName: string;
     myCircles: { id: string; label: string }[];
   };
+  statusUpdatedBy: { id: string; firstName: string } | null;
+  labelUpdatedBy: { id: string; firstName: string } | null;
   participants: AlertParticipantBody[];
-  conversations: { id: string; closedAt: string | null }[];
+  conversations: {
+    id: string;
+    closedAt: string | null;
+    messages: AlertMessageBody[];
+  }[];
 }
 
 describe('Alert (e2e)', () => {
@@ -707,6 +725,357 @@ describe('Alert (e2e)', () => {
         .set('Authorization', auth(stranger.accessToken))
         .send({ circleId: outerCircle.id, question: 'x' })
         .expect(403);
+    });
+  });
+
+  describe('GET /alert/:id/my-participation', () => {
+    it('lets a solicited outer-circle Sentinel see their own participation, where GET /alert/:id itself 403s them', async () => {
+      const companion = await signupAccount('Lea');
+      await buildFirstCircle(companion.accessToken, 1);
+      const { circle: outerCircle, sentinels: outerSentinels } =
+        await buildOuterCircle(companion.accessToken, 'Voisins', 1);
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.MISSING,
+          reason: 'Introuvable',
+        })
+        .expect(201);
+      const alert = raiseRes.body as AlertBody;
+      await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/request-circle`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .expect(201);
+
+      // The full alert is off-limits to them...
+      await request(app.getHttpServer())
+        .get(`/alert/${alert.id}`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .expect(403);
+
+      // ...but their own participation (and just enough context to act on
+      // it) is reachable.
+      const res = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}/my-participation`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .expect(200);
+      interface MyParticipationBody {
+        status: string;
+        circleName: string;
+        alert: { messageAlert: string; userCompanion: { firstName: string } };
+      }
+      const body = res.body as MyParticipationBody;
+      expect(body.status).toBe('CONTACTED');
+      expect(body.circleName).toBe('Voisins');
+      expect(body.alert.messageAlert).toBe('Introuvable');
+      expect(body.alert.userCompanion.firstName).toBe('Lea');
+    });
+
+    it('rejects a caller with no participation on this alert', async () => {
+      const companion = await signupAccount('Ada');
+      await buildFirstCircle(companion.accessToken, 1);
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        })
+        .expect(201);
+      const stranger = await signupAccount('Eve');
+
+      await request(app.getHttpServer())
+        .get(`/alert/${(raiseRes.body as AlertBody).id}/my-participation`)
+        .set('Authorization', auth(stranger.accessToken))
+        .expect(403);
+    });
+  });
+
+  describe('PATCH /alert/:id/status', () => {
+    it('lets the companion and a 1st-circle Sentinel each write their own status note, both visible to an outer-circle Sentinel', async () => {
+      const companion = await signupAccount('Lea');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+      const { circle: outerCircle, sentinels: outerSentinels } =
+        await buildOuterCircle(companion.accessToken, 'Voisins', 1);
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.MISSING,
+          reason: 'Introuvable',
+        })
+        .expect(201);
+      const alert = raiseRes.body as AlertBody;
+      await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/request-circle`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/alert/${alert.id}/status`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ message: 'Je vais bien, merci' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/alert/${alert.id}/status`)
+        .set('Authorization', auth(sentinels[0].accessToken))
+        .send({ message: 'On la cherche encore' })
+        .expect(200);
+
+      const detailRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      const detail = detailRes.body as AlertDetailBody;
+      expect(detail.statusByCompanion).toBe('Je vais bien, merci');
+      expect(detail.statusByFirstCircle).toBe('On la cherche encore');
+      expect(detail.statusUpdatedBy?.id).toBe(sentinels[0].userId);
+
+      // An outer-circle Sentinel can't see the full alert, but does see
+      // both status notes through the lightweight endpoint — not who else
+      // was contacted or what they answered.
+      interface MyParticipationBody {
+        alert: {
+          label: string;
+          statusByCompanion: string | null;
+          statusByFirstCircle: string | null;
+        };
+      }
+      const myPartRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}/my-participation`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .expect(200);
+      const myPart = myPartRes.body as MyParticipationBody;
+      expect(myPart.alert.statusByCompanion).toBe('Je vais bien, merci');
+      expect(myPart.alert.statusByFirstCircle).toBe('On la cherche encore');
+    });
+
+    it('stays writable by the companion and the 1st circle after the alert is closed', async () => {
+      const companion = await signupAccount('Ada');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        })
+        .expect(201);
+      const alert = raiseRes.body as AlertBody;
+      await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/close`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/alert/${alert.id}/status`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ message: 'Tout est rentré dans l’ordre' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/alert/${alert.id}/status`)
+        .set('Authorization', auth(sentinels[0].accessToken))
+        .send({ message: 'Merci à tous' })
+        .expect(200);
+    });
+
+    it('rejects a caller who is neither the companion nor an accepted 1st-circle Sentinel', async () => {
+      const companion = await signupAccount('Ada');
+      await buildFirstCircle(companion.accessToken, 1);
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        })
+        .expect(201);
+      const stranger = await signupAccount('Eve');
+
+      await request(app.getHttpServer())
+        .patch(`/alert/${(raiseRes.body as AlertBody).id}/status`)
+        .set('Authorization', auth(stranger.accessToken))
+        .send({ message: 'x' })
+        .expect(403);
+    });
+  });
+
+  describe('PATCH /alert/:id/label', () => {
+    it('lets any accepted 1st-circle Sentinel rename the alert, visible to every contacted Sentinel', async () => {
+      const companion = await signupAccount('Lea');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 2, {
+        leadCount: 1,
+      });
+      const { circle: outerCircle, sentinels: outerSentinels } =
+        await buildOuterCircle(companion.accessToken, 'Voisins', 1);
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.MISSING,
+          reason: 'Introuvable',
+        })
+        .expect(201);
+      const alert = raiseRes.body as AlertBody;
+      await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/request-circle`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .expect(201);
+
+      // sentinels[1] is not the Lead (leadCount: 1) — still allowed, any
+      // accepted 1st-circle Sentinel can rename.
+      await request(app.getHttpServer())
+        .patch(`/alert/${alert.id}/label`)
+        .set('Authorization', auth(sentinels[1].accessToken))
+        .send({ label: 'Recherche de Lea' })
+        .expect(200);
+
+      const detailRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      expect((detailRes.body as AlertBody).label).toBe('Recherche de Lea');
+
+      interface MyParticipationBody {
+        alert: { label: string };
+      }
+      const myPartRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}/my-participation`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .expect(200);
+      expect((myPartRes.body as MyParticipationBody).alert.label).toBe(
+        'Recherche de Lea',
+      );
+    });
+
+    it('rejects an outer-circle Sentinel', async () => {
+      const companion = await signupAccount('Ada');
+      await buildFirstCircle(companion.accessToken, 1);
+      const { sentinels: outerSentinels } = await buildOuterCircle(
+        companion.accessToken,
+        'Travail',
+        1,
+      );
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/alert/${(raiseRes.body as AlertBody).id}/label`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .send({ label: 'x' })
+        .expect(403);
+    });
+
+    it('rejects the companion — only the 1st circle can rename', async () => {
+      const companion = await signupAccount('Ada');
+      await buildFirstCircle(companion.accessToken, 1);
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/alert/${(raiseRes.body as AlertBody).id}/label`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ label: 'x' })
+        .expect(403);
+    });
+  });
+
+  describe('GET /alert/:id — attribution and message history', () => {
+    it('shows who requested each circle, and lets the companion read the 1st-circle chat without being a participant of it', async () => {
+      const companion = await signupAccount('Lea');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+      const { circle: outerCircle } = await buildOuterCircle(
+        companion.accessToken,
+        'Voisins',
+        1,
+      );
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.MISSING,
+          reason: 'Introuvable',
+        })
+        .expect(201);
+      const alert = raiseRes.body as AlertBody;
+
+      // The companion raised it themself — requestedBy on the 1st-circle
+      // participant is the companion.
+      let detailRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      let detail = detailRes.body as AlertDetailBody;
+      expect(detail.participants[0].requestedBy?.id).toBe(companion.userId);
+
+      // A 1st-circle Sentinel triggers the outer-circle request —
+      // requestedBy on that participant is the Sentinel, not the companion.
+      await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/request-circle`)
+        .set('Authorization', auth(sentinels[0].accessToken))
+        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .expect(201);
+
+      detailRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      detail = detailRes.body as AlertDetailBody;
+      const outerParticipant = detail.participants.find(
+        (p) => p.circleId === outerCircle.id,
+      )!;
+      expect(outerParticipant.requestedBy?.id).toBe(sentinels[0].userId);
+
+      // A 1st-circle Sentinel sends a message in the alert's conversation.
+      const conversationId = detail.conversations[0].id;
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinels[0].accessToken))
+        .send({ body: 'On est sur place.' })
+        .expect(201);
+
+      // The companion isn't a participant of that conversation (by design)
+      // and still gets 403 calling messaging directly...
+      await request(app.getHttpServer())
+        .get(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(403);
+
+      // ...but reads the full message history as part of the alert detail.
+      detailRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      detail = detailRes.body as AlertDetailBody;
+      const messages = detail.conversations[0].messages;
+      expect(messages).toHaveLength(1);
+      expect(messages[0].body).toBe('On est sur place.');
+      expect(messages[0].sender.id).toBe(sentinels[0].userId);
     });
   });
 });

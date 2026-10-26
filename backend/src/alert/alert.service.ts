@@ -29,6 +29,8 @@ import {
 import { CreateAlertDto } from './dto/create-alert.dto';
 import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
+import { UpdateAlertStatusDto } from './dto/update-alert-status.dto';
+import { UpdateAlertLabelDto } from './dto/update-alert-label.dto';
 
 const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   BYCOMPANION: 'Appel a l’aide',
@@ -109,6 +111,7 @@ export class AlertService {
             canMessageOwnCircleAtAlert: link.canMessageOwnCircle,
             firstCircleMessagingModeAtAlert: link.firstCircleMessagingMode,
             isLead: link.leadSlot !== null,
+            requestedById: callerId,
             alertId: created.id,
             userSentinelsId: link.id,
           },
@@ -235,6 +238,11 @@ export class AlertService {
             },
           },
         },
+        // Who last wrote statusByFirstCircle (statusByCompanion is always
+        // the companion, no ambiguity there) / renamed the alert — "last
+        // writer" only, not a full revision history (Sylvie's call).
+        statusUpdatedBy: { select: { id: true, firstName: true } },
+        labelUpdatedBy: { select: { id: true, firstName: true } },
         participants: {
           include: {
             userSentinels: {
@@ -242,11 +250,31 @@ export class AlertService {
                 linkAsSentinel: { select: { id: true, firstName: true } },
               },
             },
+            // Who triggered contacting this Sentinel (raiseAlert's 1st-circle
+            // fan-out, or requestCircle for an outer circle).
+            requestedBy: { select: { id: true, firstName: true } },
           },
         },
         // So a client can find the 1st-circle chat's conversationId to call
         // the `messaging` endpoints — the only conversation created so far.
-        conversations: { select: { id: true, closedAt: true } },
+        // Messages are embedded here too so the companion (who isn't a
+        // ConversationParticipant, by design) can still read the full
+        // history as part of the alert detail, without being able to send.
+        conversations: {
+          select: {
+            id: true,
+            closedAt: true,
+            messages: {
+              orderBy: { createdAt: 'asc' },
+              select: {
+                id: true,
+                body: true,
+                createdAt: true,
+                sender: { select: { id: true, firstName: true } },
+              },
+            },
+          },
+        },
       },
     });
     if (!alert) throw new NotFoundException('Alert not found');
@@ -327,6 +355,7 @@ export class AlertService {
             canMessageOwnCircleAtAlert: link.canMessageOwnCircle,
             firstCircleMessagingModeAtAlert: link.firstCircleMessagingMode,
             isLead: link.leadSlot !== null,
+            requestedById: callerId,
             answeredAt: null,
             response: null,
           },
@@ -338,6 +367,7 @@ export class AlertService {
             canMessageOwnCircleAtAlert: link.canMessageOwnCircle,
             firstCircleMessagingModeAtAlert: link.firstCircleMessagingMode,
             isLead: link.leadSlot !== null,
+            requestedById: callerId,
             alertId,
             userSentinelsId: link.id,
           },
@@ -381,6 +411,120 @@ export class AlertService {
     }
 
     return this.recordResponse(participant.id, dto.accepted ? 'OUI' : 'NON');
+  }
+
+  // Lightweight counterpart to getAlert(), for a participant of any circle
+  // (not just the 1st) — e.g. an outer-circle Sentinel solicited via
+  // requestCircle, who getAlert() itself deliberately doesn't let view the
+  // full alert (participants roster, other circles, who-responded-what).
+  // Just enough to make sense of and answer their own ask: the alert's
+  // name, the raise reason, both sides' live status notes, who it's about,
+  // and their own participation.
+  async getMyParticipation(callerId: string, alertId: string) {
+    const participant = await this.prisma.alertParticipant.findFirst({
+      where: { alertId, userSentinels: { userSentinelId: callerId } },
+      include: {
+        alert: {
+          select: {
+            id: true,
+            alertStatus: true,
+            label: true,
+            messageAlert: true,
+            statusByCompanion: true,
+            statusByFirstCircle: true,
+            userCompanion: { select: { firstName: true } },
+          },
+        },
+      },
+      orderBy: { contactedAt: 'desc' },
+    });
+    if (!participant) {
+      throw new ForbiddenException('You have no participation on this alert');
+    }
+    return participant;
+  }
+
+  // Two separate live status notes, one per side — not a single shared
+  // field: the companion writes statusByCompanion, any accepted 1st-circle
+  // Sentinel writes statusByFirstCircle (and stays attributed: unlike the
+  // companion, who's always one person, several Sentinels could write this
+  // side, so who last did is worth recording). Both visible to every
+  // contacted Sentinel (any circle) via getAlert()/getMyParticipation().
+  // Deliberately NOT gated on alertStatus: stays writable after the alert
+  // is RESOLVED too, unlike the 1st-circle chat (locked once the
+  // Conversation closes).
+  async updateStatus(
+    callerId: string,
+    alertId: string,
+    dto: UpdateAlertStatusDto,
+  ) {
+    const alert = await this.prisma.alert.findUnique({
+      where: { id: alertId },
+    });
+    if (!alert) throw new NotFoundException('Alert not found');
+
+    if (callerId === alert.userCompanionId) {
+      return this.prisma.alert.update({
+        where: { id: alertId },
+        data: { statusByCompanion: dto.message },
+      });
+    }
+
+    const link = await this.prisma.linkSentinels.findFirst({
+      where: {
+        userSentinelId: callerId,
+        circleId: alert.firstCircleId,
+        status: LinkStatus.ACCEPTED,
+      },
+    });
+    if (!link) {
+      throw new ForbiddenException(
+        'Not authorized to update this alert’s status',
+      );
+    }
+
+    return this.prisma.alert.update({
+      where: { id: alertId },
+      data: {
+        statusByFirstCircle: dto.message,
+        statusUpdatedById: callerId,
+        statusUpdatedAt: new Date(),
+      },
+    });
+  }
+
+  // Alert.label is the alert's name — any accepted 1st-circle Sentinel can
+  // set it (not the companion, unlike updateStatus). Visible to every
+  // contacted Sentinel, any circle, via getAlert()/getMyParticipation().
+  async updateLabel(
+    callerId: string,
+    alertId: string,
+    dto: UpdateAlertLabelDto,
+  ) {
+    const alert = await this.prisma.alert.findUnique({
+      where: { id: alertId },
+    });
+    if (!alert) throw new NotFoundException('Alert not found');
+
+    const link = await this.prisma.linkSentinels.findFirst({
+      where: {
+        userSentinelId: callerId,
+        circleId: alert.firstCircleId,
+        status: LinkStatus.ACCEPTED,
+      },
+    });
+    if (!link) {
+      throw new ForbiddenException('Only the 1st circle can rename this alert');
+    }
+
+    return this.prisma.alert.update({
+      where: { id: alertId },
+      data: {
+        label: dto.label,
+        labelUpdatedById: callerId,
+        labelUpdatedAt: new Date(),
+      },
+    });
   }
 
   // SMS webhook fallback, called by SentinelService.handleInboundSms once its

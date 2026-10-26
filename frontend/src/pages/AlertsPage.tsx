@@ -5,13 +5,17 @@ import { ApiError } from '../api/client';
 import {
   closeAlert,
   getAlert,
+  getMyParticipation,
   listAlerts,
   raiseAlert,
   requestCircle,
   respondToAlert,
+  updateAlertLabel,
+  updateAlertStatus,
   type AlertDetail,
   type AlertSummary,
   type AlertType,
+  type MyParticipation,
 } from '../api/alert';
 import { listCompanions, type Companion } from '../api/sentinel';
 import { listMessages, sendMessage, type Message } from '../api/messaging';
@@ -229,6 +233,9 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [detail, setDetail] = useState<AlertDetail | null>(null);
+  // Set only when getAlert() 403s (e.g. an outer-circle Sentinel) but the
+  // caller does have their own participation to show, as a lighter fallback.
+  const [myParticipation, setMyParticipation] = useState<MyParticipation | null>(null);
   // null = chat not accessible to this caller (e.g. the companion, by design).
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -250,10 +257,21 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
     try {
       const d = await getAlert(alertId);
       setDetail(d);
+      setMyParticipation(null);
       const convId = d.conversations[0]?.id;
       if (convId) await reloadMessages(convId);
       else setMessages(null);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        try {
+          setDetail(null);
+          setMyParticipation(await getMyParticipation(alertId));
+          return;
+        } catch (fallbackErr) {
+          setError(fallbackErr instanceof ApiError ? fallbackErr.message : String(fallbackErr));
+          return;
+        }
+      }
       setError(err instanceof ApiError ? err.message : String(err));
     }
   };
@@ -279,7 +297,28 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
   };
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
-  if (!detail) return error ? <p className="form-error">{error}</p> : null;
+
+  if (!detail) {
+    if (myParticipation) {
+      const canRespondLight =
+        myParticipation.status === 'CONTACTED' && myParticipation.alert.alertStatus !== 'RESOLVED';
+      return (
+        <div className="alert-detail">
+          <h3>{myParticipation.alert.label}</h3>
+          <p>{t('alerts.detail.about', { name: myParticipation.alert.userCompanion.firstName })}</p>
+          <StatusNoteField label={t('alerts.detail.statusByCompanion')} value={myParticipation.alert.statusByCompanion} />
+          <StatusNoteField label={t('alerts.detail.statusByFirstCircle')} value={myParticipation.alert.statusByFirstCircle} />
+          <p style={{ color: 'var(--text-muted)' }}>
+            {myParticipation.circleName}
+            {myParticipation.response && ` · ${t('alerts.detail.response', { response: myParticipation.response })}`}
+          </p>
+          {canRespondLight && <RespondButtons alertId={alertId} onChange={loadDetail} />}
+          {error && <p className="form-error">{error}</p>}
+        </div>
+      );
+    }
+    return error ? <p className="form-error">{error}</p> : null;
+  }
 
   const senderName = (senderId: string) => {
     if (senderId === user?.id) return t('alerts.detail.me');
@@ -289,16 +328,44 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
 
   const myParticipant = detail.participants.find((p) => p.userSentinels.linkAsSentinel.id === user?.id);
   const isCompanion = user?.id === detail.userCompanion.id;
-  const isAlertManager = isCompanion || myParticipant?.circleId === detail.firstCircleId;
+  const isFirstCircleSentinel = !isCompanion && myParticipant?.circleId === detail.firstCircleId;
+  const isAlertManager = isCompanion || isFirstCircleSentinel;
   const canRequestCircle = isAlertManager && detail.alertStatus !== 'RESOLVED';
   const canRespond = myParticipant?.status === 'CONTACTED' && detail.alertStatus !== 'RESOLVED';
 
+  const labelMeta = detail.labelUpdatedBy ? t('alerts.detail.updatedBy', { name: detail.labelUpdatedBy.firstName }) : undefined;
+  const statusFirstCircleMeta = detail.statusUpdatedBy
+    ? t('alerts.detail.updatedBy', { name: detail.statusUpdatedBy.firstName })
+    : undefined;
+
   return (
     <div className="alert-detail">
+      {/* The name: any 1st-circle Sentinel can set/rename it. */}
+      <StatusNoteField
+        label={t('alerts.detail.labelField')}
+        value={detail.label}
+        placeholder={t('alerts.detail.labelPlaceholder')}
+        meta={labelMeta}
+        onSave={isFirstCircleSentinel ? (label) => updateAlertLabel(alertId, label).then(loadDetail) : undefined}
+      />
       <p>{t('alerts.detail.about', { name: detail.userCompanion.firstName })}</p>
-      <p>
-        <strong>{t('alerts.detail.reason')} :</strong> {detail.messageAlert}
-      </p>
+
+      {/* Two separate status notes, not one shared field — the companion
+          writes statusByCompanion, any 1st-circle Sentinel writes
+          statusByFirstCircle. Both stay editable after the alert is
+          resolved, unlike the chat below, which locks once its
+          Conversation closes. */}
+      <StatusNoteField
+        label={t('alerts.detail.statusByCompanion')}
+        value={detail.statusByCompanion}
+        onSave={isCompanion ? (message) => updateAlertStatus(alertId, message).then(loadDetail) : undefined}
+      />
+      <StatusNoteField
+        label={t('alerts.detail.statusByFirstCircle')}
+        value={detail.statusByFirstCircle}
+        meta={statusFirstCircleMeta}
+        onSave={isFirstCircleSentinel ? (message) => updateAlertStatus(alertId, message).then(loadDetail) : undefined}
+      />
 
       <h3>{t('alerts.detail.participants')}</h3>
       <ul>
@@ -307,6 +374,9 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
             {p.userSentinels.linkAsSentinel.firstName}
             {p.isLead && <span className="badge">{t('alerts.detail.lead')}</span>}
             <span style={{ color: 'var(--text-muted)' }}> — {p.circleName}</span>
+            {p.requestedBy && (
+              <span style={{ color: 'var(--text-muted)' }}> · {t('alerts.detail.requestedBy', { name: p.requestedBy.firstName })}</span>
+            )}
             {p.response && (
               <span style={{ color: 'var(--text-muted)' }}> · {t('alerts.detail.response', { response: p.response })}</span>
             )}
@@ -314,21 +384,30 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
         ))}
       </ul>
 
-      {canRespond && (
-        <section className="panel">
-          <p>{t('alerts.detail.respond.prompt')}</p>
-          <div className="row">
-            <button onClick={() => respondToAlert(alertId, true).then(loadDetail)}>
-              {t('alerts.detail.respond.yes')}
-            </button>
-            <button className="ghost" onClick={() => respondToAlert(alertId, false).then(loadDetail)}>
-              {t('alerts.detail.respond.no')}
-            </button>
-          </div>
-        </section>
-      )}
+      {canRespond && <RespondButtons alertId={alertId} onChange={loadDetail} />}
 
       {canRequestCircle && <RequestCircleForm alertId={alertId} circles={detail.userCompanion.myCircles} onChange={loadDetail} />}
+
+      {/* The companion isn't a participant of the 1st-circle chat (by
+          design), so they get a read-only transcript sourced straight from
+          getAlert() instead of the live listMessages()/sendMessage() below,
+          which would just 403 them. */}
+      {isCompanion && conversationId && (
+        <div className="alert-chat">
+          <h3>{t('alerts.detail.messageHistoryTitle')}</h3>
+          {detail.conversations[0].messages.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
+          ) : (
+            <ul className="alert-chat-messages">
+              {detail.conversations[0].messages.map((m) => (
+                <li key={m.id}>
+                  <strong>{m.sender.firstName}</strong> : {m.body}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {messages !== null && conversationId && (
         <div className="alert-chat">
@@ -358,6 +437,89 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
       )}
       {error && <p className="form-error">{error}</p>}
     </div>
+  );
+}
+
+// A labeled text field (the alert's name, or one side's live status note);
+// editable in place only when `onSave` is given (i.e. the caller is allowed
+// to write it). `meta`, when given, shows who last wrote the current value.
+function StatusNoteField({
+  label,
+  value,
+  placeholder,
+  meta,
+  onSave,
+}: {
+  label: string;
+  value: string | null;
+  placeholder?: string;
+  meta?: string;
+  onSave?: (message: string) => Promise<unknown>;
+}) {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? '');
+  const [saving, setSaving] = useState(false);
+
+  if (editing && onSave) {
+    const save = async () => {
+      if (!draft.trim()) return;
+      setSaving(true);
+      try {
+        await onSave(draft.trim());
+        setEditing(false);
+      } finally {
+        setSaving(false);
+      }
+    };
+    return (
+      <div className="row">
+        <input
+          placeholder={placeholder ?? t('alerts.detail.status.placeholder')}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <button onClick={save} disabled={saving || !draft.trim()}>
+          {t('common.save')}
+        </button>
+        <button className="ghost" onClick={() => setEditing(false)}>
+          {t('common.cancel')}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <p>
+      <strong>{label} :</strong> {value ?? <span style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.status.none')}</span>}{' '}
+      {value && meta && <span style={{ color: 'var(--text-muted)' }}>{meta}</span>}{' '}
+      {onSave && (
+        <button
+          className="ghost"
+          onClick={() => {
+            setDraft(value ?? '');
+            setEditing(true);
+          }}
+        >
+          {t('common.edit')}
+        </button>
+      )}
+    </p>
+  );
+}
+
+function RespondButtons({ alertId, onChange }: { alertId: string; onChange: () => Promise<void> }) {
+  const { t } = useTranslation();
+  return (
+    <section className="panel">
+      <p>{t('alerts.detail.respond.prompt')}</p>
+      <div className="row">
+        <button onClick={() => respondToAlert(alertId, true).then(onChange)}>{t('alerts.detail.respond.yes')}</button>
+        <button className="ghost" onClick={() => respondToAlert(alertId, false).then(onChange)}>
+          {t('alerts.detail.respond.no')}
+        </button>
+      </div>
+    </section>
   );
 }
 

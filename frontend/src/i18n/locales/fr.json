@@ -183,7 +183,6 @@
       "show": "Détails",
       "hide": "Masquer",
       "about": "Concerne : {{name}}",
-      "reason": "Raison",
       "participants": "Sentinelles prévenues",
       "lead": "Référent·e",
       "chatTitle": "Chat du 1er cercle",
@@ -202,7 +201,18 @@
         "prompt": "On vous demande de répondre à propos de cette alerte.",
         "yes": "Oui",
         "no": "Non"
-      }
+      },
+      "statusByCompanion": "Statut (compagnon)",
+      "statusByFirstCircle": "Statut (1er cercle)",
+      "status": {
+        "none": "Pas encore de statut.",
+        "placeholder": "Ex. Tout va bien, merci"
+      },
+      "labelField": "Nom de l'alerte",
+      "labelPlaceholder": "Ex. Recherche de Léa",
+      "requestedBy": "sollicité·e par {{name}}",
+      "updatedBy": "— {{name}}",
+      "messageHistoryTitle": "Historique des messages (1er cercle)"
     }
   },
   "messages": {

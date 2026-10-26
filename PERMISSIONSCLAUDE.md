@@ -1,6 +1,6 @@
 # Permissions — Claude
 
-Updated: 2026-10-21 14:41
+Updated: 2026-10-26 17:03
 
 ## Why
 

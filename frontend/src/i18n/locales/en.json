@@ -183,7 +183,6 @@
       "show": "Details",
       "hide": "Hide",
       "about": "About: {{name}}",
-      "reason": "Reason",
       "participants": "Notified Sentinels",
       "lead": "Lead",
       "chatTitle": "1st circle chat",
@@ -202,7 +201,18 @@
         "prompt": "You've been asked to respond about this alert.",
         "yes": "Yes",
         "no": "No"
-      }
+      },
+      "statusByCompanion": "Status (companion)",
+      "statusByFirstCircle": "Status (1st circle)",
+      "status": {
+        "none": "No status yet.",
+        "placeholder": "E.g. Everything's fine, thanks"
+      },
+      "labelField": "Alert name",
+      "labelPlaceholder": "E.g. Searching for Léa",
+      "requestedBy": "requested by {{name}}",
+      "updatedBy": "— {{name}}",
+      "messageHistoryTitle": "Message history (1st circle)"
     }
   },
   "messages": {
