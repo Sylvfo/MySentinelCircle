@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    refreshUser().finally(() => setLoading(false));
+    void refreshUser().finally(() => setLoading(false));
   }, []);
 
   const applyToken = async (token: string) => {

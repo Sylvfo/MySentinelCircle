@@ -37,7 +37,7 @@ export function CirclesPage() {
   };
 
   useEffect(() => {
-    reload().finally(() => setLoading(false));
+    void reload().finally(() => setLoading(false));
   }, []);
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
