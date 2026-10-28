@@ -8,6 +8,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { SmsModule } from './sms/sms.module';
 import { EmailModule } from './email/email.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { NotificationModule } from './notification/notification.module';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { SentinelModule } from './sentinel/sentinel.module';
@@ -23,6 +24,7 @@ import { MessagingModule } from './messaging/messaging.module';
     SmsModule,
     EmailModule,
     RealtimeModule,
+    NotificationModule,
     AuthModule,
     UserModule,
     SentinelModule,

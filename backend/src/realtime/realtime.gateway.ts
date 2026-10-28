@@ -56,4 +56,8 @@ export class RealtimeGateway
   notifyAlertChanged(userId: string, alertId: string): void {
     this.server.to(`user:${userId}`).emit('alert:changed', { alertId });
   }
+
+  notifyNotificationNew(userId: string): void {
+    this.server.to(`user:${userId}`).emit('notification:new', {});
+  }
 }

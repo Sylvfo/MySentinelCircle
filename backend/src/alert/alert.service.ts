@@ -14,12 +14,14 @@ import {
   CircleType,
   LinkStatus,
   MessagingMode,
+  NotificationType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
 import type { RealtimeNotifier } from '../realtime/realtime-notifier.interface';
+import { NotificationService } from '../notification/notification.service';
 import {
   alertCircleRequestSms,
   alertClosedSms,
@@ -51,6 +53,7 @@ export class AlertService {
     private readonly prisma: PrismaService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
     @Inject(REALTIME_NOTIFIER) private readonly notifier: RealtimeNotifier,
+    private readonly notifications: NotificationService,
   ) {}
 
   async raiseAlert(callerId: string, dto: CreateAlertDto) {
@@ -161,7 +164,10 @@ export class AlertService {
       );
     }
 
-    await this.notifyAlertParticipants(alert.id);
+    await this.notifyAlertParticipants(alert.id, {
+      type: NotificationType.ALERT_RAISED,
+      actorId: callerId,
+    });
     return alert;
   }
 
@@ -225,7 +231,10 @@ export class AlertService {
       );
     }
 
-    await this.notifyAlertParticipants(alertId);
+    await this.notifyAlertParticipants(alertId, {
+      type: NotificationType.ALERT_CLOSED,
+      actorId: callerId,
+    });
     return updatedAlert;
   }
 
@@ -407,7 +416,10 @@ export class AlertService {
       alertCircleRequestSms(companion?.firstName ?? 'Un proche', dto.question),
     );
 
-    await this.notifyAlertParticipants(alertId);
+    await this.notifyAlertParticipants(alertId, {
+      type: NotificationType.ALERT_ESCALATED,
+      actorId: callerId,
+    });
     return this.getAlert(callerId, alertId);
   }
 
@@ -498,7 +510,10 @@ export class AlertService {
       participant.id,
       dto.accepted ? 'OUI' : 'NON',
     );
-    await this.notifyAlertParticipants(alertId);
+    await this.notifyAlertParticipants(alertId, {
+      type: NotificationType.ALERT_RESPONSE,
+      actorId: callerId,
+    });
     return updated;
   }
 
@@ -638,12 +653,16 @@ export class AlertService {
         alert: { alertStatus: { not: AlertStatus.RESOLVED } },
       },
       orderBy: { contactedAt: 'desc' },
+      include: { userSentinels: { select: { userSentinelId: true } } },
     });
     if (!participant) return null;
 
     await this.recordResponse(participant.id, body.trim());
     await this.sms.send(phone, alertReplyAckSms());
-    await this.notifyAlertParticipants(participant.alertId);
+    await this.notifyAlertParticipants(participant.alertId, {
+      type: NotificationType.ALERT_RESPONSE,
+      actorId: participant.userSentinels.userSentinelId,
+    });
 
     return {
       matched: true as const,
@@ -667,7 +686,15 @@ export class AlertService {
   // alert open. The socket payload is just the alertId; clients refetch
   // over the existing REST endpoints, so this never has to duplicate
   // getAlert()'s authorization logic.
-  private async notifyAlertParticipants(alertId: string) {
+  // `notify`, when passed, also persists a Notification for every recipient
+  // except the actor — only for the four event buckets worth a line in the
+  // inbox (raise/escalate/respond/close). updateStatus/updateLabel's free-
+  // text edits deliberately omit it: broadcasting those to the entire
+  // historical participant roster on every minor note change would be noise.
+  private async notifyAlertParticipants(
+    alertId: string,
+    notify?: { type: NotificationType; actorId: string },
+  ) {
     const alert = await this.prisma.alert.findUnique({
       where: { id: alertId },
       select: {
@@ -681,6 +708,20 @@ export class AlertService {
     this.notifier.notifyAlertChanged(alert.userCompanionId, alertId);
     for (const p of alert.participants) {
       this.notifier.notifyAlertChanged(p.userSentinels.userSentinelId, alertId);
+    }
+    if (!notify) return;
+    const recipients = [
+      alert.userCompanionId,
+      ...alert.participants.map((p) => p.userSentinels.userSentinelId),
+    ];
+    for (const userId of recipients) {
+      if (userId === notify.actorId) continue;
+      await this.notifications.create({
+        userId,
+        type: notify.type,
+        actorUserId: notify.actorId,
+        targetId: alertId,
+      });
     }
   }
 

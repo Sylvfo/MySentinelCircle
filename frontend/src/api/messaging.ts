@@ -35,3 +35,14 @@ export interface DirectConversation {
 // allowed between the two (see sentinel.ts's canMessageMe cascade).
 export const getDirectConversation = (userId: string) =>
   apiGet<DirectConversation>(`/messaging/direct/${userId}`);
+
+export interface ConversationSummary {
+  conversationId: string;
+  otherUserId: string;
+  lastMessage: { body: string; type: MessageType; createdAt: string } | null;
+  unreadCount: number;
+}
+
+// Every direct conversation I'm in, with the other side, the latest
+// message, and my unread count — what MessagesPage sorts/badges contacts by.
+export const listMyConversations = () => apiGet<ConversationSummary[]>('/messaging/mine');

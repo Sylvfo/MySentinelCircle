@@ -1,6 +1,6 @@
 # API
 
-Updated: 2026-10-28 13:51
+Updated: 2026-10-28 15:57
 
 Route-by-route reference, generated from `backend/src/*/*.controller.ts`. For the conceptual picture see `STACK_SCHEMA.md`; for entities/relations see `backend/prisma/DB_schema.md`.
 
@@ -116,6 +116,16 @@ Skeleton — no routes yet.
 | POST | `/messaging/conversations/:id/messages` | Send a `TEXT` message — caller must be an active (non-left) participant of an open (non-closed) conversation. For a direct (`alertId: null`) conversation, also re-resolves `canSendDirectMessage()` on every send (not just at creation) — turning the setting off blocks new messages immediately, without deleting history. |
 | POST | `/messaging/conversations/:id/messages/image` | Same checks as above, but the body is `multipart/form-data` (field `image`, jpg/png/webp only, 5MB max — mirrors `user`'s avatar upload) instead of JSON. Stores the file under `uploads/messages/` with a fresh random filename per upload (unlike the avatar's one-per-user file, nothing is ever replaced/deleted) and creates a `type: IMAGE` `Message` whose `body` is that filename — same shared `createMessage()` path as the text route above, so it's authorized, closed-conversation-checked, and pushed over `message:new` identically. Served back at `GET /uploads/messages/:filename`. |
 | GET | `/messaging/conversations/:id/messages` | List a conversation's messages, oldest first — caller must be an active participant (conversation may be closed). |
+
+## `notification`
+
+`@UseGuards(JwtAuthGuard)` at the controller level — every route requires a JWT. `@Global()` `NotificationService` is called directly from `alert`/`sentinel`/`messaging` to persist a row at the four event buckets worth a line in the inbox (new alert, alert escalated/responded-to/closed, new message, Sentinel invitation/request received, invitation/request answered) — a durable counterpart to the ephemeral `alert:changed`/`message:new` WebSocket pushes, so the recipient still sees it after the fact even if they weren't online. Creation always skips the acting user themself (nobody is notified of their own action). Pushes a bare `notification:new` WebSocket event (no payload) on creation, same "go refetch" pattern as the other two events.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/notification/mine` | List my latest 50 notifications, newest first. |
+| GET | `/notification/unread-count` | `{ count }` of unread (`readAt: null`) notifications — what the frontend's badge shows. |
+| POST | `/notification/:id/read` | Mark one of my own notifications read (`readAt` set to now). Scoped to the caller via the update's `where`, not a separate ownership check. |
 
 ## Regenerating this file
 

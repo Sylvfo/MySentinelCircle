@@ -11,6 +11,7 @@ import {
   LinkInitiator,
   LinkStatus,
   MessagingMode,
+  NotificationType,
   SentinelType,
   UserType,
 } from '@prisma/client';
@@ -18,6 +19,7 @@ import { SentinelService } from './sentinel.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import { AlertService } from '../alert/alert.service';
+import { NotificationService } from '../notification/notification.service';
 
 describe('SentinelService', () => {
   let service: SentinelService;
@@ -42,6 +44,7 @@ describe('SentinelService', () => {
     user: { findUnique: jest.Mock; create: jest.Mock };
   };
   let sms: { send: jest.Mock };
+  let notifications: { create: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -65,6 +68,7 @@ describe('SentinelService', () => {
     };
     sms = { send: jest.fn() };
     alert = { tryHandleInboundSms: jest.fn().mockResolvedValue(null) };
+    notifications = { create: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -72,6 +76,7 @@ describe('SentinelService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: SMS_SENDER, useValue: sms },
         { provide: AlertService, useValue: alert },
+        { provide: NotificationService, useValue: notifications },
       ],
     }).compile();
 
@@ -236,6 +241,13 @@ describe('SentinelService', () => {
           data: expect.objectContaining({ leadSlot: LeadSlot.LEAD_1 }),
         }),
       );
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'sentinel-1',
+        type: NotificationType.SENTINEL_INVITATION_RECEIVED,
+        actorUserId: 'me',
+        actorLabel: 'Me',
+        targetId: 'link-1',
+      });
     });
   });
 
@@ -251,6 +263,35 @@ describe('SentinelService', () => {
         } as any),
       ).rejects.toThrow(ForbiddenException);
       expect(prisma.circle.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('notifies the target companion of the incoming request', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce({ id: 'target-1', phone: '+33612345678' }) // target lookup by phone
+        .mockResolvedValueOnce({
+          id: 'requester-1',
+          userType: UserType.ACCOUNT,
+          firstName: 'Dana',
+        }); // getUser(requester)
+      prisma.circle.findFirst.mockResolvedValueOnce({
+        id: 'first-1',
+        circleType: CircleType.FIRST,
+      }); // ensurePrimaryCircle
+      prisma.linkSentinels.findUnique.mockResolvedValueOnce(null); // no existing link
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([]); // resolveLeadSlot's lead check
+      prisma.linkSentinels.create.mockResolvedValueOnce({ id: 'link-1' });
+
+      await service.requestToBeSentinel('requester-1', {
+        targetPhone: '+33612345678',
+      });
+
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'target-1',
+        type: NotificationType.SENTINEL_REQUEST_RECEIVED,
+        actorUserId: 'requester-1',
+        actorLabel: 'Dana',
+        targetId: 'link-1',
+      });
     });
   });
 
@@ -307,6 +348,16 @@ describe('SentinelService', () => {
           }),
         }),
       );
+      // Sentinel-initiated request, answered by the companion — notify the
+      // requesting Sentinel, not the companion who just answered.
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'sentinel-1',
+        type: NotificationType.SENTINEL_LINK_ANSWERED,
+        actorUserId: 'companion-1',
+        actorLabel: 'Companion',
+        accepted: true,
+        targetId: 'link-1',
+      });
     });
 
     it('rejects accepting directly into the reserve circle', async () => {
@@ -341,6 +392,16 @@ describe('SentinelService', () => {
           data: expect.objectContaining({ status: LinkStatus.ACCEPTED }),
         }),
       );
+      // Companion-initiated invite, answered by the Sentinel — notify the
+      // inviting companion, not the Sentinel who just answered.
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'companion-1',
+        type: NotificationType.SENTINEL_LINK_ANSWERED,
+        actorUserId: 'sentinel-1',
+        actorLabel: 'Sentinel',
+        accepted: true,
+        targetId: 'link-1',
+      });
     });
   });
 

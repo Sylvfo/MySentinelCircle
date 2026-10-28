@@ -14,11 +14,13 @@ import {
   LeadSlot,
   LinkStatus,
   MessagingMode,
+  NotificationType,
 } from '@prisma/client';
 import { AlertService } from './alert.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
+import { NotificationService } from '../notification/notification.service';
 
 describe('AlertService', () => {
   let service: AlertService;
@@ -50,6 +52,7 @@ describe('AlertService', () => {
   };
   let sms: { send: jest.Mock };
   let notifier: { notifyAlertChanged: jest.Mock; notifyNewMessage: jest.Mock };
+  let notifications: { create: jest.Mock };
 
   const circle = {
     id: 'circle-1',
@@ -107,6 +110,7 @@ describe('AlertService', () => {
     };
     sms = { send: jest.fn() };
     notifier = { notifyAlertChanged: jest.fn(), notifyNewMessage: jest.fn() };
+    notifications = { create: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -114,6 +118,7 @@ describe('AlertService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: SMS_SENDER, useValue: sms },
         { provide: REALTIME_NOTIFIER, useValue: notifier },
+        { provide: NotificationService, useValue: notifications },
       ],
     }).compile();
 
@@ -211,6 +216,21 @@ describe('AlertService', () => {
         'sentinel-2',
         'alert-1',
       );
+      // Persisted notifications go to both sentinels, never to the
+      // self-raising companion (actor === recipient is skipped).
+      expect(notifications.create).toHaveBeenCalledTimes(2);
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'sentinel-1',
+        type: NotificationType.ALERT_RAISED,
+        actorUserId: 'alice-id',
+        targetId: 'alert-1',
+      });
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'sentinel-2',
+        type: NotificationType.ALERT_RAISED,
+        actorUserId: 'alice-id',
+        targetId: 'alert-1',
+      });
     });
 
     it('raises an alert when any accepted Sentinel raises it (not necessarily 1st-circle), and also notifies the companion', async () => {
@@ -320,7 +340,12 @@ describe('AlertService', () => {
     });
 
     it('closes the alert when the companion closes it themself', async () => {
-      prisma.alert.findUnique.mockResolvedValueOnce(loadedAlert());
+      prisma.alert.findUnique
+        .mockResolvedValueOnce(loadedAlert())
+        .mockResolvedValueOnce({
+          userCompanionId: 'alice-id',
+          participants: [{ userSentinels: { userSentinelId: 'sentinel-1' } }],
+        }); // notifyAlertParticipants
       prisma.alert.update.mockResolvedValueOnce({
         id: 'alert-1',
         alertStatus: AlertStatus.RESOLVED,
@@ -344,6 +369,14 @@ describe('AlertService', () => {
       });
       expect(sms.send).toHaveBeenCalledTimes(1); // the sentinel only, "Me" closed it themself
       expect(sms.send).toHaveBeenCalledWith('+41791111111', expect.any(String));
+      // Notified, not the self-closing companion.
+      expect(notifications.create).toHaveBeenCalledTimes(1);
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'sentinel-1',
+        type: NotificationType.ALERT_CLOSED,
+        actorUserId: 'alice-id',
+        targetId: 'alert-1',
+      });
     });
 
     it('closes the alert when an accepted 1st-circle Sentinel closes it, and notifies the companion', async () => {
@@ -488,6 +521,12 @@ describe('AlertService', () => {
         data: expect.objectContaining({
           status: AlertParticipantStatus.CONTACTED,
         }),
+      });
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'neighbor-1',
+        type: NotificationType.ALERT_ESCALATED,
+        actorUserId: 'alice-id',
+        targetId: 'alert-1',
       });
     });
 
@@ -752,6 +791,15 @@ describe('AlertService', () => {
         'sentinel-1',
         'alert-1',
       );
+      // The responding Sentinel isn't notified of their own response —
+      // only the companion is.
+      expect(notifications.create).toHaveBeenCalledTimes(1);
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'alice-id',
+        type: NotificationType.ALERT_RESPONSE,
+        actorUserId: 'sentinel-1',
+        targetId: 'alert-1',
+      });
       expect(result).toEqual({
         id: 'participant-1',
         status: AlertParticipantStatus.RESPONDED,
@@ -985,6 +1033,7 @@ describe('AlertService', () => {
       prisma.alertParticipant.findFirst.mockResolvedValueOnce({
         id: 'participant-1',
         alertId: 'alert-1',
+        userSentinels: { userSentinelId: 'sentinel-1' },
       });
       prisma.alertParticipant.update.mockResolvedValueOnce({
         id: 'participant-1',
@@ -1015,6 +1064,7 @@ describe('AlertService', () => {
           alert: { alertStatus: { not: AlertStatus.RESOLVED } },
         },
         orderBy: { contactedAt: 'desc' },
+        include: { userSentinels: { select: { userSentinelId: true } } },
       });
       expect(prisma.alertParticipant.update).toHaveBeenCalledWith({
         where: { id: 'participant-1' },
@@ -1024,6 +1074,15 @@ describe('AlertService', () => {
         }),
       });
       expect(sms.send).toHaveBeenCalledWith('+41793333333', expect.any(String));
+      // The replying Sentinel (sentinel-1) isn't notified of their own
+      // reply — only the companion is.
+      expect(notifications.create).toHaveBeenCalledTimes(1);
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'alice-id',
+        type: NotificationType.ALERT_RESPONSE,
+        actorUserId: 'sentinel-1',
+        targetId: 'alert-1',
+      });
       expect(result).toEqual({ matched: true, action: 'alert_confirmed' });
     });
 

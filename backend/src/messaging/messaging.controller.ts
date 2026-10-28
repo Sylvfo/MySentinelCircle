@@ -30,6 +30,13 @@ const IMAGE_MIME_TYPES = /^image\/(jpeg|png|webp)$/;
 export class MessagingController {
   constructor(private readonly messaging: MessagingService) {}
 
+  // Every direct conversation I'm in, with the other side's name, last
+  // message, and unread count — what MessagesPage sorts/badges contacts by.
+  @Get('mine')
+  listMine(@CurrentUser() user: { userId: string }) {
+    return this.messaging.listMyConversations(user.userId);
+  }
+
   // The permanent Me<->Sentinel channel — finds or lazily creates the 1:1
   // Conversation with :userId. Send/list afterward reuse the routes below.
   @Get('direct/:userId')

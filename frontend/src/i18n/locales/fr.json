@@ -235,6 +235,21 @@
     "open": "Ouvrir",
     "companionContext": "personne protégée"
   },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "Aucune notification pour l'instant.",
+    "types": {
+      "ALERT_RAISED": "Une nouvelle alerte a été levée",
+      "ALERT_ESCALATED": "Votre cercle a été sollicité pour une alerte",
+      "ALERT_RESPONSE": "Quelqu'un a répondu à une alerte",
+      "ALERT_CLOSED": "Une alerte a été clôturée",
+      "NEW_MESSAGE": "Nouveau message",
+      "SENTINEL_INVITATION_RECEIVED": "{{who}} vous invite comme sentinelle",
+      "SENTINEL_REQUEST_RECEIVED": "{{who}} veut devenir votre sentinelle",
+      "SENTINEL_LINK_ACCEPTED": "{{who}} a accepté",
+      "SENTINEL_LINK_DECLINED": "{{who}} a refusé"
+    }
+  },
   "settings": {
     "title": "Paramètres",
     "profile": "Profil",
