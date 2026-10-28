@@ -12,6 +12,7 @@ import {
   LeadSlot,
   LinkInitiator,
   LinkStatus,
+  NotificationType,
   Prisma,
   SentinelType,
   User,
@@ -21,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import { AlertService } from '../alert/alert.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   circleMoveAnsweredSms,
   circleMoveProposedSms,
@@ -64,6 +66,7 @@ export class SentinelService {
     private readonly prisma: PrismaService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
     private readonly alert: AlertService,
+    private readonly notifications: NotificationService,
   ) {}
 
   // ---- Circles (companion side) ----------------------------------------------
@@ -188,6 +191,13 @@ export class SentinelService {
     });
 
     await this.sms.send(phone, sentinelInvitationSms(this.label(inviter)));
+    await this.notifications.create({
+      userId: sentinelUser.id,
+      type: NotificationType.SENTINEL_INVITATION_RECEIVED,
+      actorUserId: userId,
+      actorLabel: this.label(inviter),
+      targetId: link.id,
+    });
     return link;
   }
 
@@ -223,6 +233,13 @@ export class SentinelService {
     });
 
     await this.sms.send(targetPhone, sentinelRequestSms(this.label(requester)));
+    await this.notifications.create({
+      userId: target.id,
+      type: NotificationType.SENTINEL_REQUEST_RECEIVED,
+      actorUserId: requesterId,
+      actorLabel: this.label(requester),
+      targetId: link.id,
+    });
     return link;
   }
 
@@ -815,6 +832,20 @@ export class SentinelService {
         requestAnsweredSms(companionLabel, accept),
       );
     }
+
+    // Persisted notification to whichever party didn't just respond.
+    const [recipientId, actorId, actorLabel] =
+      link.initiatedBy === LinkInitiator.COMPANION
+        ? [link.userCompanionId, link.userSentinelId, sentinelLabel]
+        : [link.userSentinelId, link.userCompanionId, companionLabel];
+    await this.notifications.create({
+      userId: recipientId,
+      type: NotificationType.SENTINEL_LINK_ANSWERED,
+      actorUserId: actorId,
+      actorLabel,
+      accepted: accept,
+      targetId: link.id,
+    });
 
     return updated;
   }

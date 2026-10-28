@@ -4,10 +4,12 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
+import { NotificationType } from '@prisma/client';
 import { MessagingService } from './messaging.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SentinelService } from '../sentinel/sentinel.service';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
+import { NotificationService } from '../notification/notification.service';
 
 describe('MessagingService', () => {
   let service: MessagingService;
@@ -18,6 +20,7 @@ describe('MessagingService', () => {
   };
   let sentinel: { canSendDirectMessage: jest.Mock };
   let notifier: { notifyAlertChanged: jest.Mock; notifyNewMessage: jest.Mock };
+  let notifications: { create: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -27,6 +30,7 @@ describe('MessagingService', () => {
     };
     sentinel = { canSendDirectMessage: jest.fn() };
     notifier = { notifyAlertChanged: jest.fn(), notifyNewMessage: jest.fn() };
+    notifications = { create: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -34,6 +38,7 @@ describe('MessagingService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: SentinelService, useValue: sentinel },
         { provide: REALTIME_NOTIFIER, useValue: notifier },
+        { provide: NotificationService, useValue: notifications },
       ],
     }).compile();
 
@@ -149,6 +154,15 @@ describe('MessagingService', () => {
         'user-2',
         'conv-1',
       );
+      // Persisted notification only to the other participant, never to the
+      // sender's own inbox.
+      expect(notifications.create).toHaveBeenCalledTimes(1);
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'user-2',
+        type: NotificationType.NEW_MESSAGE,
+        actorUserId: 'user-1',
+        targetId: 'conv-1',
+      });
     });
 
     it('re-checks the direct-messaging permission for a direct (alertId null) conversation', async () => {
@@ -243,6 +257,9 @@ describe('MessagingService', () => {
         'user-1',
         'conv-1',
       );
+      // Sender is the only participant here — no persisted notification
+      // to themselves.
+      expect(notifications.create).not.toHaveBeenCalled();
       expect(result).toEqual({ id: 'msg-1', type: 'IMAGE' });
     });
 

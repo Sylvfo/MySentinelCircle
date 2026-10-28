@@ -5,12 +5,13 @@ import {
   Inject,
   Injectable,
 } from '@nestjs/common';
-import { MessageType } from '@prisma/client';
+import { MessageType, NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SentinelService } from '../sentinel/sentinel.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
 import type { RealtimeNotifier } from '../realtime/realtime-notifier.interface';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class MessagingService {
@@ -18,6 +19,7 @@ export class MessagingService {
     private readonly prisma: PrismaService,
     private readonly sentinel: SentinelService,
     @Inject(REALTIME_NOTIFIER) private readonly notifier: RealtimeNotifier,
+    private readonly notifications: NotificationService,
   ) {}
 
   // The permanent Me<->Sentinel channel — "created lazily... only when the
@@ -119,6 +121,14 @@ export class MessagingService {
     });
     for (const p of participants) {
       this.notifier.notifyNewMessage(p.userId, conversationId);
+      if (p.userId !== userId) {
+        await this.notifications.create({
+          userId: p.userId,
+          type: NotificationType.NEW_MESSAGE,
+          actorUserId: userId,
+          targetId: conversationId,
+        });
+      }
     }
 
     return message;

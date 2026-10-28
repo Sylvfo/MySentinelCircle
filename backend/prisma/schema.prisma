@@ -100,6 +100,17 @@ enum MessageType {
   SYSTEM
 }
 
+enum NotificationType {
+  ALERT_RAISED
+  ALERT_ESCALATED
+  ALERT_RESPONSE
+  ALERT_CLOSED
+  NEW_MESSAGE
+  SENTINEL_INVITATION_RECEIVED
+  SENTINEL_REQUEST_RECEIVED
+  SENTINEL_LINK_ANSWERED
+}
+
 model User {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
@@ -150,6 +161,10 @@ model User {
   requestedAlertParticipations AlertParticipant[] @relation("AlertParticipantRequestedBy")
   statusUpdatedAlerts          Alert[]            @relation("AlertStatusUpdatedBy")
   labelUpdatedAlerts           Alert[]            @relation("AlertLabelUpdatedBy")
+
+  notifications      Notification[] @relation("NotificationRecipient")
+  actorNotifications Notification[] @relation("NotificationActor")
+
 
   conversationMemberships ConversationParticipant[]
   sentMessages            Message[]
@@ -351,9 +366,30 @@ model Message {
 
   @@index([conversationId, createdAt])
 }
+
+model Notification {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  type NotificationType
+
+  userId String
+  user   User   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Restrict)
+
+  actorUserId String?
+  actor       User?   @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorLabel  String?
+
+  accepted Boolean?
+
+  targetId String?
+
+  @@index([userId, readAt, createdAt])
+}
+
 /*
 A DEFINIR APRES:
-NOTIFICATIONS
 ORGANISATION
 ANSWER SMS
 ANSWER APP

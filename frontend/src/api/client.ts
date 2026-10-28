@@ -33,11 +33,26 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
-  const body = res.status === 204 ? null : await res.json().catch(() => null);
+  if (res.status === 204) return null as T;
+
+  let body: any;
+  let parseFailed = false;
+  try {
+    body = await res.json();
+  } catch {
+    parseFailed = true;
+  }
 
   if (!res.ok) {
     const message = Array.isArray(body?.message) ? body.message.join(', ') : (body?.message ?? res.statusText);
     throw new ApiError(res.status, message);
+  }
+  // A 2xx response that isn't valid JSON means the request never actually
+  // reached the backend (e.g. a missing nginx route silently falling
+  // through to the frontend's own index.html) — surfacing it as null here
+  // would let every caller silently misbehave instead of erroring loudly.
+  if (parseFailed) {
+    throw new ApiError(res.status, 'Unexpected non-JSON response');
   }
 
   return body as T;
@@ -69,11 +84,22 @@ export async function apiPostForm<T>(path: string, formData: FormData): Promise<
     body: formData,
   });
 
-  const body = res.status === 204 ? null : await res.json().catch(() => null);
+  if (res.status === 204) return null as T;
+
+  let body: any;
+  let parseFailed = false;
+  try {
+    body = await res.json();
+  } catch {
+    parseFailed = true;
+  }
 
   if (!res.ok) {
     const message = Array.isArray(body?.message) ? body.message.join(', ') : (body?.message ?? res.statusText);
     throw new ApiError(res.status, message);
+  }
+  if (parseFailed) {
+    throw new ApiError(res.status, 'Unexpected non-JSON response');
   }
 
   return body as T;

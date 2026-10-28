@@ -6,4 +6,5 @@ export const REALTIME_NOTIFIER = Symbol('REALTIME_NOTIFIER');
 export interface RealtimeNotifier {
   notifyNewMessage(userId: string, conversationId: string): void;
   notifyAlertChanged(userId: string, alertId: string): void;
+  notifyNotificationNew(userId: string): void;
 }

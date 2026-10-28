@@ -235,6 +235,21 @@
     "open": "Open",
     "companionContext": "person you protect"
   },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "No notifications yet.",
+    "types": {
+      "ALERT_RAISED": "A new alert has been raised",
+      "ALERT_ESCALATED": "Your circle has been asked about an alert",
+      "ALERT_RESPONSE": "Someone responded to an alert",
+      "ALERT_CLOSED": "An alert has been closed",
+      "NEW_MESSAGE": "New message",
+      "SENTINEL_INVITATION_RECEIVED": "{{who}} invited you as a Sentinel",
+      "SENTINEL_REQUEST_RECEIVED": "{{who}} wants to become your Sentinel",
+      "SENTINEL_LINK_ACCEPTED": "{{who}} accepted",
+      "SENTINEL_LINK_DECLINED": "{{who}} declined"
+    }
+  },
   "settings": {
     "title": "Settings",
     "profile": "Profile",

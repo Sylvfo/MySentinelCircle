@@ -1,6 +1,6 @@
 # Features
 
-Updated: 2026-10-28 14:06
+Updated: 2026-10-28 15:57
 
 ## Project phases
 
@@ -24,7 +24,7 @@ The project as a whole moves through these macro phases, in order — the databa
 | Organizations | 🔵 todo | `backend/src/organization` — 17-line skeleton | #10 (open, no label) |
 | Alert | 🟣 testing | `backend/src/alert` (947 lines) + `alert.service.spec.ts` (45 tests) — raise/close/read, outer-circle escalation (SMS + in-app reply), an isolated chat an authorized outer-circle Sentinel can open with the 1st circle, a per-side live status and a renameable label (both attributed to their last writer), a lightweight read path for solicited outer-circle Sentinels, real-time `alert:changed` push | #18 (closed, unlabeled) |
 | Messaging | 🟣 testing | `backend/src/messaging` (275 lines) + `messaging.service.spec.ts` (13 tests) — the permanent Me↔Sentinel channel (lazily created, gated by a companion-wide→circle→individual permission cascade), send/list `TEXT` and `IMAGE` messages in any `Conversation` (including the two `alert`-owned kinds, which it only sends/lists into, never creates), real-time `message:new` push; the companion reads the alert-scoped chats read-only through `alert`'s `GET /alert/:id` instead, since they're deliberately never a participant of either | #19 (closed) |
-| Notifications | ⚪ backlog | no backend module yet | #7 (open, no label) |
+| Notifications | 🟣 testing | `backend/src/notification` (150 lines) + `notification.service.spec.ts` (6 tests) — persisted per-recipient inbox (create/list/unread-count/mark-read) on top of the existing `message:new`/`alert:changed` WebSocket layer, a new `notification:new` push, and a console-stub `PushSender` (architecture-ready for a real phone-push provider later, nothing wired). Wired into `alert` (raised/escalated/responded/closed), `sentinel` (invitation/request received, invitation/request answered), and `messaging` (new message) — frontend bell + unread badge in `AppShell` | #7 (open, no label) |
 | Internationalization (i18n) | 🟠 constructing | cross-cutting (frontend `i18n/locales`), no single backend module to evaluate — carried over | #16 (open, no label) |
 | Infrastructure & Architecture | 🟢 locked | hand-set by Sylvie, not code-derived (see Legend) | #8, #9 — both closed (stack decisions + MariaDB/Docker/nginx/HTTPS all working end-to-end) |
 
