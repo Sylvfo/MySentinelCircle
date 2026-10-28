@@ -12,6 +12,7 @@ export interface Me {
   userType: string;
   isMajor: boolean;
   publicStatus: string | null;
+  allowMessagingByDefault: boolean;
   createdAt: string;
   updatedAt: string;
   avatarPath?: string | null;
@@ -22,7 +23,9 @@ export interface Me {
 export const fetchMe = () => apiGet<Me>('/user/me');
 
 export const updateProfile = (
-  dto: Partial<Pick<Me, 'firstName' | 'lastName' | 'userName' | 'isMajor' | 'publicStatus'>>,
+  dto: Partial<
+    Pick<Me, 'firstName' | 'lastName' | 'userName' | 'isMajor' | 'publicStatus' | 'allowMessagingByDefault'>
+  >,
 ) => apiPatch<Me>('/user/me', dto);
 
 export const changePassword = (currentPassword: string, newPassword: string) =>

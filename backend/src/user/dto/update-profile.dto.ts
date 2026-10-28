@@ -42,4 +42,12 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(200)
   publicStatus?: string;
+
+  // Companion-wide fallback for the permanent Me<->Sentinel channel —
+  // overridable per circle, then per Sentinel (see sentinel.service.ts's
+  // canSendDirectMessage).
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  allowMessagingByDefault?: boolean;
 }

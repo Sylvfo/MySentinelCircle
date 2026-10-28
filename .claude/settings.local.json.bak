@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/ --max-time 2)",
+      "Bash(npx jest *)",
+      "Bash(npm run *)"
+    ]
+  }
+}

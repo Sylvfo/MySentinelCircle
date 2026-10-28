@@ -100,6 +100,17 @@ enum MessageType {
   SYSTEM
 }
 
+enum NotificationType {
+  ALERT_RAISED
+  ALERT_ESCALATED
+  ALERT_RESPONSE
+  ALERT_CLOSED
+  NEW_MESSAGE
+  SENTINEL_INVITATION_RECEIVED
+  SENTINEL_REQUEST_RECEIVED
+  SENTINEL_LINK_ANSWERED
+}
+
 model User {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
@@ -119,6 +130,7 @@ model User {
   pendingEmail             String?
   pendingEmailTokenHash    String?   @unique
   pendingEmailExpiresAt    DateTime?  
+  allowMessagingByDefault Boolean @default(true) // companion-wide fallback
 
   phone           String? @unique
   phoneVerifiedAt DateTime?
@@ -146,6 +158,13 @@ model User {
 
   launchedAlerts Alert[]      @relation("AlertLaunchedBy")
   closedAlerts   Alert[]      @relation("AlertClosedBy")
+  requestedAlertParticipations AlertParticipant[] @relation("AlertParticipantRequestedBy")
+  statusUpdatedAlerts          Alert[]            @relation("AlertStatusUpdatedBy")
+  labelUpdatedAlerts           Alert[]            @relation("AlertLabelUpdatedBy")
+
+  notifications      Notification[] @relation("NotificationRecipient")
+  actorNotifications Notification[] @relation("NotificationActor")
+
 
   conversationMemberships ConversationParticipant[]
   sentMessages            Message[]
@@ -163,6 +182,7 @@ model Circle {
 
   groupChat    Boolean @default(false)
   canSendPhone Boolean @default(false)
+  canMessageMe Boolean? // null = inherit the companion's default; ignored/always-true for circleType FIRST
 
   userCompanionId String
   userCompanion   User   @relation("MyCirclesAsCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
@@ -182,6 +202,7 @@ model LinkSentinels {
 
   status      LinkStatus    @default(PENDING)
   initiatedBy LinkInitiator
+  canMessageMe Boolean? // null = inherit the circle's setting (which inherits the companion's default) — highest priority, most specific wins
 
   sentinelType    SentinelType @default(ONLY_SMS)
   requestedAsLead Boolean      @default(false)
@@ -237,6 +258,13 @@ model Alert {
 
   statusByCompanion   String?
   statusByFirstCircle String?
+  statusUpdatedById String?
+  statusUpdatedBy   User?     @relation("AlertStatusUpdatedBy", fields: [statusUpdatedById], references: [id], onDelete: Restrict)
+  statusUpdatedAt   DateTime?
+
+  labelUpdatedById String?
+  labelUpdatedBy   User?     @relation("AlertLabelUpdatedBy", fields: [labelUpdatedById], references: [id], onDelete: Restrict)
+  labelUpdatedAt   DateTime?
 
   userCompanionId String
   userCompanion   User @relation("MyAlertsAsCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
@@ -264,6 +292,8 @@ model AlertParticipant {
 
   status AlertParticipantStatus @default(WAITING)
 
+  requestedById String?
+  requestedBy   User?   @relation("AlertParticipantRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
   contactedAt DateTime?
   answeredAt  DateTime?
   closedAt    DateTime?
@@ -336,9 +366,30 @@ model Message {
 
   @@index([conversationId, createdAt])
 }
+
+model Notification {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  type NotificationType
+
+  userId String
+  user   User   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Restrict)
+
+  actorUserId String?
+  actor       User?   @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorLabel  String?
+
+  accepted Boolean?
+
+  targetId String?
+
+  @@index([userId, readAt, createdAt])
+}
+
 /*
 A DEFINIR APRES:
-NOTIFICATIONS
 ORGANISATION
 ANSWER SMS
 ANSWER APP

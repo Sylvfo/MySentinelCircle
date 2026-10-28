@@ -82,6 +82,11 @@
       "generic": "Erreur",
       "signup": "Erreur lors de la création du compte",
       "invalidCode": "Code invalide"
+    },
+    "devLogin": {
+      "divider": "Connexion rapide (dev)",
+      "placeholder": "Numéro de téléphone",
+      "submit": "Connexion rapide"
     }
   },
   "dashboard": {
@@ -116,7 +121,18 @@
     "removeMember": "Retirer",
     "confirmRemoveMember": "Attention, cette sentinelle ne fera plus partie de vos cercles.",
     "move": "Déplacer",
-    "awaitingFirstCircleConsent": "En attente d'accord pour le 1er cercle"
+    "makeLead": "Désigner référent·e",
+    "removeLead": "Retirer référent·e",
+    "blockMessaging": "Bloquer les messages",
+    "allowMessaging": "Autoriser les messages",
+    "excludeFromAlertChat": "Exclure du chat d'alerte",
+    "includeInAlertChat": "Inclure dans le chat d'alerte",
+    "awaitingFirstCircleConsent": "En attente d'accord pour le 1er cercle",
+    "firstCircleMessagingMode": {
+      "label": "Discuter avec le 1er cercle pendant une alerte",
+      "none": "Non autorisé",
+      "individual": "Autorisé"
+    }
   },
   "companions": {
     "title": "Companions",
@@ -142,12 +158,97 @@
   "alerts": {
     "title": "Alertes",
     "intro": "Alertes en cours et historique.",
-    "empty": "Aucune alerte pour l'instant — le module Alert n'est pas encore codé."
+    "empty": "Aucune alerte pour l'instant.",
+    "status": {
+      "SENT": "Envoyée",
+      "LAUNCHED": "En cours",
+      "ACTIVE": "En cours",
+      "CLOSING": "En cours de clôture",
+      "RESOLVED": "Terminée"
+    },
+    "close": "Clôturer",
+    "raiseForSelf": "Lancer une alerte pour moi-même",
+    "confirmRaise": "Déclencher une alerte ? Votre 1er cercle sera prévenu immédiatement.",
+    "defaultReason": "Alerte déclenchée depuis l'application.",
+    "activeAlertNotice": "Une alerte est en cours. Votre 1er cercle a été prévenu.",
+    "raiseForCompanion": "Alerter pour un proche",
+    "raiseForCompanionIntro": "Déclenchez une alerte pour quelqu'un que vous protégez.",
+    "companionLabel": "Personne concernée",
+    "noCompanions": "Vous ne surveillez personne pour l'instant.",
+    "reasonLabel": "Raison",
+    "reasonPlaceholder": "Décrivez brièvement la situation",
+    "submit": "Envoyer l'alerte",
+    "raised": "Alerte envoyée.",
+    "type": {
+      "BYCOMPANION": "Appel à l'aide",
+      "LITTLEWORRY": "Petite inquiétude",
+      "MISSING": "Personne introuvable",
+      "INCIDENT": "Incident signalé",
+      "EMERGENCY": "Urgence",
+      "NOCONTACT": "Sans nouvelles",
+      "UNKNOWN": "Alerte"
+    },
+    "detail": {
+      "show": "Détails",
+      "hide": "Masquer",
+      "about": "Concerne : {{name}}",
+      "participants": "Sentinelles prévenues",
+      "lead": "Référent·e",
+      "chatTitle": "Chat du 1er cercle",
+      "noMessages": "Aucun message pour l'instant.",
+      "messagePlaceholder": "Écrire un message...",
+      "send": "Envoyer",
+      "me": "Moi",
+      "response": "Réponse : {{response}}",
+      "requestCircle": {
+        "title": "Solliciter un autre cercle",
+        "noCircles": "Aucun autre cercle à solliciter.",
+        "questionPlaceholder": "Ex. Est-elle chez vous ?",
+        "submit": "Envoyer la demande"
+      },
+      "respond": {
+        "prompt": "On vous demande de répondre à propos de cette alerte.",
+        "yes": "Oui",
+        "no": "Non"
+      },
+      "statusByCompanion": "Statut (compagnon)",
+      "statusByFirstCircle": "Statut (1er cercle)",
+      "status": {
+        "none": "Pas encore de statut.",
+        "placeholder": "Ex. Tout va bien, merci"
+      },
+      "labelField": "Nom de l'alerte",
+      "labelPlaceholder": "Ex. Recherche de Léa",
+      "requestedBy": "sollicité·e par {{name}}",
+      "updatedBy": "— {{name}}",
+      "circleChat": {
+        "title": "Discuter avec le premier cercle",
+        "withSentinel": "Chat avec {{name}}",
+        "firstCircleSender": "Premier cercle"
+      }
+    }
   },
   "messages": {
     "title": "Messages",
-    "intro": "Conversations avec vos Sentinels et requêtes en attente.",
-    "empty": "Aucun message pour l'instant — le module Messaging n'est pas encore codé."
+    "intro": "Discutez avec vos sentinelles, ou avec les personnes que vous protégez.",
+    "empty": "Personne à qui écrire pour l'instant.",
+    "open": "Ouvrir",
+    "companionContext": "personne protégée"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "Aucune notification pour l'instant.",
+    "types": {
+      "ALERT_RAISED": "Une nouvelle alerte a été levée",
+      "ALERT_ESCALATED": "Votre cercle a été sollicité pour une alerte",
+      "ALERT_RESPONSE": "Quelqu'un a répondu à une alerte",
+      "ALERT_CLOSED": "Une alerte a été clôturée",
+      "NEW_MESSAGE": "Nouveau message",
+      "SENTINEL_INVITATION_RECEIVED": "{{who}} vous invite comme sentinelle",
+      "SENTINEL_REQUEST_RECEIVED": "{{who}} veut devenir votre sentinelle",
+      "SENTINEL_LINK_ACCEPTED": "{{who}} a accepté",
+      "SENTINEL_LINK_DECLINED": "{{who}} a refusé"
+    }
   },
   "settings": {
     "title": "Paramètres",
@@ -158,6 +259,7 @@
     "addPhone": "Ajouter ton numéro de téléphone",
     "isMajor": "Je suis majeur·e",
     "publicStatus": "Statut public",
+    "allowMessagingByDefault": "Autoriser mes sentinelles à me contacter par défaut",
     "status": "Statut du compte",
     "userType": "Type de compte",
     "createdAt": "Créé le",

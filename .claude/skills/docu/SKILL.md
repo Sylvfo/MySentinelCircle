@@ -2,7 +2,7 @@
 name: docu
 description: Update MySentinelCircle's generated documentation — API.md, backend/prisma/DB_schema.md, STACK_SCHEMA.md, TEST.md, FEATURES.md, or PERMISSIONSCLAUDE.md — one target or all of them.
 ---
-Updated: 2026-08-21
+Updated: 2026-10-21
 
 # Docu
 
@@ -47,8 +47,14 @@ If invoked with no target, ask Sylvie which one she means rather than guessing.
 
 ## 5. features
 
-- Run `gh issue list --state all --json number,title,labels,state` (or `gh issue view <n>` for the specific numbers already referenced in the file) to get each issue's current `state:*` label.
-- Update the **Product features** and **Tooling / process** tables in `FEATURES.md`: a feature's state is the least-advanced state among its open issues (per the file's own rule) — refresh the state emoji/text and issue list for each row from what `gh` actually reports. Add a row for a feature with issues that isn't listed yet; don't invent issue numbers.
+- Run `gh issue list --state all --json number,title,labels,state` (or `gh issue view <n>` for the specific numbers already referenced in the file) to list each feature's issues (open/closed) — issue numbers in the table are still sourced from `gh`, never invented.
+- **A feature's displayed state is derived from the actual code, not from the GitHub `state:*` label** — the label drifts (nobody relabels an issue as the module evolves), the code doesn't. For each feature's backend module(s) under `backend/src/`:
+  - Empty/skeleton controller+service (no real routes, no service logic — a handful of lines) → `backlog` or `todo`. Code can't tell these two apart (it's a priority call, not a progress one) — keep whichever of the two the file already shows, or fall back to the issue's own label if it carries one of these two.
+  - Real implementation exists (routes + service logic) but no dedicated unit-test spec file for it → `constructing`.
+  - Real implementation exists **and** has a dedicated `*.spec.ts` with meaningful coverage (not just a boilerplate single test) → `testing`.
+  - `locked` and `prod` are never inferred from code — these are a deliberate designation only Sylvie sets by hand (e.g. "don't touch without asking"); carry them over unchanged from the file's current content, don't downgrade or upgrade into/out of them based on code.
+- If the GitHub label on an issue disagrees with the code-derived state, don't silently override the issue — note the mismatch (which issue, which label, what the code shows) so Sylvie can relabel it on GitHub herself (`gh issue edit`/`gh label edit` are `deny`-locked for Claude, see `PERMISSIONSCLAUDE.md`).
+- Add a row for a feature with issues that isn't listed yet.
 - Leave **Project phases** and **Legend** alone — those are stable, hand-authored, not derived from issue state.
 - Never edit issues themselves (no `gh issue edit`) — this target only reads.
 

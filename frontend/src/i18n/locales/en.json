@@ -82,6 +82,11 @@
       "generic": "Error",
       "signup": "Error while creating the account",
       "invalidCode": "Invalid code"
+    },
+    "devLogin": {
+      "divider": "Quick login (dev)",
+      "placeholder": "Phone number",
+      "submit": "Quick login"
     }
   },
   "dashboard": {
@@ -116,7 +121,18 @@
     "removeMember": "Remove",
     "confirmRemoveMember": "Warning, this Sentinel will no longer be part of any of your circles.",
     "move": "Move",
-    "awaitingFirstCircleConsent": "Awaiting acceptance for the 1st circle"
+    "makeLead": "Make Lead Sentinel",
+    "removeLead": "Remove as Lead",
+    "blockMessaging": "Block messaging",
+    "allowMessaging": "Allow messaging",
+    "excludeFromAlertChat": "Exclude from alert chat",
+    "includeInAlertChat": "Include in alert chat",
+    "awaitingFirstCircleConsent": "Awaiting acceptance for the 1st circle",
+    "firstCircleMessagingMode": {
+      "label": "Chat with 1st circle during an alert",
+      "none": "Not allowed",
+      "individual": "Allowed"
+    }
   },
   "companions": {
     "title": "Companions",
@@ -142,12 +158,97 @@
   "alerts": {
     "title": "Alerts",
     "intro": "Active alerts and history.",
-    "empty": "No alert yet — the Alert module isn't built yet."
+    "empty": "No alert yet.",
+    "status": {
+      "SENT": "Sent",
+      "LAUNCHED": "Active",
+      "ACTIVE": "Active",
+      "CLOSING": "Closing",
+      "RESOLVED": "Resolved"
+    },
+    "close": "Close",
+    "raiseForSelf": "Raise an alert for myself",
+    "confirmRaise": "Raise an alert now? Your 1st circle will be notified immediately.",
+    "defaultReason": "Alert raised from the app.",
+    "activeAlertNotice": "An alert is active. Your 1st circle has been notified.",
+    "raiseForCompanion": "Raise an alert for someone I protect",
+    "raiseForCompanionIntro": "Raise an alert on behalf of someone you protect.",
+    "companionLabel": "Person concerned",
+    "noCompanions": "You're not watching over anyone yet.",
+    "reasonLabel": "Reason",
+    "reasonPlaceholder": "Briefly describe the situation",
+    "submit": "Send the alert",
+    "raised": "Alert sent.",
+    "type": {
+      "BYCOMPANION": "Calling for help",
+      "LITTLEWORRY": "Minor concern",
+      "MISSING": "Person missing",
+      "INCIDENT": "Incident reported",
+      "EMERGENCY": "Emergency",
+      "NOCONTACT": "No contact",
+      "UNKNOWN": "Alert"
+    },
+    "detail": {
+      "show": "Details",
+      "hide": "Hide",
+      "about": "About: {{name}}",
+      "participants": "Notified Sentinels",
+      "lead": "Lead",
+      "chatTitle": "1st circle chat",
+      "noMessages": "No message yet.",
+      "messagePlaceholder": "Write a message...",
+      "send": "Send",
+      "me": "Me",
+      "response": "Response: {{response}}",
+      "requestCircle": {
+        "title": "Ask another circle",
+        "noCircles": "No other circle to ask.",
+        "questionPlaceholder": "E.g. Is she at your place?",
+        "submit": "Send the request"
+      },
+      "respond": {
+        "prompt": "You've been asked to respond about this alert.",
+        "yes": "Yes",
+        "no": "No"
+      },
+      "statusByCompanion": "Status (companion)",
+      "statusByFirstCircle": "Status (1st circle)",
+      "status": {
+        "none": "No status yet.",
+        "placeholder": "E.g. Everything's fine, thanks"
+      },
+      "labelField": "Alert name",
+      "labelPlaceholder": "E.g. Searching for Léa",
+      "requestedBy": "requested by {{name}}",
+      "updatedBy": "— {{name}}",
+      "circleChat": {
+        "title": "Chat with the 1st circle",
+        "withSentinel": "Chat with {{name}}",
+        "firstCircleSender": "1st circle"
+      }
+    }
   },
   "messages": {
     "title": "Messages",
-    "intro": "Conversations with your Sentinels and pending requests.",
-    "empty": "No message yet — the Messaging module isn't built yet."
+    "intro": "Chat with your Sentinels, or with the people you protect.",
+    "empty": "No one to message yet.",
+    "open": "Open",
+    "companionContext": "person you protect"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "No notifications yet.",
+    "types": {
+      "ALERT_RAISED": "A new alert has been raised",
+      "ALERT_ESCALATED": "Your circle has been asked about an alert",
+      "ALERT_RESPONSE": "Someone responded to an alert",
+      "ALERT_CLOSED": "An alert has been closed",
+      "NEW_MESSAGE": "New message",
+      "SENTINEL_INVITATION_RECEIVED": "{{who}} invited you as a Sentinel",
+      "SENTINEL_REQUEST_RECEIVED": "{{who}} wants to become your Sentinel",
+      "SENTINEL_LINK_ACCEPTED": "{{who}} accepted",
+      "SENTINEL_LINK_DECLINED": "{{who}} declined"
+    }
   },
   "settings": {
     "title": "Settings",
@@ -158,6 +259,7 @@
     "addPhone": "Add your phone number",
     "isMajor": "I am an adult",
     "publicStatus": "Public status",
+    "allowMessagingByDefault": "Let my Sentinels message me by default",
     "status": "Account status",
     "userType": "Account type",
     "createdAt": "Created on",

@@ -5,6 +5,7 @@ export type LinkStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'REMOVED' | 'BLOC
 export type LinkInitiator = 'COMPANION' | 'SENTINEL';
 export type LeadSlot = 'LEAD_1' | 'LEAD_2' | 'LEAD_3';
 export type CircleType = 'BASIC' | 'FIRST' | 'ORGANISATION' | 'RESERVED';
+export type MessagingMode = 'NONE' | 'INDIVIDUAL' | 'GROUP';
 
 export interface SentinelRef {
   id: string;
@@ -23,6 +24,18 @@ export interface Membership {
   initiatedBy: LinkInitiator;
   createdAt: string;
   linkAsSentinel: SentinelRef;
+  // Alert-time: can this Sentinel join their own (1st) circle's live group
+  // chat during an alert. Separate from canMessageMe below.
+  canMessageOwnCircle: boolean;
+  // Alert-time, outer-circle Sentinels only: can this Sentinel open a chat
+  // with the 1st circle once solicited on an alert (frozen into that
+  // alert's AlertParticipant.firstCircleMessagingModeAtAlert at contact
+  // time — changing this afterward doesn't affect an alert already in
+  // progress).
+  firstCircleMessagingMode: MessagingMode;
+  // The permanent Me<->Sentinel channel — null = inherit the circle's
+  // (then the companion's) setting.
+  canMessageMe: boolean | null;
 }
 
 export interface Circle {
@@ -31,6 +44,9 @@ export interface Circle {
   circleType: CircleType;
   createdAt: string;
   userSentinels: Membership[];
+  // null = inherit the companion's default; always allowed on the 1st
+  // circle, no override possible there.
+  canMessageMe: boolean | null;
 }
 
 export interface PersonRef {
@@ -71,7 +87,7 @@ export const listCircles = () => apiGet<Circle[]>('/sentinel/circles');
 
 export const createCircle = (label: string) => apiPost<Circle>('/sentinel/circles', { label });
 
-export const updateCircle = (id: string, data: { label?: string }) =>
+export const updateCircle = (id: string, data: { label?: string; canMessageMe?: boolean }) =>
   apiPatch<Circle>(`/sentinel/circles/${id}`, data);
 
 export const deleteCircle = (id: string) => apiDelete<{ deleted: true }>(`/sentinel/circles/${id}`);
@@ -90,7 +106,14 @@ export const inviteSentinel = (circleId: string, data: InvitePayload) =>
 
 export const updateMembership = (
   id: string,
-  data: { sentinelType?: SentinelType; requestedAsLead?: boolean; circleId?: string },
+  data: {
+    sentinelType?: SentinelType;
+    requestedAsLead?: boolean;
+    circleId?: string;
+    canMessageOwnCircle?: boolean;
+    firstCircleMessagingMode?: MessagingMode;
+    canMessageMe?: boolean;
+  },
 ) => apiPatch<Membership>(`/sentinel/memberships/${id}`, data);
 
 export const removeMembership = (id: string) =>

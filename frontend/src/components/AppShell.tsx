@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { NotificationBell } from './NotificationBell';
 
 const NAV_ITEMS = [
   { to: '/dashboard', key: 'nav.dashboard' },
@@ -13,13 +14,19 @@ const NAV_ITEMS = [
 ];
 
 export function AppShell() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const { t } = useTranslation();
 
   return (
     <div className="app-shell">
       <nav className="app-nav">
         <div className="brand">MySentinelCircle</div>
+        {user && (
+          <div className="user-row">
+            <div className="user-name">{user.firstName}</div>
+            <NotificationBell />
+          </div>
+        )}
         {NAV_ITEMS.map((item) => (
           <NavLink key={item.to} to={item.to} className={({ isActive }) => (isActive ? 'active' : '')}>
             {t(item.key)}

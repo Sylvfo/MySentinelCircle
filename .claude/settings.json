@@ -17,7 +17,9 @@
         "Write(.claude/**)",
         "Bash(npm prisma)",
         "Edit(/backend/src/auth)",
-        "Write(/backend/src/auth)"
+        "Write(/backend/src/auth)",
+        "Edit(/backend/src/user)",
+        "Write(/backend/src/user)"        
     ],
     "deny": [
       "Edit(backend/prisma/schema.prisma)",

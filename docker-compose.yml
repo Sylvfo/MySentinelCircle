@@ -29,6 +29,9 @@ services:
       DATABASE_URL: mysql://${MARIADB_USER}:${MARIADB_PASSWORD}@mariadb:3306/${MARIADB_DATABASE}
       FRONTEND_URL: https://localhost:4444
       PORT: "3000"
+      NOSMSNOW_URL: http://host.docker.internal:4001
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma

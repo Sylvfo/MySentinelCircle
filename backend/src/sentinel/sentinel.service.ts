@@ -12,6 +12,7 @@ import {
   LeadSlot,
   LinkInitiator,
   LinkStatus,
+  NotificationType,
   Prisma,
   SentinelType,
   User,
@@ -20,6 +21,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
+import { AlertService } from '../alert/alert.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   circleMoveAnsweredSms,
   circleMoveProposedSms,
@@ -62,6 +65,8 @@ export class SentinelService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
+    private readonly alert: AlertService,
+    private readonly notifications: NotificationService,
   ) {}
 
   // ---- Circles (companion side) ----------------------------------------------
@@ -106,7 +111,15 @@ export class SentinelService {
   }
 
   async updateCircle(userId: string, circleId: string, dto: UpdateCircleDto) {
-    await this.ensureCircleOwned(userId, circleId);
+    const circle = await this.ensureCircleOwned(userId, circleId);
+    if (
+      dto.canMessageMe !== undefined &&
+      circle.circleType === CircleType.FIRST
+    ) {
+      throw new BadRequestException(
+        'The 1st circle is always reachable — canMessageMe can’t be overridden there',
+      );
+    }
     return this.prisma.circle.update({ where: { id: circleId }, data: dto });
   }
 
@@ -178,6 +191,13 @@ export class SentinelService {
     });
 
     await this.sms.send(phone, sentinelInvitationSms(this.label(inviter)));
+    await this.notifications.create({
+      userId: sentinelUser.id,
+      type: NotificationType.SENTINEL_INVITATION_RECEIVED,
+      actorUserId: userId,
+      actorLabel: this.label(inviter),
+      targetId: link.id,
+    });
     return link;
   }
 
@@ -213,6 +233,13 @@ export class SentinelService {
     });
 
     await this.sms.send(targetPhone, sentinelRequestSms(this.label(requester)));
+    await this.notifications.create({
+      userId: target.id,
+      type: NotificationType.SENTINEL_REQUEST_RECEIVED,
+      actorUserId: requesterId,
+      actorLabel: this.label(requester),
+      targetId: link.id,
+    });
     return link;
   }
 
@@ -376,11 +403,19 @@ export class SentinelService {
       await this.applyCircleMoveResponse(moveProposal, intent === 'accept');
       return {
         matched: true as const,
-        action: intent === 'accept' ? 'circle_move_accepted' : 'circle_move_declined',
+        action:
+          intent === 'accept' ? 'circle_move_accepted' : 'circle_move_declined',
       };
     }
 
-    // No pending link/proposal: a NON/STOP from an active Sentinel means "remove me".
+    // No sentinel-link-domain match: maybe this phone has a live alert ask
+    // waiting on them. Checked *before* the blanket "NON means leave" fallback
+    // below — a time-boxed alert question is a more specific match than that
+    // catch-all, same precedence logic as the two checks above it.
+    const alertMatch = await this.alert.tryHandleInboundSms(phone, body);
+    if (alertMatch) return alertMatch;
+
+    // No pending link/proposal/alert ask: a NON/STOP from an active Sentinel means "remove me".
     if (intent === 'decline') {
       const active = await this.prisma.linkSentinels.findFirst({
         where: { status: LinkStatus.ACCEPTED, linkAsSentinel: { phone } },
@@ -546,7 +581,8 @@ export class SentinelService {
     // — Sentinel SMS is always predefined-replies-only, regardless.
     if (
       (dto.canMessageOwnCircle !== undefined ||
-        dto.firstCircleMessagingMode !== undefined) &&
+        dto.firstCircleMessagingMode !== undefined ||
+        dto.canMessageMe !== undefined) &&
       link.linkAsSentinel.userType === UserType.ONLY_SMS
     ) {
       throw new BadRequestException(
@@ -561,9 +597,11 @@ export class SentinelService {
         sentinelType: dto.sentinelType ?? link.sentinelType,
         requestedAsLead,
         leadSlot,
-        canMessageOwnCircle: dto.canMessageOwnCircle ?? link.canMessageOwnCircle,
+        canMessageOwnCircle:
+          dto.canMessageOwnCircle ?? link.canMessageOwnCircle,
         firstCircleMessagingMode:
           dto.firstCircleMessagingMode ?? link.firstCircleMessagingMode,
+        canMessageMe: dto.canMessageMe ?? link.canMessageMe,
       },
     });
   }
@@ -595,6 +633,40 @@ export class SentinelService {
       data: { status: LinkStatus.BLOCKED },
     });
     return { blocked: true };
+  }
+
+  // ---- Messaging permission (permanent Me<->Sentinel channel) ---------------
+
+  // Resolves whether the permanent Me<->Sentinel channel is open between
+  // these two — most specific non-null setting wins: LinkSentinels
+  // .canMessageMe > Circle.canMessageMe > User.allowMessagingByDefault.
+  // Direction-agnostic: whichever of the two is "Me" in the underlying
+  // LinkSentinels row drives the resolution. The 1st circle is always
+  // reachable, no override possible there. Not an accepted Sentinel of
+  // each other at all -> false. Separate from canMessageOwnCircle/
+  // firstCircleMessagingMode, which only govern alert-time reach.
+  async canSendDirectMessage(
+    userAId: string,
+    userBId: string,
+  ): Promise<boolean> {
+    const link = await this.prisma.linkSentinels.findFirst({
+      where: {
+        status: LinkStatus.ACCEPTED,
+        OR: [
+          { userCompanionId: userAId, userSentinelId: userBId },
+          { userCompanionId: userBId, userSentinelId: userAId },
+        ],
+      },
+      include: {
+        circle: { select: { circleType: true, canMessageMe: true } },
+        userCompanion: { select: { allowMessagingByDefault: true } },
+      },
+    });
+    if (!link) return false;
+    if (link.circle.circleType === CircleType.FIRST) return true;
+    if (link.canMessageMe !== null) return link.canMessageMe;
+    if (link.circle.canMessageMe !== null) return link.circle.canMessageMe;
+    return link.userCompanion.allowMessagingByDefault;
   }
 
   // ---- Internals ------------------------------------------------------------
@@ -702,7 +774,10 @@ export class SentinelService {
 
   // No auto-Lead on acceptance — same reasoning as respondToMembership's
   // accept path: "Me" promotes to Lead separately afterward if they want.
-  private async applyCircleMoveResponse(link: LinkWithParties, accept: boolean) {
+  private async applyCircleMoveResponse(
+    link: LinkWithParties,
+    accept: boolean,
+  ) {
     const updated = await this.prisma.linkSentinels.update({
       where: { id: link.id },
       data: accept
@@ -757,6 +832,20 @@ export class SentinelService {
         requestAnsweredSms(companionLabel, accept),
       );
     }
+
+    // Persisted notification to whichever party didn't just respond.
+    const [recipientId, actorId, actorLabel] =
+      link.initiatedBy === LinkInitiator.COMPANION
+        ? [link.userCompanionId, link.userSentinelId, sentinelLabel]
+        : [link.userSentinelId, link.userCompanionId, companionLabel];
+    await this.notifications.create({
+      userId: recipientId,
+      type: NotificationType.SENTINEL_LINK_ANSWERED,
+      actorUserId: actorId,
+      actorLabel,
+      accepted: accept,
+      targetId: link.id,
+    });
 
     return updated;
   }

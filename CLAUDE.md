@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Updated: 2026-08-21
+Updated: 2026-10-26
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -26,6 +26,7 @@ npm run test                                   # jest, all specs
 npx jest path/to/file.spec.ts                  # single spec
 npm run test:e2e
 npm run build
+npm run seed:dev                               # dev DB only — idempotent demo accounts, see backend/prisma/seed.ts
 ```
 `DATABASE_URL` (MariaDB connection string) must be set in `backend/.env` before the app boots past `PrismaService.onModuleInit`.
 
@@ -43,8 +44,8 @@ npm run lint     # oxlint
 - **Core schema principle**: nothing is ever hard-deleted. `User`/`Circle`/`LinkSentinels` close or anonymize (`status`, `closedAt`, `deletedAt`) instead of being removed, so they stay permanently referenceable. There are no snapshot/copy tables (the old `CircleAlert`/`LinkSentinelAlert` were removed in favor of this) — `AlertParticipant` records what happened during a given alert by referencing the live `LinkSentinels` row directly, freezing only the handful of fields that could otherwise drift after the fact (e.g. `circleId`/`circleName`, `canSendPhoneAtAlert`). `LinkSentinelsEvent` is an append-only log of status transitions, independent of alerts.
 - **Fluid business rules stay in application code, not DB constraints** — e.g. "exactly one active `LinkSentinels` per sentinel+companion pair," "at least one Lead Sentinel per 1st circle," "which `Conversation`s a user may see." The schema deliberately doesn't enforce these with unique/check constraints where doing so would require awkward modeling; they're validated in services instead.
 - **`Conversation`/`ConversationParticipant`/`Message`** is one generic messaging model reused for every context (permanent 1:1 companion↔sentinel chat, 1st-circle group chat, circle-to-circle, isolated sentinel↔1st-circle chat during an alert). There's no `type` column — which kind a conversation is gets inferred from its participants and whether `alertId` is set, in the backend.
-- **Backend modules** (`backend/src/`) follow `plan.txt`'s BACKEND MODULES section, one NestJS module per concern: `auth`, `user`, `sentinel` (circles/memberships), `alert`, `organization`, `messaging`. Several are still skeletons (empty controller/service) — the schema was reworked ahead of the module logic.
-- **Alert lifecycle**: `Alert` has one milestone timestamp per stage it can pass through (`launchedAt`/`activatedAt`/`closingAt`/`closedAt`) rather than a separate event-log table — the lifecycle is treated as roughly linear per alert.
+- **Backend modules** (`backend/src/`) follow `plan.txt`'s BACKEND MODULES section, one NestJS module per concern: `auth`, `user`, `sentinel` (circles/memberships), `alert`, `organization`, `messaging`. Several are still skeletons (empty controller/service) — the schema was reworked ahead of the module logic. One deliberate exception to "one module per concern": `sentinel` imports `AlertModule` so its one inbound-SMS webhook (`POST /sentinel/sms/inbound`) can delegate to `AlertService.tryHandleInboundSms` as a fallback — mirrors how a real SMS provider gives one inbound URL per phone number, not one per module.
+- **Alert lifecycle**: `Alert` has one milestone timestamp per stage it can pass through (`launchedAt`/`activatedAt`/`closingAt`/`closedAt`) rather than a separate event-log table — the lifecycle is treated as roughly linear per alert. `activatedAt`/`ACTIVE` is set the first time the 1st circle escalates to an outer circle (`POST /alert/:id/request-circle`).
 
 ## Working on `schema.prisma`
 
