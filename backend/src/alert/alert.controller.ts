@@ -83,6 +83,14 @@ export class AlertController {
     return this.alert.getMyParticipation(user.userId, id);
   }
 
+  @Get(':id/circle-chat')
+  getCircleChat(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.alert.getOrCreateCircleChat(user.userId, id);
+  }
+
   @Get(':id')
   get(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
     return this.alert.getAlert(user.userId, id);

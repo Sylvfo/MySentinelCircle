@@ -1,9 +1,9 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
+import { ApiError, API_URL } from '../api/client';
 import { listCircles, listCompanions } from '../api/sentinel';
-import { getDirectConversation, listMessages, sendMessage, type Message } from '../api/messaging';
+import { getDirectConversation, listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
 
 interface Contact {
   userId: string;
@@ -34,7 +34,15 @@ export function MessagesPage() {
           name: c.companion.email ?? c.companion.phone ?? '…',
           context: t('messages.companionContext'),
         }));
-        setContacts([...mySentinels, ...myCompanions]);
+        // A mutual relationship (I'm their Sentinel and they're mine) would
+        // otherwise list the same person — and the same underlying direct
+        // conversation — twice; merge into one entry, both contexts shown.
+        const byUserId = new Map<string, Contact>();
+        for (const c of [...mySentinels, ...myCompanions]) {
+          const existing = byUserId.get(c.userId);
+          byUserId.set(c.userId, existing ? { ...existing, context: `${existing.context} · ${c.context}` } : c);
+        }
+        setContacts([...byUserId.values()]);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
       .finally(() => setLoading(false));
@@ -127,6 +135,21 @@ function ChatPanel({ contact, onClose }: { contact: Contact; onClose: () => void
     }
   };
 
+  const submitImage = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!conversationId || !file) return;
+    setSending(true);
+    try {
+      await sendImageMessage(conversationId, file);
+      await reloadMessages(conversationId);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <section className="panel alert-detail">
       <div className="row">
@@ -148,7 +171,12 @@ function ChatPanel({ contact, onClose }: { contact: Contact; onClose: () => void
             <ul className="alert-chat-messages">
               {messages.map((m) => (
                 <li key={m.id}>
-                  <strong>{m.senderId === user?.id ? t('alerts.detail.me') : contact.name}</strong> : {m.body}
+                  <strong>{m.senderId === user?.id ? t('alerts.detail.me') : contact.name}</strong> :{' '}
+                  {m.type === 'IMAGE' ? (
+                    <img src={`${API_URL}/uploads/messages/${m.body}`} alt="" style={{ maxWidth: 200, borderRadius: 8, display: 'block' }} />
+                  ) : (
+                    m.body
+                  )}
                 </li>
               ))}
             </ul>
@@ -162,6 +190,7 @@ function ChatPanel({ contact, onClose }: { contact: Contact; onClose: () => void
             <button type="submit" disabled={sending || !draft.trim()}>
               {t('alerts.detail.send')}
             </button>
+            <input type="file" accept="image/*" disabled={sending} onChange={submitImage} />
           </form>
           {error && <p className="form-error">{error}</p>}
         </>

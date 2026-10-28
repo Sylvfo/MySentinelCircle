@@ -127,7 +127,12 @@
     "allowMessaging": "Autoriser les messages",
     "excludeFromAlertChat": "Exclure du chat d'alerte",
     "includeInAlertChat": "Inclure dans le chat d'alerte",
-    "awaitingFirstCircleConsent": "En attente d'accord pour le 1er cercle"
+    "awaitingFirstCircleConsent": "En attente d'accord pour le 1er cercle",
+    "firstCircleMessagingMode": {
+      "label": "Discuter avec le 1er cercle pendant une alerte",
+      "none": "Non autorisé",
+      "individual": "Autorisé"
+    }
   },
   "companions": {
     "title": "Companions",
@@ -216,7 +221,11 @@
       "labelPlaceholder": "Ex. Recherche de Léa",
       "requestedBy": "sollicité·e par {{name}}",
       "updatedBy": "— {{name}}",
-      "messageHistoryTitle": "Historique des messages (1er cercle)"
+      "circleChat": {
+        "title": "Discuter avec le premier cercle",
+        "withSentinel": "Chat avec {{name}}",
+        "firstCircleSender": "Premier cercle"
+      }
     }
   },
   "messages": {

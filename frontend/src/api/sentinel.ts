@@ -5,6 +5,7 @@ export type LinkStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'REMOVED' | 'BLOC
 export type LinkInitiator = 'COMPANION' | 'SENTINEL';
 export type LeadSlot = 'LEAD_1' | 'LEAD_2' | 'LEAD_3';
 export type CircleType = 'BASIC' | 'FIRST' | 'ORGANISATION' | 'RESERVED';
+export type MessagingMode = 'NONE' | 'INDIVIDUAL' | 'GROUP';
 
 export interface SentinelRef {
   id: string;
@@ -26,6 +27,12 @@ export interface Membership {
   // Alert-time: can this Sentinel join their own (1st) circle's live group
   // chat during an alert. Separate from canMessageMe below.
   canMessageOwnCircle: boolean;
+  // Alert-time, outer-circle Sentinels only: can this Sentinel open a chat
+  // with the 1st circle once solicited on an alert (frozen into that
+  // alert's AlertParticipant.firstCircleMessagingModeAtAlert at contact
+  // time — changing this afterward doesn't affect an alert already in
+  // progress).
+  firstCircleMessagingMode: MessagingMode;
   // The permanent Me<->Sentinel channel — null = inherit the circle's
   // (then the companion's) setting.
   canMessageMe: boolean | null;
@@ -104,6 +111,7 @@ export const updateMembership = (
     requestedAsLead?: boolean;
     circleId?: string;
     canMessageOwnCircle?: boolean;
+    firstCircleMessagingMode?: MessagingMode;
     canMessageMe?: boolean;
   },
 ) => apiPatch<Membership>(`/sentinel/memberships/${id}`, data);

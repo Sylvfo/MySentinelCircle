@@ -1,8 +1,11 @@
-import { apiGet, apiPost } from './client';
+import { apiGet, apiPost, apiPostForm } from './client';
+
+export type MessageType = 'TEXT' | 'IMAGE' | 'SYSTEM';
 
 export interface Message {
   id: string;
   body: string;
+  type: MessageType;
   senderId: string;
   conversationId: string;
   createdAt: string;
@@ -10,6 +13,14 @@ export interface Message {
 
 export const sendMessage = (conversationId: string, body: string) =>
   apiPost<Message>(`/messaging/conversations/${conversationId}/messages`, { body });
+
+// body is just the stored filename (see api/user.ts's uploadAvatar for the
+// same pattern) — render it as `${API_URL}/uploads/messages/${message.body}`.
+export const sendImageMessage = (conversationId: string, file: File) => {
+  const formData = new FormData();
+  formData.append('image', file);
+  return apiPostForm<Message>(`/messaging/conversations/${conversationId}/messages/image`, formData);
+};
 
 export const listMessages = (conversationId: string) =>
   apiGet<Message[]>(`/messaging/conversations/${conversationId}/messages`);

@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
+import { ApiError, API_URL } from '../api/client';
 import {
   closeAlert,
   getAlert,
@@ -9,6 +9,7 @@ import {
   listAlerts,
   raiseAlert,
   requestCircle,
+  requestCircleChat,
   respondToAlert,
   updateAlertLabel,
   updateAlertStatus,
@@ -18,7 +19,7 @@ import {
   type MyParticipation,
 } from '../api/alert';
 import { listCompanions, type Companion } from '../api/sentinel';
-import { listMessages, sendMessage, type Message } from '../api/messaging';
+import { listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
 
 // BYCOMPANION is reserved for "Me" raising for themself (RaiseForSelfPanel) —
 // it wouldn't make sense coming from a Sentinel raising on someone else's behalf.
@@ -245,31 +246,14 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
   // Set only when getAlert() 403s (e.g. an outer-circle Sentinel) but the
   // caller does have their own participation to show, as a lighter fallback.
   const [myParticipation, setMyParticipation] = useState<MyParticipation | null>(null);
-  // null = chat not accessible to this caller (e.g. the companion, by design).
-  const [messages, setMessages] = useState<Message[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
-
-  const conversationId = detail?.conversations[0]?.id;
-
-  const reloadMessages = async (convId: string) => {
-    try {
-      setMessages(await listMessages(convId));
-    } catch {
-      setMessages(null);
-    }
-  };
 
   const loadDetail = async () => {
     try {
       const d = await getAlert(alertId);
       setDetail(d);
       setMyParticipation(null);
-      const convId = d.conversations[0]?.id;
-      if (convId) await reloadMessages(convId);
-      else setMessages(null);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         try {
@@ -302,17 +286,26 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, alertId]);
 
-  // The alert's own embedded 1st-circle chat — a new message there doesn't
-  // change the alert itself, so it needs its own listener, separate from
-  // alert:changed above. Goes through loadDetail() rather than just
-  // reloadMessages(): the companion reads the transcript straight off
-  // `detail.conversations[0].messages` (they're never a chat participant,
-  // so listMessages() would 403 them), not off the `messages` state the
-  // Sentinel view below uses.
+  // The companion reads every conversation's transcript straight off
+  // `detail.conversations[].messages` (they're never a ConversationParticipant,
+  // so listMessages() would 403 them) — a new message in one of this
+  // alert's own conversations means re-fetching the whole alert to pick it
+  // up. A Sentinel's own ConversationThread below handles its own
+  // conversation's live updates independently, so this is a companion-only
+  // concern in practice. Filtered against a ref (not `detail` in the
+  // dependency array) so the listener isn't torn down and resubscribed on
+  // every reload, and so a message:new for some unrelated conversation
+  // elsewhere doesn't cause a wasted GET here — the global rate limit is
+  // shared across the whole app, so this adds up fast under heavy use.
+  const detailRef = useRef<AlertDetail | null>(null);
   useEffect(() => {
-    if (!socket || !conversationId) return;
+    detailRef.current = detail;
+  }, [detail]);
+
+  useEffect(() => {
+    if (!socket) return;
     const onNewMessage = (payload: { conversationId: string }) => {
-      if (payload.conversationId === conversationId) {
+      if (detailRef.current?.conversations.some((c) => c.id === payload.conversationId)) {
         loadDetail();
       }
     };
@@ -321,22 +314,7 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
       socket.off('message:new', onNewMessage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, conversationId]);
-
-  const submitMessage = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!conversationId || !draft.trim()) return;
-    setSending(true);
-    try {
-      await sendMessage(conversationId, draft.trim());
-      setDraft('');
-      await reloadMessages(conversationId);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSending(false);
-    }
-  };
+  }, [socket, alertId]);
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
 
@@ -344,6 +322,10 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
     if (myParticipation) {
       const canRespondLight =
         myParticipation.status === 'CONTACTED' && myParticipation.alert.alertStatus !== 'RESOLVED';
+      const canChat =
+        !!myParticipation.firstCircleMessagingModeAtAlert &&
+        myParticipation.firstCircleMessagingModeAtAlert !== 'NONE' &&
+        myParticipation.alert.alertStatus !== 'RESOLVED';
       return (
         <div className="alert-detail">
           <h3>{myParticipation.alert.label}</h3>
@@ -355,6 +337,7 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
             {myParticipation.response && ` · ${t('alerts.detail.response', { response: myParticipation.response })}`}
           </p>
           {canRespondLight && <RespondButtons alertId={alertId} onChange={loadDetail} />}
+          {canChat && <CircleChatSection alertId={alertId} />}
           {error && <p className="form-error">{error}</p>}
         </div>
       );
@@ -374,6 +357,12 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
   const isAlertManager = isCompanion || isFirstCircleSentinel;
   const canRequestCircle = isAlertManager && detail.alertStatus !== 'RESOLVED';
   const canRespond = myParticipant?.status === 'CONTACTED' && detail.alertStatus !== 'RESOLVED';
+
+  // Who's in the 1st circle, for telling the main chat apart from an
+  // isolated one when labeling each entry in detail.conversations below.
+  const firstCircleSentinelIds = new Set(
+    detail.participants.filter((p) => p.circleId === detail.firstCircleId).map((p) => p.userSentinels.linkAsSentinel.id),
+  );
 
   const labelMeta = detail.labelUpdatedBy ? t('alerts.detail.updatedBy', { name: detail.labelUpdatedBy.firstName }) : undefined;
   const statusFirstCircleMeta = detail.statusUpdatedBy
@@ -430,55 +419,199 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
 
       {canRequestCircle && <RequestCircleForm alertId={alertId} circles={detail.userCompanion.myCircles} onChange={loadDetail} />}
 
-      {/* The companion isn't a participant of the 1st-circle chat (by
-          design), so they get a read-only transcript sourced straight from
-          getAlert() instead of the live listMessages()/sendMessage() below,
-          which would just 403 them. */}
-      {isCompanion && conversationId && (
-        <div className="alert-chat">
-          <h3>{t('alerts.detail.messageHistoryTitle')}</h3>
-          {detail.conversations[0].messages.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
-          ) : (
-            <ul className="alert-chat-messages">
-              {detail.conversations[0].messages.map((m) => (
-                <li key={m.id}>
-                  <strong>{m.sender.firstName}</strong> : {m.body}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {messages !== null && conversationId && (
-        <div className="alert-chat">
-          <h3>{t('alerts.detail.chatTitle')}</h3>
-          {messages.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
-          ) : (
-            <ul className="alert-chat-messages">
-              {messages.map((m) => (
-                <li key={m.id}>
-                  <strong>{senderName(m.senderId)}</strong> : {m.body}
-                </li>
-              ))}
-            </ul>
-          )}
-          <form className="row" onSubmit={submitMessage}>
-            <input
-              placeholder={t('alerts.detail.messagePlaceholder')}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-            <button type="submit" disabled={sending || !draft.trim()}>
-              {t('alerts.detail.send')}
-            </button>
-          </form>
-        </div>
-      )}
+      {/* One block per conversation on this alert: the main 1st-circle
+          chat, plus one per outer-circle Sentinel who's opened an
+          isolated chat with the 1st circle. Told apart by participants —
+          any conversation with someone outside the 1st circle is an
+          isolated one, labeled with their name. */}
+      {detail.conversations.map((conv) => {
+        const outsider = conv.participants.find((p) => !firstCircleSentinelIds.has(p.user.id));
+        const title = outsider
+          ? t('alerts.detail.circleChat.withSentinel', { name: outsider.user.firstName })
+          : t('alerts.detail.chatTitle');
+        if (isCompanion) {
+          // Never a ConversationParticipant (by design) — read-only,
+          // straight off getAlert() instead of listMessages()/sendMessage(),
+          // which would just 403 them.
+          return (
+            <div className="alert-chat" key={conv.id}>
+              <h3>{title}</h3>
+              {conv.messages.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
+              ) : (
+                <ul className="alert-chat-messages">
+                  {conv.messages.map((m) => (
+                    <li key={m.id}>
+                      <strong>{m.sender.firstName}</strong> : {m.body}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        }
+        return <ConversationThread key={conv.id} conversationId={conv.id} title={title} resolveSenderName={senderName} />;
+      })}
       {error && <p className="form-error">{error}</p>}
     </div>
+  );
+}
+
+// Self-contained message list + input + its own message:new socket
+// listener for one conversation — used for the main 1st-circle chat, each
+// isolated outer-circle chat in the full alert view, and the outer-circle
+// Sentinel's own isolated-chat UI below. Hides itself entirely if the
+// viewer turns out not to be a participant (e.g. a 1st-circle Sentinel
+// excluded from their own circle's chat) rather than showing a bare error.
+function ConversationThread({
+  conversationId,
+  title,
+  resolveSenderName,
+}: {
+  conversationId: string;
+  title: string;
+  resolveSenderName: (senderId: string) => string;
+}) {
+  const { t } = useTranslation();
+  const { user, socket } = useAuth();
+  const [messages, setMessages] = useState<Message[] | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = async () => {
+    try {
+      setMessages(await listMessages(conversationId));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setForbidden(true);
+        return;
+      }
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    reload().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onNewMessage = (payload: { conversationId: string }) => {
+      if (payload.conversationId === conversationId) reload();
+    };
+    socket.on('message:new', onNewMessage);
+    return () => {
+      socket.off('message:new', onNewMessage);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, conversationId]);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!draft.trim()) return;
+    setSending(true);
+    try {
+      await sendMessage(conversationId, draft.trim());
+      setDraft('');
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const submitImage = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setSending(true);
+    try {
+      await sendImageMessage(conversationId, file);
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (loading || forbidden) return null;
+
+  return (
+    <div className="alert-chat">
+      <h3>{title}</h3>
+      {messages && messages.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
+      ) : (
+        <ul className="alert-chat-messages">
+          {messages?.map((m) => (
+            <li key={m.id}>
+              <strong>{m.senderId === user?.id ? t('alerts.detail.me') : resolveSenderName(m.senderId)}</strong> :{' '}
+              {m.type === 'IMAGE' ? (
+                <img src={`${API_URL}/uploads/messages/${m.body}`} alt="" style={{ maxWidth: 200, borderRadius: 8, display: 'block' }} />
+              ) : (
+                m.body
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="row" onSubmit={submit}>
+        <input
+          placeholder={t('alerts.detail.messagePlaceholder')}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <button type="submit" disabled={sending || !draft.trim()}>
+          {t('alerts.detail.send')}
+        </button>
+        <input type="file" accept="image/*" disabled={sending} onChange={submitImage} />
+      </form>
+      {error && <p className="form-error">{error}</p>}
+    </div>
+  );
+}
+
+// The outer-circle Sentinel's own request-then-chat UI, in the
+// myParticipation fallback view — starts as a button (lazy, so just
+// viewing the alert doesn't create a conversation), opens into a
+// ConversationThread once requested. Any 1st-circle sender is shown
+// generically ("1st circle"): this caller never sees the 1st circle's
+// own roster.
+function CircleChatSection({ alertId }: { alertId: string }) {
+  const { t } = useTranslation();
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!conversationId) {
+    return (
+      <section className="panel">
+        <button
+          onClick={() =>
+            requestCircleChat(alertId)
+              .then((c) => setConversationId(c.id))
+              .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
+          }
+        >
+          {t('alerts.detail.circleChat.title')}
+        </button>
+        {error && <p className="form-error">{error}</p>}
+      </section>
+    );
+  }
+
+  return (
+    <ConversationThread
+      conversationId={conversationId}
+      title={t('alerts.detail.circleChat.title')}
+      resolveSenderName={() => t('alerts.detail.circleChat.firstCircleSender')}
+    />
   );
 }
 

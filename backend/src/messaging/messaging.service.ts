@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
 } from '@nestjs/common';
+import { MessageType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SentinelService } from '../sentinel/sentinel.service';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -65,6 +66,35 @@ export class MessagingService {
     conversationId: string,
     dto: SendMessageDto,
   ) {
+    return this.createMessage(
+      userId,
+      conversationId,
+      dto.body,
+      MessageType.TEXT,
+    );
+  }
+
+  // filename only (mirrors User.avatarPath storing just a filename, not a
+  // URL) — the caller already saved it under uploads/messages/ via multer.
+  async sendImageMessage(
+    userId: string,
+    conversationId: string,
+    filename: string,
+  ) {
+    return this.createMessage(
+      userId,
+      conversationId,
+      filename,
+      MessageType.IMAGE,
+    );
+  }
+
+  private async createMessage(
+    userId: string,
+    conversationId: string,
+    body: string,
+    type: MessageType,
+  ) {
     const conversation = await this.assertActiveParticipant(
       userId,
       conversationId,
@@ -80,7 +110,7 @@ export class MessagingService {
       await this.assertDirectMessagingAllowed(userId, conversationId);
     }
     const message = await this.prisma.message.create({
-      data: { body: dto.body, senderId: userId, conversationId },
+      data: { body, type, senderId: userId, conversationId },
     });
 
     const participants = await this.prisma.conversationParticipant.findMany({

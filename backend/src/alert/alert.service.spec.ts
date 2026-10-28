@@ -38,8 +38,13 @@ describe('AlertService', () => {
       upsert: jest.Mock;
       update: jest.Mock;
       findFirst: jest.Mock;
+      findMany: jest.Mock;
     };
-    conversation: { create: jest.Mock; updateMany: jest.Mock };
+    conversation: {
+      create: jest.Mock;
+      updateMany: jest.Mock;
+      findFirst: jest.Mock;
+    };
     user: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -86,8 +91,13 @@ describe('AlertService', () => {
         upsert: jest.fn(),
         update: jest.fn(),
         findFirst: jest.fn(),
+        findMany: jest.fn(),
       },
-      conversation: { create: jest.fn(), updateMany: jest.fn() },
+      conversation: {
+        create: jest.fn(),
+        updateMany: jest.fn(),
+        findFirst: jest.fn(),
+      },
       user: { findUnique: jest.fn() },
       $transaction: jest.fn((arg: unknown) =>
         typeof arg === 'function'
@@ -550,6 +560,140 @@ describe('AlertService', () => {
           question: 'x',
         }),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('getOrCreateCircleChat', () => {
+    const alertRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'alert-1',
+      alertStatus: AlertStatus.LAUNCHED,
+      userCompanionId: 'alice-id',
+      firstCircleId: 'circle-1',
+      ...overrides,
+    });
+
+    const outerParticipant = (overrides: Record<string, unknown> = {}) => ({
+      id: 'participant-1',
+      circleId: 'outer-1',
+      firstCircleMessagingModeAtAlert: MessagingMode.INDIVIDUAL,
+      ...overrides,
+    });
+
+    it('creates an isolated chat with the current 1st-circle roster when none exists yet', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(
+        alertRow({ firstCircleId: 'circle-1' }),
+      );
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(
+        outerParticipant(),
+      );
+      prisma.conversation.findFirst.mockResolvedValueOnce(null);
+      prisma.alertParticipant.findMany.mockResolvedValueOnce([
+        { userSentinels: { userSentinelId: 'sentinel-1' } },
+        { userSentinels: { userSentinelId: 'sentinel-2' } },
+      ]);
+      prisma.conversation.create.mockResolvedValueOnce({
+        id: 'conv-new',
+        closedAt: null,
+      });
+
+      const result = await service.getOrCreateCircleChat(
+        'neighbor-1',
+        'alert-1',
+      );
+
+      expect(prisma.alertParticipant.findMany).toHaveBeenCalledWith({
+        where: { alertId: 'alert-1', circleId: 'circle-1' },
+        select: {
+          userSentinels: { select: { userSentinelId: true } },
+        },
+      });
+      expect(prisma.conversation.create).toHaveBeenCalledWith({
+        data: {
+          alertId: 'alert-1',
+          participants: {
+            create: [
+              { userId: 'neighbor-1' },
+              { userId: 'sentinel-1' },
+              { userId: 'sentinel-2' },
+            ],
+          },
+        },
+        select: { id: true, closedAt: true },
+      });
+      expect(result).toEqual({ id: 'conv-new', closedAt: null });
+    });
+
+    it('returns the existing isolated chat on re-request instead of creating a new one', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(alertRow());
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(
+        outerParticipant(),
+      );
+      prisma.conversation.findFirst.mockResolvedValueOnce({
+        id: 'conv-existing',
+        closedAt: null,
+      });
+
+      const result = await service.getOrCreateCircleChat(
+        'neighbor-1',
+        'alert-1',
+      );
+
+      expect(result).toEqual({ id: 'conv-existing', closedAt: null });
+      expect(prisma.conversation.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a 1st-circle member — they already have the main chat', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(
+        alertRow({ firstCircleId: 'circle-1' }),
+      );
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(
+        outerParticipant({ circleId: 'circle-1' }),
+      );
+
+      await expect(
+        service.getOrCreateCircleChat('lead-1', 'alert-1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.conversation.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the link’s firstCircleMessagingModeAtAlert is NONE', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(alertRow());
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(
+        outerParticipant({
+          firstCircleMessagingModeAtAlert: MessagingMode.NONE,
+        }),
+      );
+
+      await expect(
+        service.getOrCreateCircleChat('neighbor-1', 'alert-1'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects a caller with no participation on this alert', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(alertRow());
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.getOrCreateCircleChat('stranger-1', 'alert-1'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects once the alert is resolved', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(
+        alertRow({ alertStatus: AlertStatus.RESOLVED }),
+      );
+
+      await expect(
+        service.getOrCreateCircleChat('neighbor-1', 'alert-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects a missing alert', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.getOrCreateCircleChat('neighbor-1', 'missing-alert'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

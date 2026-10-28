@@ -130,7 +130,12 @@ describe('MessagingService', () => {
 
       expect(result).toEqual({ id: 'msg-1' });
       expect(prisma.message.create).toHaveBeenCalledWith({
-        data: { body: 'hello', senderId: 'user-1', conversationId: 'conv-1' },
+        data: {
+          body: 'hello',
+          type: 'TEXT',
+          senderId: 'user-1',
+          conversationId: 'conv-1',
+        },
       });
       // Alert-scoped (alertId set) — no direct-messaging permission re-check.
       expect(sentinel.canSendDirectMessage).not.toHaveBeenCalled();
@@ -201,6 +206,54 @@ describe('MessagingService', () => {
 
       await expect(
         service.sendMessage('user-1', 'conv-1', { body: 'hello' }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.message.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendImageMessage', () => {
+    it('creates an IMAGE message with the given filename as body, through the same checks as sendMessage', async () => {
+      prisma.conversationParticipant.findFirst.mockResolvedValueOnce({
+        id: 'part-1',
+        conversation: { closedAt: null, alertId: 'alert-1' },
+      });
+      prisma.message.create.mockResolvedValueOnce({
+        id: 'msg-1',
+        type: 'IMAGE',
+      });
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        { userId: 'user-1' },
+      ]);
+
+      const result = await service.sendImageMessage(
+        'user-1',
+        'conv-1',
+        'abc123.jpg',
+      );
+
+      expect(prisma.message.create).toHaveBeenCalledWith({
+        data: {
+          body: 'abc123.jpg',
+          type: 'IMAGE',
+          senderId: 'user-1',
+          conversationId: 'conv-1',
+        },
+      });
+      expect(notifier.notifyNewMessage).toHaveBeenCalledWith(
+        'user-1',
+        'conv-1',
+      );
+      expect(result).toEqual({ id: 'msg-1', type: 'IMAGE' });
+    });
+
+    it('rejects sending into a closed conversation, same as sendMessage', async () => {
+      prisma.conversationParticipant.findFirst.mockResolvedValueOnce({
+        id: 'part-1',
+        conversation: { closedAt: new Date(), alertId: 'alert-1' },
+      });
+
+      await expect(
+        service.sendImageMessage('user-1', 'conv-1', 'abc123.jpg'),
       ).rejects.toThrow(ConflictException);
       expect(prisma.message.create).not.toHaveBeenCalled();
     });

@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 import request from 'supertest';
-import { App } from 'supertest/types';
 import { AlertType, CircleType } from '@prisma/client';
 import { AppModule } from './../src/app.module';
 import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
@@ -34,12 +35,13 @@ interface AlertDetailBody extends AlertBody {
 interface MessageBody {
   id: string;
   body: string;
+  type: string;
   senderId: string;
   conversationId: string;
 }
 
 describe('Messaging (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
   let sentOtps: { phone: string; code: string }[];
   let sentSms: { phone: string; body: string }[];
 
@@ -68,10 +70,15 @@ describe('Messaging (e2e)', () => {
       })
       .compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
     );
+    // Mirrors main.ts's bootstrap() — e2e specs build their own app instance
+    // and don't call bootstrap(), so this needs repeating here for the
+    // image-message route's GET /uploads/messages/:filename to be servable
+    // in the test environment the same way it is in the real app.
+    app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
     await app.init();
   });
 
@@ -218,6 +225,53 @@ describe('Messaging (e2e)', () => {
         .set('Authorization', auth(sentinel.accessToken))
         .expect(200);
       expect(listRes.body as MessageBody[]).toHaveLength(1);
+    });
+  });
+
+  describe('POST /messaging/conversations/:id/messages/image', () => {
+    it('uploads an image, creates an IMAGE message, and serves the file back under /uploads/messages/', async () => {
+      const { sentinel, conversationId } = await buildAlertWithConversation();
+
+      const uploadRes = await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages/image`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .attach('image', Buffer.from('fake-jpeg-bytes'), 'photo.jpg')
+        .expect(201);
+      const message = uploadRes.body as MessageBody;
+      expect(message.type).toBe('IMAGE');
+      expect(message.senderId).toBe(sentinel.userId);
+      expect(message.body).toMatch(/\.jpg$/);
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .expect(200);
+      expect(listRes.body as MessageBody[]).toHaveLength(1);
+
+      await request(app.getHttpServer())
+        .get(`/uploads/messages/${message.body}`)
+        .expect(200)
+        .expect('Content-Type', /image\/jpeg/);
+    });
+
+    it('rejects a non-image file', async () => {
+      const { sentinel, conversationId } = await buildAlertWithConversation();
+
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages/image`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .attach('image', Buffer.from('not an image'), 'notes.txt')
+        .expect(400);
+    });
+
+    it('rejects the companion — not a participant of the 1st-circle chat by design', async () => {
+      const { companion, conversationId } = await buildAlertWithConversation();
+
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages/image`)
+        .set('Authorization', auth(companion.accessToken))
+        .attach('image', Buffer.from('fake-jpeg-bytes'), 'photo.jpg')
+        .expect(403);
     });
   });
 

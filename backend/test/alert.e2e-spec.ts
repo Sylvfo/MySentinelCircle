@@ -74,6 +74,7 @@ interface AlertDetailBody extends AlertBody {
   conversations: {
     id: string;
     closedAt: string | null;
+    participants: { user: { id: string; firstName: string } }[];
     messages: AlertMessageBody[];
   }[];
 }
@@ -199,8 +200,12 @@ describe('Alert (e2e)', () => {
       .expect(201);
     const circle = circleRes.body as CircleBody;
 
-    const sentinels: { accessToken: string; userId: string; phone: string }[] =
-      [];
+    const sentinels: {
+      accessToken: string;
+      userId: string;
+      phone: string;
+      linkId: string;
+    }[] = [];
     for (let i = 0; i < count; i++) {
       const sentinel = await signupAccount(`${label}${i}`);
       const inviteRes = await request(app.getHttpServer())
@@ -208,12 +213,13 @@ describe('Alert (e2e)', () => {
         .set('Authorization', auth(companionToken))
         .send({ phone: sentinel.phone, name: `${label}${i}` })
         .expect(201);
+      const link = inviteRes.body as LinkBody;
       await request(app.getHttpServer())
-        .post(`/sentinel/memberships/${(inviteRes.body as LinkBody).id}/accept`)
+        .post(`/sentinel/memberships/${link.id}/accept`)
         .set('Authorization', auth(sentinel.accessToken))
         .send({})
         .expect(201);
-      sentinels.push(sentinel);
+      sentinels.push({ ...sentinel, linkId: link.id });
     }
     return { circle, sentinels };
   }
@@ -837,6 +843,132 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .get(`/alert/${(raiseRes.body as AlertBody).id}/my-participation`)
         .set('Authorization', auth(stranger.accessToken))
+        .expect(403);
+    });
+  });
+
+  describe('GET /alert/:id/circle-chat', () => {
+    it('lets an authorized outer-circle Sentinel open their own isolated chat with the 1st circle, visible and repliable from the full alert detail, and closed when the alert closes', async () => {
+      const companion = await signupAccount('Lea');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+      const { circle: outerCircle, sentinels: outerSentinels } =
+        await buildOuterCircle(companion.accessToken, 'Voisins', 1);
+
+      // Authorize this outer-circle link for the 1st-circle chat — the
+      // default is NONE, so without this the request below would 403.
+      await request(app.getHttpServer())
+        .patch(`/sentinel/memberships/${outerSentinels[0].linkId}`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ firstCircleMessagingMode: 'INDIVIDUAL' })
+        .expect(200);
+
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.MISSING,
+          reason: 'Introuvable',
+        })
+        .expect(201);
+      const alert = raiseRes.body as AlertBody;
+      await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/request-circle`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .expect(201);
+
+      const openRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}/circle-chat`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .expect(200);
+      const chat = openRes.body as { id: string; closedAt: string | null };
+      expect(chat.closedAt).toBeNull();
+
+      // Re-requesting returns the exact same conversation, not a new one.
+      const reopenRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}/circle-chat`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .expect(200);
+      expect((reopenRes.body as { id: string }).id).toBe(chat.id);
+
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${chat.id}/messages`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .send({ body: 'Je peux passer voir.' })
+        .expect(201);
+
+      // The 1st-circle Sentinel sees both conversations in the full alert
+      // detail — the main 1st-circle chat (no outside participant) and
+      // this isolated one (has the outer Sentinel as a participant) — and
+      // can tell them apart by participants.
+      const detailRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}`)
+        .set('Authorization', auth(sentinels[0].accessToken))
+        .expect(200);
+      const detail = detailRes.body as AlertDetailBody;
+      expect(detail.conversations).toHaveLength(2);
+      const isolated = detail.conversations.find((c) =>
+        c.participants.some((p) => p.user.id === outerSentinels[0].userId),
+      )!;
+      expect(isolated.id).toBe(chat.id);
+      expect(isolated.messages).toHaveLength(1);
+      expect(isolated.messages[0].body).toBe('Je peux passer voir.');
+      expect(isolated.messages[0].sender.id).toBe(outerSentinels[0].userId);
+
+      // The 1st-circle Sentinel replies in that same isolated conversation.
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${chat.id}/messages`)
+        .set('Authorization', auth(sentinels[0].accessToken))
+        .send({ body: 'On regarde, merci !' })
+        .expect(201);
+      const listRes = await request(app.getHttpServer())
+        .get(`/messaging/conversations/${chat.id}/messages`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .expect(200);
+      expect(listRes.body as AlertMessageBody[]).toHaveLength(2);
+
+      // Closing the alert closes this isolated conversation too, same as
+      // the main one — no dedicated code path needed, confirmed here.
+      await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/close`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(201);
+      const closedRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      const closedIsolated = (
+        closedRes.body as AlertDetailBody
+      ).conversations.find((c) => c.id === chat.id)!;
+      expect(closedIsolated.closedAt).not.toBeNull();
+    });
+
+    it('rejects an outer-circle Sentinel whose link is not authorized for it (firstCircleMessagingMode NONE, the default)', async () => {
+      const companion = await signupAccount('Ada');
+      await buildFirstCircle(companion.accessToken, 1);
+      const { circle: outerCircle, sentinels: outerSentinels } =
+        await buildOuterCircle(companion.accessToken, 'Amis', 1);
+
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.MISSING,
+          reason: 'x',
+        })
+        .expect(201);
+      const alert = raiseRes.body as AlertBody;
+      await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/request-circle`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ circleId: outerCircle.id, question: 'x' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .get(`/alert/${alert.id}/circle-chat`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
         .expect(403);
     });
   });

@@ -13,6 +13,7 @@ import {
   CircleStatus,
   CircleType,
   LinkStatus,
+  MessagingMode,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
@@ -265,8 +266,11 @@ export class AlertService {
             requestedBy: { select: { id: true, firstName: true } },
           },
         },
-        // So a client can find the 1st-circle chat's conversationId to call
-        // the `messaging` endpoints — the only conversation created so far.
+        // So a client can find each conversation tied to this alert — the
+        // main 1st-circle chat, plus one per outer-circle Sentinel who's
+        // opened an isolated chat (getOrCreateCircleChat). `participants`
+        // lets the caller tell them apart (any participant outside the
+        // 1st circle marks it as an isolated chat, not the main one).
         // Messages are embedded here too so the companion (who isn't a
         // ConversationParticipant, by design) can still read the full
         // history as part of the alert detail, without being able to send.
@@ -274,6 +278,9 @@ export class AlertService {
           select: {
             id: true,
             closedAt: true,
+            participants: {
+              select: { user: { select: { id: true, firstName: true } } },
+            },
             messages: {
               orderBy: { createdAt: 'asc' },
               select: {
@@ -402,6 +409,72 @@ export class AlertService {
 
     await this.notifyAlertParticipants(alertId);
     return this.getAlert(callerId, alertId);
+  }
+
+  // An account-holding outer-circle Sentinel, authorized via their
+  // AlertParticipant's frozen firstCircleMessagingModeAtAlert (not NONE),
+  // can request an isolated chat with the 1st circle during an active
+  // alert — their own Conversation, not shared with any other requester.
+  // Lazily created, like getOrCreateDirectConversation; re-requesting
+  // just returns the existing one. Closes automatically with the alert,
+  // same conversation.updateMany({ where: { alertId } }) as the main chat.
+  async getOrCreateCircleChat(callerId: string, alertId: string) {
+    const alert = await this.prisma.alert.findUnique({
+      where: { id: alertId },
+    });
+    if (!alert) throw new NotFoundException('Alert not found');
+    if (alert.alertStatus === AlertStatus.RESOLVED) {
+      throw new ConflictException('This alert is already closed');
+    }
+
+    const participant = await this.prisma.alertParticipant.findFirst({
+      where: { alertId, userSentinels: { userSentinelId: callerId } },
+    });
+    if (!participant) {
+      throw new ForbiddenException('You have no participation on this alert');
+    }
+    if (participant.circleId === alert.firstCircleId) {
+      throw new ForbiddenException(
+        'The 1st circle already has its own chat for this alert',
+      );
+    }
+    if (
+      !participant.firstCircleMessagingModeAtAlert ||
+      participant.firstCircleMessagingModeAtAlert === MessagingMode.NONE
+    ) {
+      throw new ForbiddenException(
+        'Not authorized to chat with the 1st circle',
+      );
+    }
+
+    const existing = await this.prisma.conversation.findFirst({
+      where: {
+        alertId,
+        participants: { some: { userId: callerId, leftAt: null } },
+      },
+      select: { id: true, closedAt: true },
+    });
+    if (existing) return existing;
+
+    const firstCircleRoster = await this.prisma.alertParticipant.findMany({
+      where: { alertId, circleId: alert.firstCircleId },
+      select: { userSentinels: { select: { userSentinelId: true } } },
+    });
+
+    return this.prisma.conversation.create({
+      data: {
+        alertId,
+        participants: {
+          create: [
+            { userId: callerId },
+            ...firstCircleRoster.map((p) => ({
+              userId: p.userSentinels.userSentinelId,
+            })),
+          ],
+        },
+      },
+      select: { id: true, closedAt: true },
+    });
   }
 
   // In-app alternative to an SMS OUI/NON reply, for any account-holding
