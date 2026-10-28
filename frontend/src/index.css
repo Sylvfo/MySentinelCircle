@@ -228,6 +228,14 @@ button, input {
   text-align: center;
 }
 
+/* Inline variant — e.g. next to a contact's name in MessagesPage, instead
+   of overlaid on a bell icon. */
+.notification-count.inline {
+  position: static;
+  display: inline-block;
+  margin-left: 0.4rem;
+}
+
 .notification-dropdown {
   position: absolute;
   top: 2.25rem;

@@ -136,10 +136,67 @@ export class MessagingService {
 
   async listMessages(userId: string, conversationId: string) {
     await this.assertActiveParticipant(userId, conversationId);
+    // Viewing a conversation counts as reading it — clears both the bell's
+    // unread count and MessagesPage's per-contact badge together, no
+    // separate "mark read" action needed.
+    await this.notifications.markTargetRead(
+      userId,
+      NotificationType.NEW_MESSAGE,
+      conversationId,
+    );
     return this.prisma.message.findMany({
       where: { conversationId },
       orderBy: { createdAt: 'asc' },
     });
+  }
+
+  // Every direct (non-alert) conversation I'm an active participant of,
+  // each with the other side's name, its latest message, and my unread
+  // count — what MessagesPage needs to sort contacts by recency and show
+  // a badge, without a separate round trip per contact.
+  async listMyConversations(userId: string) {
+    const participations = await this.prisma.conversationParticipant.findMany({
+      where: {
+        userId,
+        leftAt: null,
+        conversation: { alertId: null },
+      },
+      select: {
+        conversation: {
+          select: {
+            id: true,
+            participants: {
+              where: { userId: { not: userId }, leftAt: null },
+              select: { userId: true, user: { select: { firstName: true } } },
+            },
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              select: { body: true, type: true, createdAt: true },
+            },
+          },
+        },
+      },
+    });
+
+    const conversationIds = participations.map((p) => p.conversation.id);
+    const unreadCounts = await this.notifications.getUnreadCountsByTarget(
+      userId,
+      conversationIds,
+    );
+
+    return participations
+      .filter((p) => p.conversation.participants.length > 0)
+      .map((p) => {
+        const other = p.conversation.participants[0];
+        const lastMessage = p.conversation.messages[0] ?? null;
+        return {
+          conversationId: p.conversation.id,
+          otherUserId: other.userId,
+          lastMessage,
+          unreadCount: unreadCounts[p.conversation.id] ?? 0,
+        };
+      });
   }
 
   private async assertDirectMessagingAllowed(

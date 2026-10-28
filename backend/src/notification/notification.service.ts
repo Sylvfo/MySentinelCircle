@@ -68,4 +68,35 @@ export class NotificationService {
       data: { readAt: new Date() },
     });
   }
+
+  // Per-conversation unread counts, for MessagesPage's contact badges —
+  // reuses NEW_MESSAGE notifications instead of a separate read-state table.
+  async getUnreadCountsByTarget(
+    userId: string,
+    targetIds: string[],
+  ): Promise<Record<string, number>> {
+    if (targetIds.length === 0) return {};
+    const rows = await this.prisma.notification.groupBy({
+      by: ['targetId'],
+      where: {
+        userId,
+        type: NotificationType.NEW_MESSAGE,
+        readAt: null,
+        targetId: { in: targetIds },
+      },
+      _count: { targetId: true },
+    });
+    return Object.fromEntries(
+      rows.map((r) => [r.targetId as string, r._count.targetId]),
+    );
+  }
+
+  // Marks every unread notification of this type for this target as read in
+  // one go — e.g. opening a conversation clears all its NEW_MESSAGE rows.
+  markTargetRead(userId: string, type: NotificationType, targetId: string) {
+    return this.prisma.notification.updateMany({
+      where: { userId, type, targetId, readAt: null },
+      data: { readAt: new Date() },
+    });
+  }
 }

@@ -20,7 +20,11 @@ describe('MessagingService', () => {
   };
   let sentinel: { canSendDirectMessage: jest.Mock };
   let notifier: { notifyAlertChanged: jest.Mock; notifyNewMessage: jest.Mock };
-  let notifications: { create: jest.Mock };
+  let notifications: {
+    create: jest.Mock;
+    markTargetRead: jest.Mock;
+    getUnreadCountsByTarget: jest.Mock;
+  };
 
   beforeEach(async () => {
     prisma = {
@@ -30,7 +34,11 @@ describe('MessagingService', () => {
     };
     sentinel = { canSendDirectMessage: jest.fn() };
     notifier = { notifyAlertChanged: jest.fn(), notifyNewMessage: jest.fn() };
-    notifications = { create: jest.fn() };
+    notifications = {
+      create: jest.fn(),
+      markTargetRead: jest.fn(),
+      getUnreadCountsByTarget: jest.fn().mockResolvedValue({}),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -291,6 +299,12 @@ describe('MessagingService', () => {
         where: { conversationId: 'conv-1' },
         orderBy: { createdAt: 'asc' },
       });
+      // Viewing clears unread NEW_MESSAGE notifications for this conversation.
+      expect(notifications.markTargetRead).toHaveBeenCalledWith(
+        'user-1',
+        NotificationType.NEW_MESSAGE,
+        'conv-1',
+      );
     });
 
     it('rejects a reader who is not an active participant', async () => {
@@ -300,6 +314,72 @@ describe('MessagingService', () => {
         ForbiddenException,
       );
       expect(prisma.message.findMany).not.toHaveBeenCalled();
+      expect(notifications.markTargetRead).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listMyConversations', () => {
+    it('returns each direct conversation with the other side, last message, and unread count', async () => {
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        {
+          conversation: {
+            id: 'conv-1',
+            participants: [{ userId: 'user-2', user: { firstName: 'Dana' } }],
+            messages: [
+              { body: 'salut', type: 'TEXT', createdAt: '2026-01-01' },
+            ],
+          },
+        },
+        {
+          conversation: {
+            id: 'conv-2',
+            participants: [{ userId: 'user-3', user: { firstName: 'Eli' } }],
+            messages: [],
+          },
+        },
+      ]);
+      notifications.getUnreadCountsByTarget.mockResolvedValueOnce({
+        'conv-1': 2,
+      });
+
+      const result = await service.listMyConversations('user-1');
+
+      expect(prisma.conversationParticipant.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          leftAt: null,
+          conversation: { alertId: null },
+        },
+        select: expect.any(Object),
+      });
+      expect(notifications.getUnreadCountsByTarget).toHaveBeenCalledWith(
+        'user-1',
+        ['conv-1', 'conv-2'],
+      );
+      expect(result).toEqual([
+        {
+          conversationId: 'conv-1',
+          otherUserId: 'user-2',
+          lastMessage: { body: 'salut', type: 'TEXT', createdAt: '2026-01-01' },
+          unreadCount: 2,
+        },
+        {
+          conversationId: 'conv-2',
+          otherUserId: 'user-3',
+          lastMessage: null,
+          unreadCount: 0,
+        },
+      ]);
+    });
+
+    it('skips a conversation with no other active participant (defensive)', async () => {
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        { conversation: { id: 'conv-1', participants: [], messages: [] } },
+      ]);
+
+      const result = await service.listMyConversations('user-1');
+
+      expect(result).toEqual([]);
     });
   });
 });
