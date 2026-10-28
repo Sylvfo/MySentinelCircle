@@ -389,6 +389,52 @@ describe('Alert (e2e)', () => {
         })
         .expect(409);
     });
+
+    it('excludes a 1st-circle Sentinel with canMessageOwnCircle: false from the group chat, while still notifying and tracking them', async () => {
+      const companion = await signupAccount('Ada');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 2);
+      await request(app.getHttpServer())
+        .patch(`/sentinel/memberships/${sentinels[1].linkId}`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ canMessageOwnCircle: false })
+        .expect(200);
+      sentSms.length = 0;
+
+      const res = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        })
+        .expect(201);
+      const alert = res.body as AlertBody;
+
+      // Still notified by SMS and tracked as a participant either way.
+      expect(sentSms).toHaveLength(2);
+      expect(sentSms.map((s) => s.phone).sort()).toEqual(
+        sentinels.map((s) => s.phone).sort(),
+      );
+      const detailRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      const detail = detailRes.body as AlertDetailBody;
+      expect(detail.participants).toHaveLength(2);
+      const conversationId = detail.conversations[0].id;
+
+      // The excluded Sentinel has no seat in the chat...
+      await request(app.getHttpServer())
+        .get(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinels[1].accessToken))
+        .expect(403);
+      // ...the other one does.
+      await request(app.getHttpServer())
+        .get(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinels[0].accessToken))
+        .expect(200);
+    });
   });
 
   describe('POST /alert/:id/close', () => {

@@ -1,4 +1,10 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class UpdateCircleDto {
   @IsOptional()
@@ -6,4 +12,10 @@ export class UpdateCircleDto {
   @MinLength(1)
   @MaxLength(60)
   label?: string;
+
+  // null = inherit the companion's allowMessagingByDefault. Rejected on the
+  // 1st circle — always reachable, no override possible there.
+  @IsOptional()
+  @IsBoolean()
+  canMessageMe?: boolean;
 }

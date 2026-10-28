@@ -28,5 +28,6 @@ import { ConsoleOtpSenderService } from './otp/console-otp-sender.service';
     { provide: OTP_SENDER, useClass: ConsoleOtpSenderService },
   ],
   controllers: [AuthController],
+  exports: [JwtModule],
 })
 export class AuthModule {}

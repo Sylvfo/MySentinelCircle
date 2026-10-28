@@ -17,6 +17,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
+import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
+import type { RealtimeNotifier } from '../realtime/realtime-notifier.interface';
 import {
   alertCircleRequestSms,
   alertClosedSms,
@@ -47,6 +49,7 @@ export class AlertService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
+    @Inject(REALTIME_NOTIFIER) private readonly notifier: RealtimeNotifier,
   ) {}
 
   async raiseAlert(callerId: string, dto: CreateAlertDto) {
@@ -120,12 +123,17 @@ export class AlertService {
 
       // The 1st circle's own group chat, scoped to this alert — its
       // Sentinels only (not the companion, who's notified directly instead;
-      // see plan.txt §4 "Messagerie Me <-> Sentinels").
+      // see plan.txt §4 "Messagerie Me <-> Sentinels"), and only those whose
+      // link has canMessageOwnCircle — a Sentinel excluded this way still
+      // gets an AlertParticipant row and the SMS notification above, just
+      // not a seat in the live chat.
       await tx.conversation.create({
         data: {
           alertId: created.id,
           participants: {
-            create: links.map((link) => ({ userId: link.linkAsSentinel.id })),
+            create: links
+              .filter((link) => link.canMessageOwnCircle)
+              .map((link) => ({ userId: link.linkAsSentinel.id })),
           },
         },
       });
@@ -152,6 +160,7 @@ export class AlertService {
       );
     }
 
+    await this.notifyAlertParticipants(alert.id);
     return alert;
   }
 
@@ -215,6 +224,7 @@ export class AlertService {
       );
     }
 
+    await this.notifyAlertParticipants(alertId);
     return updatedAlert;
   }
 
@@ -390,6 +400,7 @@ export class AlertService {
       alertCircleRequestSms(companion?.firstName ?? 'Un proche', dto.question),
     );
 
+    await this.notifyAlertParticipants(alertId);
     return this.getAlert(callerId, alertId);
   }
 
@@ -410,7 +421,12 @@ export class AlertService {
       throw new ForbiddenException('No pending request for you on this alert');
     }
 
-    return this.recordResponse(participant.id, dto.accepted ? 'OUI' : 'NON');
+    const updated = await this.recordResponse(
+      participant.id,
+      dto.accepted ? 'OUI' : 'NON',
+    );
+    await this.notifyAlertParticipants(alertId);
+    return updated;
   }
 
   // Lightweight counterpart to getAlert(), for a participant of any circle
@@ -464,10 +480,12 @@ export class AlertService {
     if (!alert) throw new NotFoundException('Alert not found');
 
     if (callerId === alert.userCompanionId) {
-      return this.prisma.alert.update({
+      const updated = await this.prisma.alert.update({
         where: { id: alertId },
         data: { statusByCompanion: dto.message },
       });
+      await this.notifyAlertParticipants(alertId);
+      return updated;
     }
 
     const link = await this.prisma.linkSentinels.findFirst({
@@ -483,7 +501,7 @@ export class AlertService {
       );
     }
 
-    return this.prisma.alert.update({
+    const updated = await this.prisma.alert.update({
       where: { id: alertId },
       data: {
         statusByFirstCircle: dto.message,
@@ -491,6 +509,8 @@ export class AlertService {
         statusUpdatedAt: new Date(),
       },
     });
+    await this.notifyAlertParticipants(alertId);
+    return updated;
   }
 
   // Alert.label is the alert's name — any accepted 1st-circle Sentinel can
@@ -517,7 +537,7 @@ export class AlertService {
       throw new ForbiddenException('Only the 1st circle can rename this alert');
     }
 
-    return this.prisma.alert.update({
+    const updated = await this.prisma.alert.update({
       where: { id: alertId },
       data: {
         label: dto.label,
@@ -525,6 +545,8 @@ export class AlertService {
         labelUpdatedAt: new Date(),
       },
     });
+    await this.notifyAlertParticipants(alertId);
+    return updated;
   }
 
   // SMS webhook fallback, called by SentinelService.handleInboundSms once its
@@ -548,6 +570,7 @@ export class AlertService {
 
     await this.recordResponse(participant.id, body.trim());
     await this.sms.send(phone, alertReplyAckSms());
+    await this.notifyAlertParticipants(participant.alertId);
 
     return {
       matched: true as const,
@@ -564,6 +587,28 @@ export class AlertService {
         answeredAt: new Date(),
       },
     });
+  }
+
+  // Pushes a live "this alert changed" ping to the companion and every
+  // Sentinel ever contacted on it (any circle) — whoever might have the
+  // alert open. The socket payload is just the alertId; clients refetch
+  // over the existing REST endpoints, so this never has to duplicate
+  // getAlert()'s authorization logic.
+  private async notifyAlertParticipants(alertId: string) {
+    const alert = await this.prisma.alert.findUnique({
+      where: { id: alertId },
+      select: {
+        userCompanionId: true,
+        participants: {
+          select: { userSentinels: { select: { userSentinelId: true } } },
+        },
+      },
+    });
+    if (!alert) return;
+    this.notifier.notifyAlertChanged(alert.userCompanionId, alertId);
+    for (const p of alert.participants) {
+      this.notifier.notifyAlertChanged(p.userSentinels.userSentinelId, alertId);
+    }
   }
 
   listMyAlerts(callerId: string) {

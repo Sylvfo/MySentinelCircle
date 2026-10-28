@@ -27,4 +27,11 @@ export class UpdateMembershipDto {
   @IsOptional()
   @IsEnum(MessagingMode)
   firstCircleMessagingMode?: MessagingMode;
+
+  // The permanent Me<->Sentinel channel (separate from the two settings
+  // above, which only govern alert-time reach) — null = inherit the
+  // circle's (then the companion's) setting.
+  @IsOptional()
+  @IsBoolean()
+  canMessageMe?: boolean;
 }

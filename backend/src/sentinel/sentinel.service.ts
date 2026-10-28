@@ -108,7 +108,15 @@ export class SentinelService {
   }
 
   async updateCircle(userId: string, circleId: string, dto: UpdateCircleDto) {
-    await this.ensureCircleOwned(userId, circleId);
+    const circle = await this.ensureCircleOwned(userId, circleId);
+    if (
+      dto.canMessageMe !== undefined &&
+      circle.circleType === CircleType.FIRST
+    ) {
+      throw new BadRequestException(
+        'The 1st circle is always reachable — canMessageMe can’t be overridden there',
+      );
+    }
     return this.prisma.circle.update({ where: { id: circleId }, data: dto });
   }
 
@@ -556,7 +564,8 @@ export class SentinelService {
     // — Sentinel SMS is always predefined-replies-only, regardless.
     if (
       (dto.canMessageOwnCircle !== undefined ||
-        dto.firstCircleMessagingMode !== undefined) &&
+        dto.firstCircleMessagingMode !== undefined ||
+        dto.canMessageMe !== undefined) &&
       link.linkAsSentinel.userType === UserType.ONLY_SMS
     ) {
       throw new BadRequestException(
@@ -575,6 +584,7 @@ export class SentinelService {
           dto.canMessageOwnCircle ?? link.canMessageOwnCircle,
         firstCircleMessagingMode:
           dto.firstCircleMessagingMode ?? link.firstCircleMessagingMode,
+        canMessageMe: dto.canMessageMe ?? link.canMessageMe,
       },
     });
   }
@@ -606,6 +616,40 @@ export class SentinelService {
       data: { status: LinkStatus.BLOCKED },
     });
     return { blocked: true };
+  }
+
+  // ---- Messaging permission (permanent Me<->Sentinel channel) ---------------
+
+  // Resolves whether the permanent Me<->Sentinel channel is open between
+  // these two — most specific non-null setting wins: LinkSentinels
+  // .canMessageMe > Circle.canMessageMe > User.allowMessagingByDefault.
+  // Direction-agnostic: whichever of the two is "Me" in the underlying
+  // LinkSentinels row drives the resolution. The 1st circle is always
+  // reachable, no override possible there. Not an accepted Sentinel of
+  // each other at all -> false. Separate from canMessageOwnCircle/
+  // firstCircleMessagingMode, which only govern alert-time reach.
+  async canSendDirectMessage(
+    userAId: string,
+    userBId: string,
+  ): Promise<boolean> {
+    const link = await this.prisma.linkSentinels.findFirst({
+      where: {
+        status: LinkStatus.ACCEPTED,
+        OR: [
+          { userCompanionId: userAId, userSentinelId: userBId },
+          { userCompanionId: userBId, userSentinelId: userAId },
+        ],
+      },
+      include: {
+        circle: { select: { circleType: true, canMessageMe: true } },
+        userCompanion: { select: { allowMessagingByDefault: true } },
+      },
+    });
+    if (!link) return false;
+    if (link.circle.circleType === CircleType.FIRST) return true;
+    if (link.canMessageMe !== null) return link.canMessageMe;
+    if (link.circle.canMessageMe !== null) return link.circle.canMessageMe;
+    return link.userCompanion.allowMessagingByDefault;
   }
 
   // ---- Internals ------------------------------------------------------------

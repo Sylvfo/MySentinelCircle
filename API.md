@@ -1,6 +1,6 @@
 # API
 
-Updated: 2026-10-26 16:49
+Updated: 2026-10-28 08:33
 
 Route-by-route reference, generated from `backend/src/*/*.controller.ts`. For the conceptual picture see `STACK_SCHEMA.md`; for entities/relations see `backend/prisma/DB_schema.md`.
 
@@ -41,7 +41,7 @@ Note: `GET /auth/me` doesn't exist on `AuthController` — the current-user prof
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/user/me` | JWT | Current user's profile. |
-| PATCH | `/user/me` | JWT | Update profile fields. |
+| PATCH | `/user/me` | JWT | Update profile fields, including `allowMessagingByDefault` — the companion-wide fallback for the permanent Me<->Sentinel channel (see `messaging`'s `GET /messaging/direct/:userId`), overridable per circle then per Sentinel. |
 | POST | `/user/me/avatar` | JWT | Upload a profile avatar (multipart, jpg/png/webp, 5MB max). |
 | POST | `/user/phone/request` | JWT, throttled | Request an OTP to add/verify a phone number on the account. |
 | POST | `/user/phone/verify` | JWT, throttled | Verify the OTP from `phone/request`, completing the account. |
@@ -61,7 +61,7 @@ Note: `GET /auth/me` doesn't exist on `AuthController` — the current-user prof
 |---|---|---|
 | POST | `/sentinel/circles` | Create a new ("other") circle. |
 | GET | `/sentinel/circles` | List my circles (1st circle first) with their Sentinels. |
-| PATCH | `/sentinel/circles/:id` | Update a circle I own (label). |
+| PATCH | `/sentinel/circles/:id` | Update a circle I own (label, and `canMessageMe` — the permanent Me<->Sentinel channel's per-circle override; rejected (400) on the 1st circle, which is always reachable). |
 | DELETE | `/sentinel/circles/:id` | Close a circle I own (not the 1st circle, must be empty). |
 | POST | `/sentinel/circles/:id/invite` | Invite someone by phone into one of my circles as a Sentinel. |
 | POST | `/sentinel/requests` | Request to become the Sentinel of the "Me" at a given phone number. |
@@ -72,7 +72,7 @@ Note: `GET /auth/me` doesn't exist on `AuthController` — the current-user prof
 | POST | `/sentinel/memberships/:id/leave` | Opt out of an active link, as the Sentinel. |
 | POST | `/sentinel/memberships/:id/circle-move/accept` | As the Sentinel, accept a proposed move into "Me"'s 1st circle. |
 | POST | `/sentinel/memberships/:id/circle-move/decline` | As the Sentinel, decline a proposed move into "Me"'s 1st circle. |
-| PATCH | `/sentinel/memberships/:id` | Update a membership I own — Sentinel type, Lead-slot request, messaging settings (`canMessageOwnCircle`/`firstCircleMessagingMode`), or move to another circle (moves into the 1st circle instead propose and require the Sentinel's consent). Only an `ACCEPTED` membership can be updated. |
+| PATCH | `/sentinel/memberships/:id` | Update a membership I own — Sentinel type, Lead-slot request, alert-time messaging settings (`canMessageOwnCircle`/`firstCircleMessagingMode`), the permanent Me<->Sentinel channel's per-individual override (`canMessageMe`, beats the circle's own setting), or move to another circle (moves into the 1st circle instead propose and require the Sentinel's consent). Messaging settings only apply to an account-holding Sentinel (400 otherwise). Only an `ACCEPTED` membership can be updated. |
 | DELETE | `/sentinel/memberships/:id` | Remove a Sentinel from one of my circles (marks `REMOVED`, never hard-deleted). |
 | POST | `/sentinel/memberships/:id/block` | "Me" only — permanently block a link (never reactivatable afterward), unlike decline/remove. |
 | GET | `/sentinel/companions` | Reverse view — the people I watch over as a Sentinel. |
@@ -107,11 +107,12 @@ Skeleton — no routes yet.
 
 ## `messaging`
 
-`@UseGuards(JwtAuthGuard)` at the controller level — every route requires a JWT. MVP slice only: send/list messages in an existing `Conversation` (currently only created by `alert`'s 1st-circle chat) — no conversation-creation route of its own yet, no WebSocket (clients poll `GET`). The companion is deliberately never a `ConversationParticipant` of the 1st-circle chat, so both routes below 403 them — they read the same message history read-only through `alert`'s `GET /alert/:id` instead (`conversations[].messages`).
+`@UseGuards(JwtAuthGuard)` at the controller level — every route requires a JWT. Two kinds of `Conversation`: the 1st-circle alert group chat (created by `alert`, see above) and the permanent Me<->Sentinel channel (created lazily here, on first open). No WebSocket, clients poll `GET`. The companion is deliberately never a `ConversationParticipant` of the 1st-circle chat, so both send/list routes below 403 them there — they read that history read-only through `alert`'s `GET /alert/:id` instead (`conversations[].messages`).
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/messaging/conversations/:id/messages` | Send a message — caller must be an active (non-left) participant of an open (non-closed) conversation. |
+| GET | `/messaging/direct/:userId` | The permanent Me<->Sentinel channel — finds the existing 1:1 `Conversation` with `:userId` (`alertId: null`) or creates it ("created lazily... only when the first message is sent", per `plan.txt`). Gated by `SentinelService.canSendDirectMessage()`: most specific non-null setting wins (`LinkSentinels.canMessageMe` > `Circle.canMessageMe` > `User.allowMessagingByDefault`), always allowed for the 1st circle regardless. Rejects (403) if not allowed, or (400) messaging yourself. |
+| POST | `/messaging/conversations/:id/messages` | Send a message — caller must be an active (non-left) participant of an open (non-closed) conversation. For a direct (`alertId: null`) conversation, also re-resolves `canSendDirectMessage()` on every send (not just at creation) — turning the setting off blocks new messages immediately, without deleting history. |
 | GET | `/messaging/conversations/:id/messages` | List a conversation's messages, oldest first — caller must be an active participant (conversation may be closed). |
 
 ## Regenerating this file

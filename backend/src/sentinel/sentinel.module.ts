@@ -8,5 +8,8 @@ import { SentinelSmsController } from './sentinel-sms.controller';
   imports: [AlertModule],
   providers: [SentinelService],
   controllers: [SentinelController, SentinelSmsController],
+  // MessagingService calls canSendDirectMessage() for the permanent
+  // Me<->Sentinel channel.
+  exports: [SentinelService],
 })
 export class SentinelModule {}

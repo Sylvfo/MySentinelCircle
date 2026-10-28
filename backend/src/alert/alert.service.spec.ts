@@ -18,6 +18,7 @@ import {
 import { AlertService } from './alert.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
+import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
 
 describe('AlertService', () => {
   let service: AlertService;
@@ -43,6 +44,7 @@ describe('AlertService', () => {
     $transaction: jest.Mock;
   };
   let sms: { send: jest.Mock };
+  let notifier: { notifyAlertChanged: jest.Mock; notifyNewMessage: jest.Mock };
 
   const circle = {
     id: 'circle-1',
@@ -94,12 +96,14 @@ describe('AlertService', () => {
       ),
     };
     sms = { send: jest.fn() };
+    notifier = { notifyAlertChanged: jest.fn(), notifyNewMessage: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AlertService,
         { provide: PrismaService, useValue: prisma },
         { provide: SMS_SENDER, useValue: sms },
+        { provide: REALTIME_NOTIFIER, useValue: notifier },
       ],
     }).compile();
 
@@ -127,6 +131,13 @@ describe('AlertService', () => {
         phone: '+41790000000',
       });
       prisma.alert.create.mockResolvedValueOnce({ id: 'alert-1' });
+      prisma.alert.findUnique.mockResolvedValueOnce({
+        userCompanionId: 'alice-id',
+        participants: [
+          { userSentinels: { userSentinelId: 'sentinel-1' } },
+          { userSentinels: { userSentinelId: 'sentinel-2' } },
+        ],
+      }); // notifyAlertParticipants
 
       const result = await service.raiseAlert('alice-id', {
         companionId: 'alice-id',
@@ -178,6 +189,18 @@ describe('AlertService', () => {
           },
         },
       });
+      expect(notifier.notifyAlertChanged).toHaveBeenCalledWith(
+        'alice-id',
+        'alert-1',
+      );
+      expect(notifier.notifyAlertChanged).toHaveBeenCalledWith(
+        'sentinel-1',
+        'alert-1',
+      );
+      expect(notifier.notifyAlertChanged).toHaveBeenCalledWith(
+        'sentinel-2',
+        'alert-1',
+      );
     });
 
     it('raises an alert when any accepted Sentinel raises it (not necessarily 1st-circle), and also notifies the companion', async () => {
@@ -396,6 +419,10 @@ describe('AlertService', () => {
     it('fans out to the chosen outer circle’s accepted Sentinels and activates the alert', async () => {
       prisma.alert.findUnique
         .mockResolvedValueOnce(alertRow()) // requestCircle's own lookup
+        .mockResolvedValueOnce({
+          userCompanionId: 'alice-id',
+          participants: [{ userSentinels: { userSentinelId: 'neighbor-1' } }],
+        }) // notifyAlertParticipants
         .mockResolvedValueOnce(alertRow()); // getAlert's final re-fetch
       prisma.circle.findFirst.mockResolvedValueOnce(outerCircle);
       prisma.linkSentinels.findMany.mockResolvedValueOnce([outerLink()]);
@@ -405,6 +432,15 @@ describe('AlertService', () => {
         circleId: 'outer-1',
         question: 'Est-elle chez vous ?',
       });
+
+      expect(notifier.notifyAlertChanged).toHaveBeenCalledWith(
+        'alice-id',
+        'alert-1',
+      );
+      expect(notifier.notifyAlertChanged).toHaveBeenCalledWith(
+        'neighbor-1',
+        'alert-1',
+      );
 
       expect(result).toEqual(alertRow());
       expect(prisma.linkSentinels.findFirst).not.toHaveBeenCalled(); // caller is the companion
@@ -448,6 +484,10 @@ describe('AlertService', () => {
     it('does not re-bump an already-ACTIVE alert’s activatedAt', async () => {
       prisma.alert.findUnique
         .mockResolvedValueOnce(alertRow({ alertStatus: AlertStatus.ACTIVE }))
+        .mockResolvedValueOnce({
+          userCompanionId: 'alice-id',
+          participants: [],
+        }) // notifyAlertParticipants
         .mockResolvedValueOnce(alertRow({ alertStatus: AlertStatus.ACTIVE }));
       prisma.circle.findFirst.mockResolvedValueOnce(outerCircle);
       prisma.linkSentinels.findMany.mockResolvedValueOnce([outerLink()]);
@@ -523,12 +563,16 @@ describe('AlertService', () => {
         status: AlertParticipantStatus.RESPONDED,
         response: 'OUI',
       });
+      prisma.alert.findUnique.mockResolvedValueOnce({
+        userCompanionId: 'alice-id',
+        participants: [{ userSentinels: { userSentinelId: 'sentinel-1' } }],
+      }); // notifyAlertParticipants's own lean select
 
-      // Deliberately NOT mocking prisma.alert.findUnique/linkSentinels.findFirst
-      // here: respond() must return the updated participant directly, never
-      // routing through getAlert() — the caller may be an outer-circle
-      // Sentinel, who getAlert()'s own "Me or 1st circle only" gate would
-      // otherwise reject right after their response was already recorded.
+      // Deliberately NOT mocking linkSentinels.findFirst here: respond()
+      // must return the updated participant directly, never routing
+      // through getAlert() — the caller may be an outer-circle Sentinel,
+      // who getAlert()'s own "Me or 1st circle only" gate would otherwise
+      // reject right after their response was already recorded.
       const result = await service.respond('sentinel-1', 'alert-1', {
         accepted: true,
       });
@@ -547,7 +591,23 @@ describe('AlertService', () => {
           response: 'OUI',
         }),
       });
-      expect(prisma.alert.findUnique).not.toHaveBeenCalled();
+      // Called exactly once, by notifyAlertParticipants's own lean select —
+      // never by getAlert()'s heavier include (which respond() must never
+      // route through).
+      expect(prisma.alert.findUnique).toHaveBeenCalledTimes(1);
+      expect(prisma.alert.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({ userCompanionId: true }),
+        }),
+      );
+      expect(notifier.notifyAlertChanged).toHaveBeenCalledWith(
+        'alice-id',
+        'alert-1',
+      );
+      expect(notifier.notifyAlertChanged).toHaveBeenCalledWith(
+        'sentinel-1',
+        'alert-1',
+      );
       expect(result).toEqual({
         id: 'participant-1',
         status: AlertParticipantStatus.RESPONDED,
@@ -777,17 +837,31 @@ describe('AlertService', () => {
   });
 
   describe('tryHandleInboundSms', () => {
-    it('records a matching reply and sends an acknowledgement', async () => {
+    it('records a matching reply, sends an acknowledgement, and pushes a live update', async () => {
       prisma.alertParticipant.findFirst.mockResolvedValueOnce({
         id: 'participant-1',
+        alertId: 'alert-1',
       });
       prisma.alertParticipant.update.mockResolvedValueOnce({
         id: 'participant-1',
       });
+      prisma.alert.findUnique.mockResolvedValueOnce({
+        userCompanionId: 'alice-id',
+        participants: [{ userSentinels: { userSentinelId: 'sentinel-1' } }],
+      }); // notifyAlertParticipants — SMS and in-app replies push alike
 
       const result = await service.tryHandleInboundSms(
         '+41793333333',
         'OUI je l’ai vue',
+      );
+
+      expect(notifier.notifyAlertChanged).toHaveBeenCalledWith(
+        'alice-id',
+        'alert-1',
+      );
+      expect(notifier.notifyAlertChanged).toHaveBeenCalledWith(
+        'sentinel-1',
+        'alert-1',
       );
 
       expect(prisma.alertParticipant.findFirst).toHaveBeenCalledWith({

@@ -10,6 +10,7 @@ import {
   listCircles,
   listIncomingRequests,
   removeMembership,
+  updateCircle,
   updateMembership,
   type Circle,
   type IncomingRequest,
@@ -176,6 +177,18 @@ function CircleCard({
     (m) => m.status === 'ACCEPTED' || m.status === 'PENDING',
   );
 
+  // null resolves to "allowed" (inherits the companion's default) unless
+  // explicitly set to false.
+  const circleCanMessage = circle.canMessageMe !== false;
+  const toggleCircleCanMessage = async () => {
+    try {
+      await updateCircle(circle.id, { canMessageMe: !circleCanMessage });
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
   return (
     <section className="panel">
       <div className="row">
@@ -183,11 +196,18 @@ function CircleCard({
           {circle.label}{' '}
           {isPrimary && <span className="badge status-accepted">{t('circles.firstCircle')}</span>}
         </h2>
-        {!isPrimary && (
-          <button className="ghost" onClick={del}>
-            {t('common.delete')}
-          </button>
-        )}
+        <span className="row-actions">
+          {!isPrimary && (
+            <button className="ghost" onClick={toggleCircleCanMessage}>
+              {circleCanMessage ? t('circles.blockMessaging') : t('circles.allowMessaging')}
+            </button>
+          )}
+          {!isPrimary && (
+            <button className="ghost" onClick={del}>
+              {t('common.delete')}
+            </button>
+          )}
+        </span>
       </div>
 
       <h3>{t('circles.members')}</h3>
@@ -257,6 +277,29 @@ function MemberRow({
     }
   };
 
+  // Permanent Me<->Sentinel channel — per-individual override (beats the
+  // circle's own setting). null resolves to "allowed" unless set false.
+  const memberCanMessage = m.canMessageMe !== false;
+  const toggleMemberCanMessage = async () => {
+    try {
+      await updateMembership(m.id, { canMessageMe: !memberCanMessage });
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
+  // Alert-time only: can this 1st-circle Sentinel join the live group chat
+  // once an alert is raised. Separate from canMessageMe above.
+  const toggleCanMessageOwnCircle = async () => {
+    try {
+      await updateMembership(m.id, { canMessageOwnCircle: !m.canMessageOwnCircle });
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
   const proposedCircleLabel = m.proposedCircleId
     ? circles.find((c) => c.id === m.proposedCircleId)?.label
     : null;
@@ -276,6 +319,16 @@ function MemberRow({
         {isPrimary && m.status === 'ACCEPTED' && (
           <button className="ghost" onClick={toggleLead}>
             {m.leadSlot ? t('circles.removeLead') : t('circles.makeLead')}
+          </button>
+        )}
+        {m.sentinelType !== 'ONLY_SMS' && m.status === 'ACCEPTED' && (
+          <button className="ghost" onClick={toggleMemberCanMessage}>
+            {memberCanMessage ? t('circles.blockMessaging') : t('circles.allowMessaging')}
+          </button>
+        )}
+        {isPrimary && m.sentinelType !== 'ONLY_SMS' && m.status === 'ACCEPTED' && (
+          <button className="ghost" onClick={toggleCanMessageOwnCircle}>
+            {m.canMessageOwnCircle ? t('circles.excludeFromAlertChat') : t('circles.includeInAlertChat')}
           </button>
         )}
         {otherCircles.length > 0 && (

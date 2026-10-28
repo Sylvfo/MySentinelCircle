@@ -113,6 +113,13 @@ export function SettingsPage() {
           onSaved={reload}
           onError={setError}
         />
+        <EditableToggle
+          label={t('settings.allowMessagingByDefault')}
+          value={me.allowMessagingByDefault}
+          onSave={(v) => updateProfile({ allowMessagingByDefault: v })}
+          onSaved={reload}
+          onError={setError}
+        />
         {me.phone ? (
           <div>
             <label>{t('settings.phone')}</label>

@@ -119,6 +119,7 @@ model User {
   pendingEmail             String?
   pendingEmailTokenHash    String?   @unique
   pendingEmailExpiresAt    DateTime?  
+  allowMessagingByDefault Boolean @default(true) // companion-wide fallback
 
   phone           String? @unique
   phoneVerifiedAt DateTime?
@@ -166,6 +167,7 @@ model Circle {
 
   groupChat    Boolean @default(false)
   canSendPhone Boolean @default(false)
+  canMessageMe Boolean? // null = inherit the companion's default; ignored/always-true for circleType FIRST
 
   userCompanionId String
   userCompanion   User   @relation("MyCirclesAsCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
@@ -185,6 +187,7 @@ model LinkSentinels {
 
   status      LinkStatus    @default(PENDING)
   initiatedBy LinkInitiator
+  canMessageMe Boolean? // null = inherit the circle's setting (which inherits the companion's default) — highest priority, most specific wins
 
   sentinelType    SentinelType @default(ONLY_SMS)
   requestedAsLead Boolean      @default(false)

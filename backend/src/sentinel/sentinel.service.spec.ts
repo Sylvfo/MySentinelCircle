@@ -344,6 +344,40 @@ describe('SentinelService', () => {
     });
   });
 
+  describe('updateCircle', () => {
+    it('updates the label and canMessageMe on a BASIC circle', async () => {
+      prisma.circle.findUnique.mockResolvedValueOnce({
+        id: 'work-1',
+        userCompanionId: 'me',
+        circleType: CircleType.BASIC,
+      });
+      prisma.circle.update.mockResolvedValueOnce({ id: 'work-1' });
+
+      await service.updateCircle('me', 'work-1', {
+        label: 'Travail',
+        canMessageMe: false,
+      });
+
+      expect(prisma.circle.update).toHaveBeenCalledWith({
+        where: { id: 'work-1' },
+        data: { label: 'Travail', canMessageMe: false },
+      });
+    });
+
+    it('rejects setting canMessageMe on the 1st circle — always reachable, no override', async () => {
+      prisma.circle.findUnique.mockResolvedValueOnce({
+        id: 'first-1',
+        userCompanionId: 'me',
+        circleType: CircleType.FIRST,
+      });
+
+      await expect(
+        service.updateCircle('me', 'first-1', { canMessageMe: false }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.circle.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('deleteCircle', () => {
     it('cannot delete the 1st circle', async () => {
       prisma.circle.findUnique.mockResolvedValueOnce({
@@ -639,6 +673,138 @@ describe('SentinelService', () => {
         } as any),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+    });
+
+    it('sets the per-individual canMessageMe override for an account-holding Sentinel', async () => {
+      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+        id: 'link-1',
+        status: LinkStatus.ACCEPTED,
+        circleId: 'work-1',
+        leadSlot: null,
+        requestedAsLead: false,
+        sentinelType: SentinelType.SENTINEL,
+        canMessageOwnCircle: true,
+        firstCircleMessagingMode: MessagingMode.NONE,
+        canMessageMe: null,
+        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
+        linkAsSentinel: { userType: UserType.ACCOUNT },
+      });
+      prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
+
+      await service.updateMembership('me', 'link-1', { canMessageMe: false });
+
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'link-1' },
+          data: expect.objectContaining({ canMessageMe: false }),
+        }),
+      );
+    });
+
+    it('rejects setting canMessageMe on a Sentinel SMS (no account)', async () => {
+      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+        id: 'link-1',
+        status: LinkStatus.ACCEPTED,
+        circleId: 'work-1',
+        leadSlot: null,
+        requestedAsLead: false,
+        sentinelType: SentinelType.ONLY_SMS,
+        canMessageOwnCircle: true,
+        firstCircleMessagingMode: MessagingMode.NONE,
+        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
+        linkAsSentinel: { userType: UserType.ONLY_SMS },
+      });
+
+      await expect(
+        service.updateMembership('me', 'link-1', {
+          canMessageMe: false,
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('canSendDirectMessage', () => {
+    const linkRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'link-1',
+      canMessageMe: null,
+      circle: { circleType: CircleType.BASIC, canMessageMe: null },
+      userCompanion: { allowMessagingByDefault: true },
+      ...overrides,
+    });
+
+    it('returns false when there is no accepted link between the two', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.canSendDirectMessage('me', 'sentinel-1');
+
+      expect(result).toBe(false);
+    });
+
+    it('is always true for the 1st circle, regardless of any setting', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
+        linkRow({
+          circle: { circleType: CircleType.FIRST, canMessageMe: null },
+          userCompanion: { allowMessagingByDefault: false },
+        }),
+      );
+
+      const result = await service.canSendDirectMessage('me', 'sentinel-1');
+
+      expect(result).toBe(true);
+    });
+
+    it('falls back to the companion-wide default when nothing more specific is set', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
+        linkRow({ userCompanion: { allowMessagingByDefault: false } }),
+      );
+
+      const result = await service.canSendDirectMessage('me', 'sentinel-1');
+
+      expect(result).toBe(false);
+    });
+
+    it('the circle setting overrides the companion-wide default', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
+        linkRow({
+          circle: { circleType: CircleType.BASIC, canMessageMe: true },
+          userCompanion: { allowMessagingByDefault: false },
+        }),
+      );
+
+      const result = await service.canSendDirectMessage('me', 'sentinel-1');
+
+      expect(result).toBe(true);
+    });
+
+    it('the per-individual setting overrides the circle setting', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
+        linkRow({
+          canMessageMe: false,
+          circle: { circleType: CircleType.BASIC, canMessageMe: true },
+        }),
+      );
+
+      const result = await service.canSendDirectMessage('me', 'sentinel-1');
+
+      expect(result).toBe(false);
+    });
+
+    it('resolves direction-agnostically — the caller can be the Sentinel side', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(linkRow());
+
+      await service.canSendDirectMessage('sentinel-1', 'me');
+
+      expect(prisma.linkSentinels.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: [
+              { userCompanionId: 'sentinel-1', userSentinelId: 'me' },
+              { userCompanionId: 'me', userSentinelId: 'sentinel-1' },
+            ],
+          }),
+        }),
+      );
     });
   });
 

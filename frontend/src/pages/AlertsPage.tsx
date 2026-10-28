@@ -26,7 +26,7 @@ const COMPANION_ALERT_TYPES: AlertType[] = ['LITTLEWORRY', 'MISSING', 'INCIDENT'
 
 export function AlertsPage() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, socket } = useAuth();
   const [alerts, setAlerts] = useState<AlertSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +43,15 @@ export function AlertsPage() {
   useEffect(() => {
     reload().finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+    socket.on('alert:changed', reload);
+    return () => {
+      socket.off('alert:changed', reload);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket]);
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
 
@@ -231,7 +240,7 @@ function AlertRow({ alert, onChange }: { alert: AlertSummary; onChange: () => Pr
 
 function AlertDetailPanel({ alertId }: { alertId: string }) {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, socket } = useAuth();
   const [detail, setDetail] = useState<AlertDetail | null>(null);
   // Set only when getAlert() 403s (e.g. an outer-circle Sentinel) but the
   // caller does have their own participation to show, as a lighter fallback.
@@ -280,6 +289,39 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
     loadDetail().finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alertId]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onAlertChanged = (payload: { alertId: string }) => {
+      if (payload.alertId === alertId) loadDetail();
+    };
+    socket.on('alert:changed', onAlertChanged);
+    return () => {
+      socket.off('alert:changed', onAlertChanged);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, alertId]);
+
+  // The alert's own embedded 1st-circle chat — a new message there doesn't
+  // change the alert itself, so it needs its own listener, separate from
+  // alert:changed above. Goes through loadDetail() rather than just
+  // reloadMessages(): the companion reads the transcript straight off
+  // `detail.conversations[0].messages` (they're never a chat participant,
+  // so listMessages() would 403 them), not off the `messages` state the
+  // Sentinel view below uses.
+  useEffect(() => {
+    if (!socket || !conversationId) return;
+    const onNewMessage = (payload: { conversationId: string }) => {
+      if (payload.conversationId === conversationId) {
+        loadDetail();
+      }
+    };
+    socket.on('message:new', onNewMessage);
+    return () => {
+      socket.off('message:new', onNewMessage);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, conversationId]);
 
   const submitMessage = async (e: FormEvent) => {
     e.preventDefault();

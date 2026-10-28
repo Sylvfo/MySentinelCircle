@@ -123,6 +123,10 @@
     "move": "Déplacer",
     "makeLead": "Désigner référent·e",
     "removeLead": "Retirer référent·e",
+    "blockMessaging": "Bloquer les messages",
+    "allowMessaging": "Autoriser les messages",
+    "excludeFromAlertChat": "Exclure du chat d'alerte",
+    "includeInAlertChat": "Inclure dans le chat d'alerte",
     "awaitingFirstCircleConsent": "En attente d'accord pour le 1er cercle"
   },
   "companions": {
@@ -217,8 +221,10 @@
   },
   "messages": {
     "title": "Messages",
-    "intro": "Conversations avec vos Sentinels et requêtes en attente.",
-    "empty": "Aucun message pour l'instant — le module Messaging n'est pas encore codé."
+    "intro": "Discutez avec vos sentinelles, ou avec les personnes que vous protégez.",
+    "empty": "Personne à qui écrire pour l'instant.",
+    "open": "Ouvrir",
+    "companionContext": "personne protégée"
   },
   "settings": {
     "title": "Paramètres",
@@ -229,6 +235,7 @@
     "addPhone": "Ajouter ton numéro de téléphone",
     "isMajor": "Je suis majeur·e",
     "publicStatus": "Statut public",
+    "allowMessagingByDefault": "Autoriser mes sentinelles à me contacter par défaut",
     "status": "Statut du compte",
     "userType": "Type de compte",
     "createdAt": "Créé le",
