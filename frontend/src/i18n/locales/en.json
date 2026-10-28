@@ -123,7 +123,16 @@
     "move": "Move",
     "makeLead": "Make Lead Sentinel",
     "removeLead": "Remove as Lead",
-    "awaitingFirstCircleConsent": "Awaiting acceptance for the 1st circle"
+    "blockMessaging": "Block messaging",
+    "allowMessaging": "Allow messaging",
+    "excludeFromAlertChat": "Exclude from alert chat",
+    "includeInAlertChat": "Include in alert chat",
+    "awaitingFirstCircleConsent": "Awaiting acceptance for the 1st circle",
+    "firstCircleMessagingMode": {
+      "label": "Chat with 1st circle during an alert",
+      "none": "Not allowed",
+      "individual": "Allowed"
+    }
   },
   "companions": {
     "title": "Companions",
@@ -212,13 +221,19 @@
       "labelPlaceholder": "E.g. Searching for Léa",
       "requestedBy": "requested by {{name}}",
       "updatedBy": "— {{name}}",
-      "messageHistoryTitle": "Message history (1st circle)"
+      "circleChat": {
+        "title": "Chat with the 1st circle",
+        "withSentinel": "Chat with {{name}}",
+        "firstCircleSender": "1st circle"
+      }
     }
   },
   "messages": {
     "title": "Messages",
-    "intro": "Conversations with your Sentinels and pending requests.",
-    "empty": "No message yet — the Messaging module isn't built yet."
+    "intro": "Chat with your Sentinels, or with the people you protect.",
+    "empty": "No one to message yet.",
+    "open": "Open",
+    "companionContext": "person you protect"
   },
   "settings": {
     "title": "Settings",
@@ -229,6 +244,7 @@
     "addPhone": "Add your phone number",
     "isMajor": "I am an adult",
     "publicStatus": "Public status",
+    "allowMessagingByDefault": "Let my Sentinels message me by default",
     "status": "Account status",
     "userType": "Account type",
     "createdAt": "Created on",

@@ -10,10 +10,12 @@ import {
   listCircles,
   listIncomingRequests,
   removeMembership,
+  updateCircle,
   updateMembership,
   type Circle,
   type IncomingRequest,
   type Membership,
+  type MessagingMode,
 } from '../api/sentinel';
 
 export function CirclesPage() {
@@ -176,6 +178,18 @@ function CircleCard({
     (m) => m.status === 'ACCEPTED' || m.status === 'PENDING',
   );
 
+  // null resolves to "allowed" (inherits the companion's default) unless
+  // explicitly set to false.
+  const circleCanMessage = circle.canMessageMe !== false;
+  const toggleCircleCanMessage = async () => {
+    try {
+      await updateCircle(circle.id, { canMessageMe: !circleCanMessage });
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
   return (
     <section className="panel">
       <div className="row">
@@ -183,11 +197,18 @@ function CircleCard({
           {circle.label}{' '}
           {isPrimary && <span className="badge status-accepted">{t('circles.firstCircle')}</span>}
         </h2>
-        {!isPrimary && (
-          <button className="ghost" onClick={del}>
-            {t('common.delete')}
-          </button>
-        )}
+        <span className="row-actions">
+          {!isPrimary && (
+            <button className="ghost" onClick={toggleCircleCanMessage}>
+              {circleCanMessage ? t('circles.blockMessaging') : t('circles.allowMessaging')}
+            </button>
+          )}
+          {!isPrimary && (
+            <button className="ghost" onClick={del}>
+              {t('common.delete')}
+            </button>
+          )}
+        </span>
       </div>
 
       <h3>{t('circles.members')}</h3>
@@ -257,6 +278,42 @@ function MemberRow({
     }
   };
 
+  // Permanent Me<->Sentinel channel — per-individual override (beats the
+  // circle's own setting). null resolves to "allowed" unless set false.
+  const memberCanMessage = m.canMessageMe !== false;
+  const toggleMemberCanMessage = async () => {
+    try {
+      await updateMembership(m.id, { canMessageMe: !memberCanMessage });
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
+  // Alert-time only: can this 1st-circle Sentinel join the live group chat
+  // once an alert is raised. Separate from canMessageMe above.
+  const toggleCanMessageOwnCircle = async () => {
+    try {
+      await updateMembership(m.id, { canMessageOwnCircle: !m.canMessageOwnCircle });
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
+  // Outer-circle Sentinels only: whether this Sentinel can later open an
+  // isolated chat with the 1st circle once solicited on an alert. Set any
+  // time, not alert-specific — whatever value it has when an alert next
+  // contacts this Sentinel is what gets frozen in for that alert.
+  const setFirstCircleMessagingMode = async (mode: MessagingMode) => {
+    try {
+      await updateMembership(m.id, { firstCircleMessagingMode: mode });
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
   const proposedCircleLabel = m.proposedCircleId
     ? circles.find((c) => c.id === m.proposedCircleId)?.label
     : null;
@@ -277,6 +334,34 @@ function MemberRow({
           <button className="ghost" onClick={toggleLead}>
             {m.leadSlot ? t('circles.removeLead') : t('circles.makeLead')}
           </button>
+        )}
+        {m.sentinelType !== 'ONLY_SMS' && m.status === 'ACCEPTED' && (
+          <button className="ghost" onClick={toggleMemberCanMessage}>
+            {memberCanMessage ? t('circles.blockMessaging') : t('circles.allowMessaging')}
+          </button>
+        )}
+        {isPrimary && m.sentinelType !== 'ONLY_SMS' && m.status === 'ACCEPTED' && (
+          <button className="ghost" onClick={toggleCanMessageOwnCircle}>
+            {m.canMessageOwnCircle ? t('circles.excludeFromAlertChat') : t('circles.includeInAlertChat')}
+          </button>
+        )}
+        {/* GROUP exists in the schema but isn't exposed here yet — it
+            currently behaves identically to INDIVIDUAL (same isolated
+            chat), so a 3rd option would just be a misleading duplicate
+            until it actually means something different. */}
+        {!isPrimary && m.sentinelType !== 'ONLY_SMS' && m.status === 'ACCEPTED' && (
+          <label className="row" style={{ gap: '0.3rem' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              {t('circles.firstCircleMessagingMode.label')}
+            </span>
+            <select
+              value={m.firstCircleMessagingMode === 'NONE' ? 'NONE' : 'INDIVIDUAL'}
+              onChange={(e) => setFirstCircleMessagingMode(e.target.value as MessagingMode)}
+            >
+              <option value="NONE">{t('circles.firstCircleMessagingMode.none')}</option>
+              <option value="INDIVIDUAL">{t('circles.firstCircleMessagingMode.individual')}</option>
+            </select>
+          </label>
         )}
         {otherCircles.length > 0 && (
           <>

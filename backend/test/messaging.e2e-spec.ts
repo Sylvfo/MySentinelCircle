@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 import request from 'supertest';
-import { App } from 'supertest/types';
 import { AlertType, CircleType } from '@prisma/client';
 import { AppModule } from './../src/app.module';
 import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
@@ -34,12 +35,13 @@ interface AlertDetailBody extends AlertBody {
 interface MessageBody {
   id: string;
   body: string;
+  type: string;
   senderId: string;
   conversationId: string;
 }
 
 describe('Messaging (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
   let sentOtps: { phone: string; code: string }[];
   let sentSms: { phone: string; body: string }[];
 
@@ -68,10 +70,15 @@ describe('Messaging (e2e)', () => {
       })
       .compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
     );
+    // Mirrors main.ts's bootstrap() — e2e specs build their own app instance
+    // and don't call bootstrap(), so this needs repeating here for the
+    // image-message route's GET /uploads/messages/:filename to be servable
+    // in the test environment the same way it is in the real app.
+    app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
     await app.init();
   });
 
@@ -218,6 +225,238 @@ describe('Messaging (e2e)', () => {
         .set('Authorization', auth(sentinel.accessToken))
         .expect(200);
       expect(listRes.body as MessageBody[]).toHaveLength(1);
+    });
+  });
+
+  describe('POST /messaging/conversations/:id/messages/image', () => {
+    it('uploads an image, creates an IMAGE message, and serves the file back under /uploads/messages/', async () => {
+      const { sentinel, conversationId } = await buildAlertWithConversation();
+
+      const uploadRes = await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages/image`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .attach('image', Buffer.from('fake-jpeg-bytes'), 'photo.jpg')
+        .expect(201);
+      const message = uploadRes.body as MessageBody;
+      expect(message.type).toBe('IMAGE');
+      expect(message.senderId).toBe(sentinel.userId);
+      expect(message.body).toMatch(/\.jpg$/);
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .expect(200);
+      expect(listRes.body as MessageBody[]).toHaveLength(1);
+
+      await request(app.getHttpServer())
+        .get(`/uploads/messages/${message.body}`)
+        .expect(200)
+        .expect('Content-Type', /image\/jpeg/);
+    });
+
+    it('rejects a non-image file', async () => {
+      const { sentinel, conversationId } = await buildAlertWithConversation();
+
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages/image`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .attach('image', Buffer.from('not an image'), 'notes.txt')
+        .expect(400);
+    });
+
+    it('rejects the companion — not a participant of the 1st-circle chat by design', async () => {
+      const { companion, conversationId } = await buildAlertWithConversation();
+
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages/image`)
+        .set('Authorization', auth(companion.accessToken))
+        .attach('image', Buffer.from('fake-jpeg-bytes'), 'photo.jpg')
+        .expect(403);
+    });
+  });
+
+  describe('GET /messaging/direct/:userId', () => {
+    interface ConversationBody {
+      id: string;
+      closedAt: string | null;
+    }
+
+    // Companion + one accepted outer-circle (not 1st) Sentinel.
+    async function buildOuterCircleLink() {
+      const companion = await signupAccount('Lea');
+      const sentinel = await signupAccount('Bob');
+      const circleRes = await request(app.getHttpServer())
+        .post('/sentinel/circles')
+        .set('Authorization', auth(companion.accessToken))
+        .send({ label: 'Voisins' })
+        .expect(201);
+      const circle = circleRes.body as CircleBody;
+      const inviteRes = await request(app.getHttpServer())
+        .post(`/sentinel/circles/${circle.id}/invite`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ phone: sentinel.phone, name: 'Bob' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/sentinel/memberships/${(inviteRes.body as LinkBody).id}/accept`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .send({})
+        .expect(201);
+      return {
+        companion,
+        sentinel,
+        circle,
+        linkId: (inviteRes.body as LinkBody).id,
+      };
+    }
+
+    it('lazily creates the direct conversation on first open, by default (no settings touched)', async () => {
+      const { companion, sentinel } = await buildOuterCircleLink();
+
+      const res = await request(app.getHttpServer())
+        .get(`/messaging/direct/${sentinel.userId}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      const conv = res.body as ConversationBody;
+      expect(conv.closedAt).toBeNull();
+
+      // Same conversation returned on a second open — not duplicated.
+      const res2 = await request(app.getHttpServer())
+        .get(`/messaging/direct/${sentinel.userId}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      expect((res2.body as ConversationBody).id).toBe(conv.id);
+
+      // Either side can send/read — it's a normal Conversation from here.
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conv.id}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .send({ body: 'Bien reçu' })
+        .expect(201);
+      const listRes = await request(app.getHttpServer())
+        .get(`/messaging/conversations/${conv.id}/messages`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      expect(listRes.body as MessageBody[]).toHaveLength(1);
+    });
+
+    it('is always open for a 1st-circle Sentinel, even with allowMessagingByDefault off', async () => {
+      const companion = await signupAccount('Ada');
+      const sentinel = await signupAccount('Lead');
+      const circlesRes = await request(app.getHttpServer())
+        .get('/sentinel/circles')
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      const firstCircle = (circlesRes.body as CircleBody[]).find(
+        (c) => c.circleType === CircleType.FIRST,
+      )!;
+      const inviteRes = await request(app.getHttpServer())
+        .post(`/sentinel/circles/${firstCircle.id}/invite`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ phone: sentinel.phone, name: 'Lead' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/sentinel/memberships/${(inviteRes.body as LinkBody).id}/accept`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .send({})
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch('/user/me')
+        .set('Authorization', auth(companion.accessToken))
+        .send({ allowMessagingByDefault: false })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`/messaging/direct/${sentinel.userId}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+    });
+
+    it('a circle-level restriction blocks it, and a per-individual override beats the circle', async () => {
+      const { companion, sentinel, circle, linkId } =
+        await buildOuterCircleLink();
+
+      await request(app.getHttpServer())
+        .patch(`/sentinel/circles/${circle.id}`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ canMessageMe: false })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`/messaging/direct/${sentinel.userId}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(403);
+
+      // Per-individual override beats the circle's restriction.
+      await request(app.getHttpServer())
+        .patch(`/sentinel/memberships/${linkId}`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ canMessageMe: true })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`/messaging/direct/${sentinel.userId}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+    });
+
+    it('rejects canMessageMe on the 1st circle — always reachable, no override', async () => {
+      const companion = await signupAccount('Ada');
+      const circlesRes = await request(app.getHttpServer())
+        .get('/sentinel/circles')
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      const firstCircle = (circlesRes.body as CircleBody[]).find(
+        (c) => c.circleType === CircleType.FIRST,
+      )!;
+
+      await request(app.getHttpServer())
+        .patch(`/sentinel/circles/${firstCircle.id}`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ canMessageMe: false })
+        .expect(400);
+    });
+
+    it('turning messaging off after a conversation exists blocks further sends, but reading its history still works', async () => {
+      const { companion, sentinel } = await buildOuterCircleLink();
+      const convRes = await request(app.getHttpServer())
+        .get(`/messaging/direct/${sentinel.userId}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      const conversationId = (convRes.body as ConversationBody).id;
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .send({ body: 'Avant blocage' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch('/user/me')
+        .set('Authorization', auth(companion.accessToken))
+        .send({ allowMessagingByDefault: false })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .send({ body: 'Apres blocage' })
+        .expect(403);
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .expect(200);
+      expect(listRes.body as MessageBody[]).toHaveLength(1);
+    });
+
+    it('rejects when there is no accepted link between the two at all', async () => {
+      const companion = await signupAccount('Ada');
+      const stranger = await signupAccount('Eve');
+
+      await request(app.getHttpServer())
+        .get(`/messaging/direct/${stranger.userId}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(403);
     });
   });
 });

@@ -45,6 +45,10 @@ export interface AlertDetail extends AlertSummary {
   conversations: {
     id: string;
     closedAt: string | null;
+    // Which Sentinels are in this conversation — tells the main 1st-circle
+    // chat apart from an isolated outer-circle-Sentinel chat (the latter
+    // has one participant outside the 1st circle).
+    participants: { user: { id: string; firstName: string } }[];
     // Embedded so the companion (not a ConversationParticipant, by design)
     // can still read the full history as part of the alert detail.
     messages: { id: string; body: string; createdAt: string; sender: { id: string; firstName: string } }[];
@@ -76,6 +80,9 @@ export interface MyParticipation {
   response: string | null;
   circleName: string;
   isLead: boolean;
+  // Whether this link is authorized to chat with the 1st circle during an
+  // alert (NONE = not authorized, the default).
+  firstCircleMessagingModeAtAlert: 'NONE' | 'INDIVIDUAL' | 'GROUP' | null;
   alert: {
     id: string;
     alertStatus: AlertStatus;
@@ -90,6 +97,13 @@ export interface MyParticipation {
 // Lightweight counterpart to getAlert() — reachable by a participant of any
 // circle, not just the 1st (getAlert() itself 403s an outer-circle Sentinel).
 export const getMyParticipation = (id: string) => apiGet<MyParticipation>(`/alert/${id}/my-participation`);
+
+// Lazily opens (or returns the existing) isolated chat between the calling
+// outer-circle Sentinel and the 1st circle — own conversation per
+// requester, not shared. 403s unless firstCircleMessagingModeAtAlert is
+// authorized.
+export const requestCircleChat = (id: string) =>
+  apiGet<{ id: string; closedAt: string | null }>(`/alert/${id}/circle-chat`);
 
 // Two separate live status notes, not one shared field — the companion
 // writes statusByCompanion, any accepted 1st-circle Sentinel writes

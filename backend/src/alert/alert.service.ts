@@ -13,10 +13,13 @@ import {
   CircleStatus,
   CircleType,
   LinkStatus,
+  MessagingMode,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
+import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
+import type { RealtimeNotifier } from '../realtime/realtime-notifier.interface';
 import {
   alertCircleRequestSms,
   alertClosedSms,
@@ -47,6 +50,7 @@ export class AlertService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
+    @Inject(REALTIME_NOTIFIER) private readonly notifier: RealtimeNotifier,
   ) {}
 
   async raiseAlert(callerId: string, dto: CreateAlertDto) {
@@ -120,12 +124,17 @@ export class AlertService {
 
       // The 1st circle's own group chat, scoped to this alert — its
       // Sentinels only (not the companion, who's notified directly instead;
-      // see plan.txt §4 "Messagerie Me <-> Sentinels").
+      // see plan.txt §4 "Messagerie Me <-> Sentinels"), and only those whose
+      // link has canMessageOwnCircle — a Sentinel excluded this way still
+      // gets an AlertParticipant row and the SMS notification above, just
+      // not a seat in the live chat.
       await tx.conversation.create({
         data: {
           alertId: created.id,
           participants: {
-            create: links.map((link) => ({ userId: link.linkAsSentinel.id })),
+            create: links
+              .filter((link) => link.canMessageOwnCircle)
+              .map((link) => ({ userId: link.linkAsSentinel.id })),
           },
         },
       });
@@ -152,6 +161,7 @@ export class AlertService {
       );
     }
 
+    await this.notifyAlertParticipants(alert.id);
     return alert;
   }
 
@@ -215,6 +225,7 @@ export class AlertService {
       );
     }
 
+    await this.notifyAlertParticipants(alertId);
     return updatedAlert;
   }
 
@@ -255,8 +266,11 @@ export class AlertService {
             requestedBy: { select: { id: true, firstName: true } },
           },
         },
-        // So a client can find the 1st-circle chat's conversationId to call
-        // the `messaging` endpoints — the only conversation created so far.
+        // So a client can find each conversation tied to this alert — the
+        // main 1st-circle chat, plus one per outer-circle Sentinel who's
+        // opened an isolated chat (getOrCreateCircleChat). `participants`
+        // lets the caller tell them apart (any participant outside the
+        // 1st circle marks it as an isolated chat, not the main one).
         // Messages are embedded here too so the companion (who isn't a
         // ConversationParticipant, by design) can still read the full
         // history as part of the alert detail, without being able to send.
@@ -264,6 +278,9 @@ export class AlertService {
           select: {
             id: true,
             closedAt: true,
+            participants: {
+              select: { user: { select: { id: true, firstName: true } } },
+            },
             messages: {
               orderBy: { createdAt: 'asc' },
               select: {
@@ -390,7 +407,74 @@ export class AlertService {
       alertCircleRequestSms(companion?.firstName ?? 'Un proche', dto.question),
     );
 
+    await this.notifyAlertParticipants(alertId);
     return this.getAlert(callerId, alertId);
+  }
+
+  // An account-holding outer-circle Sentinel, authorized via their
+  // AlertParticipant's frozen firstCircleMessagingModeAtAlert (not NONE),
+  // can request an isolated chat with the 1st circle during an active
+  // alert — their own Conversation, not shared with any other requester.
+  // Lazily created, like getOrCreateDirectConversation; re-requesting
+  // just returns the existing one. Closes automatically with the alert,
+  // same conversation.updateMany({ where: { alertId } }) as the main chat.
+  async getOrCreateCircleChat(callerId: string, alertId: string) {
+    const alert = await this.prisma.alert.findUnique({
+      where: { id: alertId },
+    });
+    if (!alert) throw new NotFoundException('Alert not found');
+    if (alert.alertStatus === AlertStatus.RESOLVED) {
+      throw new ConflictException('This alert is already closed');
+    }
+
+    const participant = await this.prisma.alertParticipant.findFirst({
+      where: { alertId, userSentinels: { userSentinelId: callerId } },
+    });
+    if (!participant) {
+      throw new ForbiddenException('You have no participation on this alert');
+    }
+    if (participant.circleId === alert.firstCircleId) {
+      throw new ForbiddenException(
+        'The 1st circle already has its own chat for this alert',
+      );
+    }
+    if (
+      !participant.firstCircleMessagingModeAtAlert ||
+      participant.firstCircleMessagingModeAtAlert === MessagingMode.NONE
+    ) {
+      throw new ForbiddenException(
+        'Not authorized to chat with the 1st circle',
+      );
+    }
+
+    const existing = await this.prisma.conversation.findFirst({
+      where: {
+        alertId,
+        participants: { some: { userId: callerId, leftAt: null } },
+      },
+      select: { id: true, closedAt: true },
+    });
+    if (existing) return existing;
+
+    const firstCircleRoster = await this.prisma.alertParticipant.findMany({
+      where: { alertId, circleId: alert.firstCircleId },
+      select: { userSentinels: { select: { userSentinelId: true } } },
+    });
+
+    return this.prisma.conversation.create({
+      data: {
+        alertId,
+        participants: {
+          create: [
+            { userId: callerId },
+            ...firstCircleRoster.map((p) => ({
+              userId: p.userSentinels.userSentinelId,
+            })),
+          ],
+        },
+      },
+      select: { id: true, closedAt: true },
+    });
   }
 
   // In-app alternative to an SMS OUI/NON reply, for any account-holding
@@ -410,7 +494,12 @@ export class AlertService {
       throw new ForbiddenException('No pending request for you on this alert');
     }
 
-    return this.recordResponse(participant.id, dto.accepted ? 'OUI' : 'NON');
+    const updated = await this.recordResponse(
+      participant.id,
+      dto.accepted ? 'OUI' : 'NON',
+    );
+    await this.notifyAlertParticipants(alertId);
+    return updated;
   }
 
   // Lightweight counterpart to getAlert(), for a participant of any circle
@@ -464,10 +553,12 @@ export class AlertService {
     if (!alert) throw new NotFoundException('Alert not found');
 
     if (callerId === alert.userCompanionId) {
-      return this.prisma.alert.update({
+      const updated = await this.prisma.alert.update({
         where: { id: alertId },
         data: { statusByCompanion: dto.message },
       });
+      await this.notifyAlertParticipants(alertId);
+      return updated;
     }
 
     const link = await this.prisma.linkSentinels.findFirst({
@@ -483,7 +574,7 @@ export class AlertService {
       );
     }
 
-    return this.prisma.alert.update({
+    const updated = await this.prisma.alert.update({
       where: { id: alertId },
       data: {
         statusByFirstCircle: dto.message,
@@ -491,6 +582,8 @@ export class AlertService {
         statusUpdatedAt: new Date(),
       },
     });
+    await this.notifyAlertParticipants(alertId);
+    return updated;
   }
 
   // Alert.label is the alert's name — any accepted 1st-circle Sentinel can
@@ -517,7 +610,7 @@ export class AlertService {
       throw new ForbiddenException('Only the 1st circle can rename this alert');
     }
 
-    return this.prisma.alert.update({
+    const updated = await this.prisma.alert.update({
       where: { id: alertId },
       data: {
         label: dto.label,
@@ -525,6 +618,8 @@ export class AlertService {
         labelUpdatedAt: new Date(),
       },
     });
+    await this.notifyAlertParticipants(alertId);
+    return updated;
   }
 
   // SMS webhook fallback, called by SentinelService.handleInboundSms once its
@@ -548,6 +643,7 @@ export class AlertService {
 
     await this.recordResponse(participant.id, body.trim());
     await this.sms.send(phone, alertReplyAckSms());
+    await this.notifyAlertParticipants(participant.alertId);
 
     return {
       matched: true as const,
@@ -564,6 +660,28 @@ export class AlertService {
         answeredAt: new Date(),
       },
     });
+  }
+
+  // Pushes a live "this alert changed" ping to the companion and every
+  // Sentinel ever contacted on it (any circle) — whoever might have the
+  // alert open. The socket payload is just the alertId; clients refetch
+  // over the existing REST endpoints, so this never has to duplicate
+  // getAlert()'s authorization logic.
+  private async notifyAlertParticipants(alertId: string) {
+    const alert = await this.prisma.alert.findUnique({
+      where: { id: alertId },
+      select: {
+        userCompanionId: true,
+        participants: {
+          select: { userSentinels: { select: { userSentinelId: true } } },
+        },
+      },
+    });
+    if (!alert) return;
+    this.notifier.notifyAlertChanged(alert.userCompanionId, alertId);
+    for (const p of alert.participants) {
+      this.notifier.notifyAlertChanged(p.userSentinels.userSentinelId, alertId);
+    }
   }
 
   listMyAlerts(callerId: string) {
