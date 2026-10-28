@@ -103,7 +103,7 @@ export function MessagesPage() {
   };
 
   useEffect(() => {
-    loadAll();
+    void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -115,7 +115,7 @@ export function MessagesPage() {
       // reload here, that would just double the request count for nothing.
       const openConvId = selectedRef.current && convMapRef.current.get(selectedRef.current.userId);
       if (openConvId === payload.conversationId) return;
-      refreshConversations();
+      void refreshConversations();
     };
     socket.on('message:new', onNewMessage);
     return () => {
@@ -200,7 +200,7 @@ function ChatPanel({
     if (!socket || !conversationId) return;
     const onNewMessage = (payload: { conversationId: string }) => {
       if (payload.conversationId === conversationId) {
-        reloadMessages(conversationId);
+        void reloadMessages(conversationId);
       }
     };
     socket.on('message:new', onNewMessage);

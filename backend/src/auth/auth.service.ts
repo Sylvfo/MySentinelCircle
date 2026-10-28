@@ -10,7 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, randomInt, createHash } from 'crypto';
 import { User, UserType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OTP_SENDER } from './otp/otp-sender.interface';
@@ -322,7 +322,7 @@ export class AuthService {
   }
 
   private async sendOtp(userId: string, phone: string) {
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(randomInt(100000, 1000000));
     const otpCodeHash = await bcrypt.hash(code, 10);
     await this.prisma.user.update({
       where: { id: userId },

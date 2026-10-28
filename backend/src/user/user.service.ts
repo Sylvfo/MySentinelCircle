@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, randomInt, createHash } from 'crypto';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { UserType, UserStatus } from '@prisma/client';
@@ -141,7 +141,7 @@ export class UserService {
       ]);
     }
 
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(randomInt(100000, 1000000));
     const otpCodeHash = await bcrypt.hash(code, 10);
     await this.prisma.user.update({
       where: { id: userId },
@@ -245,7 +245,7 @@ export class UserService {
 
   async stepUpCodeRequest(userId: string, dto: StepUpCodeRequestDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(randomInt(100000, 1000000));
     const otpCodeHash = await bcrypt.hash(code, 10);
 
     if (dto.channel === 'phone') {

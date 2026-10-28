@@ -42,7 +42,7 @@ export function AlertsPage() {
   };
 
   useEffect(() => {
-    reload().finally(() => setLoading(false));
+    void reload().finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -270,14 +270,14 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
   };
 
   useEffect(() => {
-    loadDetail().finally(() => setLoading(false));
+    void loadDetail().finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alertId]);
 
   useEffect(() => {
     if (!socket) return;
     const onAlertChanged = (payload: { alertId: string }) => {
-      if (payload.alertId === alertId) loadDetail();
+      if (payload.alertId === alertId) void loadDetail();
     };
     socket.on('alert:changed', onAlertChanged);
     return () => {
@@ -306,7 +306,7 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
     if (!socket) return;
     const onNewMessage = (payload: { conversationId: string }) => {
       if (detailRef.current?.conversations.some((c) => c.id === payload.conversationId)) {
-        loadDetail();
+        void loadDetail();
       }
     };
     socket.on('message:new', onNewMessage);
@@ -495,14 +495,14 @@ function ConversationThread({
 
   useEffect(() => {
     setLoading(true);
-    reload().finally(() => setLoading(false));
+    void reload().finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   useEffect(() => {
     if (!socket) return;
     const onNewMessage = (payload: { conversationId: string }) => {
-      if (payload.conversationId === conversationId) reload();
+      if (payload.conversationId === conversationId) void reload();
     };
     socket.on('message:new', onNewMessage);
     return () => {

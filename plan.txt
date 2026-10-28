@@ -526,6 +526,14 @@ caller-side changes needed once that happens):
   `ConsoleSmsSenderService` only, logs to the backend console instead of
   sending it. Needs a real operator/provider (Twilio likely default, see
   TECH STACK) behind `SmsSender`/`SMS_SENDER`.
+- SMS inbound webhook (`POST /sentinel/sms/inbound`,
+  `sentinel-sms.controller.ts`) — currently trusts the caller-supplied
+  `from` with no verification; fine against NoSMSNow in dev, but wiring in
+  a real provider does NOT close this on its own (the URL stays a public
+  endpoint anyone can POST to directly). Must add that provider's request
+  signature check (e.g. Twilio's `X-Twilio-Signature`) before going live —
+  otherwise anyone who knows/guesses a Sentinel's phone number can forge a
+  reply, including falsely confirming/declining an active alert.
 
 STATUS
 ------
