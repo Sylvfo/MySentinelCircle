@@ -79,6 +79,8 @@ interface AlertDetailBody extends AlertBody {
   }[];
 }
 
+const byString = (a: string, b: string) => a.localeCompare(b);
+
 describe('Alert (e2e)', () => {
   let app: INestApplication<App>;
   let sentOtps: { phone: string; code: string }[];
@@ -245,8 +247,8 @@ describe('Alert (e2e)', () => {
 
       // One SMS per 1st-circle Sentinel, none to the companion (they raised it themself).
       expect(sentSms).toHaveLength(2);
-      expect(sentSms.map((s) => s.phone).sort()).toEqual(
-        sentinels.map((s) => s.phone).sort(),
+      expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
+        sentinels.map((s) => s.phone).sort(byString),
       );
 
       const detailRes = await request(app.getHttpServer())
@@ -255,10 +257,11 @@ describe('Alert (e2e)', () => {
         .expect(200);
       const detail = detailRes.body as AlertDetailBody;
       expect(detail.participants).toHaveLength(2);
-      expect(detail.participants.map((p) => p.isLead).sort()).toEqual([
-        false,
-        true,
-      ]);
+      expect(
+        detail.participants
+          .map((p) => p.isLead)
+          .sort((a, b) => Number(a) - Number(b)),
+      ).toEqual([false, true]);
       expect(detail.conversations).toHaveLength(1);
       expect(detail.conversations[0].closedAt).toBeNull();
     });
@@ -280,8 +283,8 @@ describe('Alert (e2e)', () => {
 
       // The circle + the companion.
       expect(sentSms).toHaveLength(2);
-      expect(sentSms.map((s) => s.phone).sort()).toEqual(
-        [sentinels[0].phone, companion.phone].sort(),
+      expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
+        [sentinels[0].phone, companion.phone].sort(byString),
       );
     });
 
@@ -320,8 +323,8 @@ describe('Alert (e2e)', () => {
       expect((res.body as AlertBody).launchedById).toBe(outerSentinel.userId);
 
       // Notifies the 1st circle (not the "Travail" circle itself) + the companion.
-      expect(sentSms.map((s) => s.phone).sort()).toEqual(
-        [sentinels[0].phone, companion.phone].sort(),
+      expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
+        [sentinels[0].phone, companion.phone].sort(byString),
       );
     });
 
@@ -419,8 +422,8 @@ describe('Alert (e2e)', () => {
 
       // Still notified by SMS and tracked as a participant either way.
       expect(sentSms).toHaveLength(2);
-      expect(sentSms.map((s) => s.phone).sort()).toEqual(
-        sentinels.map((s) => s.phone).sort(),
+      expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
+        sentinels.map((s) => s.phone).sort(byString),
       );
       const detailRes = await request(app.getHttpServer())
         .get(`/alert/${alert.id}`)
@@ -585,8 +588,8 @@ describe('Alert (e2e)', () => {
       const detail = detailRes.body as AlertDetailBody;
 
       expect(detail.alertStatus).toBe(AlertStatus.ACTIVE);
-      expect(sentSms.map((s) => s.phone).sort()).toEqual(
-        outerSentinels.map((s) => s.phone).sort(),
+      expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
+        outerSentinels.map((s) => s.phone).sort(byString),
       );
       const outerParticipants = detail.participants.filter(
         (p) => p.circleId === outerCircle.id,

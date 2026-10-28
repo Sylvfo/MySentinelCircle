@@ -33,7 +33,7 @@ export function SettingsPage() {
   };
 
   useEffect(() => {
-    reload().finally(() => setLoading(false));
+    void reload().finally(() => setLoading(false));
   }, []);
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
@@ -82,7 +82,7 @@ export function SettingsPage() {
           <ChangePhoneFlow
             me={me}
             onChange={() => {
-              reload();
+              void reload();
               setShowPhoneModal(false);
             }}
             onError={setError}

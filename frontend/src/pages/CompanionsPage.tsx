@@ -33,7 +33,7 @@ export function CompanionsPage() {
   };
 
   useEffect(() => {
-    reload().finally(() => setLoading(false));
+    void reload().finally(() => setLoading(false));
   }, []);
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
@@ -76,7 +76,7 @@ export function CompanionsPage() {
                 <button
                   className="ghost"
                   onClick={() => {
-                    if (window.confirm(t('companions.confirmLeave'))) leaveMembership(c.linkId).then(reload);
+                    if (window.confirm(t('companions.confirmLeave'))) void leaveMembership(c.linkId).then(reload);
                   }}
                 >
                   {t('companions.leave')}

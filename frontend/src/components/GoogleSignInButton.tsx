@@ -20,7 +20,7 @@ export function GoogleSignInButton({ onCredential, fallbackLabel }: GoogleSignIn
     if (!clientId) return;
     let cancelled = false;
 
-    loadGoogleIdentityScript().then(() => {
+    void loadGoogleIdentityScript().then(() => {
       if (cancelled || !ref.current || !window.google) return;
       window.google.accounts.id.initialize({
         client_id: clientId,
