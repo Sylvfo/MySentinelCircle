@@ -57,6 +57,17 @@ export interface AlertDetail extends AlertSummary {
     // can still read the full history as part of the alert detail.
     messages: { id: string; body: string; createdAt: string; sender: { id: string; firstName: string } }[];
   }[];
+  // Chronological view of everything that's happened on this alert,
+  // assembled server-side from the same data as `participants` above —
+  // same companion/1st-circle-only visibility as the rest of AlertDetail.
+  timeline: TimelineEvent[];
+}
+
+export interface TimelineEvent {
+  type: 'ALERT_RAISED' | 'CONTACTED' | 'RESPONDED' | 'LEAD_CLAIMED' | 'ALERT_CLOSED';
+  at: string;
+  actorLabel: string;
+  detail?: string;
 }
 
 // Not the bare /alert root — nginx's reverse-proxy requires a trailing path

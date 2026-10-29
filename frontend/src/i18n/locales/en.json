@@ -108,6 +108,7 @@
     "confirmDelete": "Delete this circle?",
     "members": "Sentinels",
     "noMembers": "No Sentinel in this circle.",
+    "largeCircleWarning": "This circle already has {{count}} people — that's a lot. You can still add more if you want.",
     "invite": "Invite a Sentinel",
     "invitePrimaryHint": "A 1st-circle Sentinel must already have an account.",
     "invitePhone": "Phone (+33…)",
@@ -152,8 +153,12 @@
     "invite": "Invite",
     "leave": "Leave group",
     "confirmLeave": "Leave this group? Relationships created only through this group will end.",
+    "delete": "Delete group",
+    "confirmDelete": "Delete this group entirely? Every member will be removed and relationships created only through this group will end for everyone.",
+    "invitedSent": "Invitation sent to {{who}}.",
     "noEligibleContacts": "No one to invite yet — you can only invite someone you're already connected to.",
-    "eligibilityHint": "You can only invite someone you're already connected to."
+    "eligibilityHint": "You can only invite someone you're already connected to.",
+    "largeGroupWarning": "This group already has {{count}} people — that's a lot. You can still add more if you want."
   },
   "companions": {
     "title": "Companions",
@@ -214,6 +219,16 @@
       "hide": "Hide",
       "about": "About: {{name}}",
       "participants": "Notified Sentinels",
+      "timeline": {
+        "title": "Timeline",
+        "event": {
+          "ALERT_RAISED": "Alert raised",
+          "CONTACTED": "Contacted",
+          "RESPONDED": "Responded",
+          "LEAD_CLAIMED": "Took the lead",
+          "ALERT_CLOSED": "Alert closed"
+        }
+      },
       "lead": "Lead",
       "currentLead": "Current lead: {{name}}",
       "noLeadYet": "No one has claimed the lead yet",

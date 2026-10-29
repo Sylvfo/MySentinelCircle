@@ -9,6 +9,7 @@ import {
   declineGroupInvitation,
   declineMembership,
   deleteCircle,
+  deleteGroup,
   inviteSentinel,
   inviteToGroup,
   leaveGroup,
@@ -27,6 +28,13 @@ import {
   type Membership,
   type MessagingMode,
 } from '../api/sentinel';
+
+// Soft guidance only — nothing stops a circle from growing past this, it
+// just starts showing a "that's a lot" hint on the invite form. Group
+// circles (e.g. a choir) get a higher threshold since they're expected to
+// be bigger than a personal circle.
+const LARGE_CIRCLE_THRESHOLD = 10;
+const LARGE_GROUP_THRESHOLD = 30;
 
 interface GroupContact {
   userId: string;
@@ -284,6 +292,9 @@ function CircleCard({
         ))
       )}
 
+      {liveMembers.length >= LARGE_CIRCLE_THRESHOLD && (
+        <p className="form-hint">{t('circles.largeCircleWarning', { count: liveMembers.length })}</p>
+      )}
       <InviteForm circleId={circle.id} isPrimary={isPrimary} onChange={onChange} onError={onError} />
     </section>
   );
@@ -623,12 +634,16 @@ function GroupCard({
   const memberIds = new Set(group.members.map((m) => m.id));
   const eligible = contacts.filter((c) => !memberIds.has(c.userId));
   const [targetUserId, setTargetUserId] = useState(eligible[0]?.userId ?? '');
+  const [invited, setInvited] = useState<string | null>(null);
 
   const invite = async (e: FormEvent) => {
     e.preventDefault();
     if (!targetUserId) return;
+    setInvited(null);
     try {
+      const invitedLabel = eligible.find((c) => c.userId === targetUserId)?.label ?? '';
       await inviteToGroup(group.rootId, targetUserId);
+      setInvited(invitedLabel);
       onChange();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
@@ -645,13 +660,29 @@ function GroupCard({
     }
   };
 
+  const remove = async () => {
+    if (!window.confirm(t('groups.confirmDelete'))) return;
+    try {
+      await deleteGroup(group.rootId);
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
   return (
     <section className="panel">
       <div className="row">
         <h2>{group.label}</h2>
-        <button className="ghost" onClick={leave}>
-          {t('groups.leave')}
-        </button>
+        {group.isFounder ? (
+          <button className="ghost" onClick={remove}>
+            {t('groups.delete')}
+          </button>
+        ) : (
+          <button className="ghost" onClick={leave}>
+            {t('groups.leave')}
+          </button>
+        )}
       </div>
 
       {group.members.map((m) => (
@@ -660,6 +691,11 @@ function GroupCard({
         </div>
       ))}
 
+      {group.members.length >= LARGE_GROUP_THRESHOLD && (
+        <p className="form-hint">
+          {t('groups.largeGroupWarning', { count: group.members.length })}
+        </p>
+      )}
       <form className="row" onSubmit={invite}>
         {eligible.length === 0 ? (
           <p style={{ color: 'var(--text-muted)' }}>{t('groups.noEligibleContacts')}</p>
@@ -678,6 +714,7 @@ function GroupCard({
           </>
         )}
       </form>
+      {invited && <p className="form-hint">{t('groups.invitedSent', { who: invited })}</p>}
       <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('groups.eligibilityHint')}</p>
     </section>
   );

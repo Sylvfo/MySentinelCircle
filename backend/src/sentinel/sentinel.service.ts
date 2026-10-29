@@ -205,9 +205,12 @@ export class SentinelService {
       },
       include: { userCompanion: { select: { id: true, firstName: true } } },
     });
-    return rootIds.map((rootId) => ({
+    return rootIds.map((rootId, i) => ({
       rootId,
       label: allMemberCircles.find((c) => c.id === rootId)?.label ?? '',
+      // The founder's own circle is the root (groupRootId: null) — only
+      // they can delete the whole group, everyone else can only leave.
+      isFounder: myGroupCircles[i].groupRootId === null,
       members: allMemberCircles
         .filter((c) => c.id === rootId || c.groupRootId === rootId)
         .map((c) => c.userCompanion),
@@ -434,6 +437,49 @@ export class SentinelService {
   // relationships the group itself created (circleId is one of the group's
   // own circles). A relationship that predates the group, or lives in some
   // other circle, is left untouched.
+  // Closes one member's own circle and undoes only the relationships the
+  // group itself created with each of `otherMembers` (circleId is one of
+  // the group's own circles) — a relationship that predates the group, or
+  // lives in some other circle, is left untouched. Shared by leaveGroup
+  // (one member, themself) and deleteGroup (every member, in turn).
+  private async leaveGroupCircle(
+    tx: Prisma.TransactionClient,
+    memberUserId: string,
+    memberCircleId: string,
+    otherMembers: { id: string; userCompanionId: string }[],
+    groupCircleIds: Set<string>,
+  ) {
+    await tx.circle.update({
+      where: { id: memberCircleId },
+      data: { status: CircleStatus.CLOSED, closedAt: new Date() },
+    });
+
+    for (const other of otherMembers) {
+      const links = await tx.linkSentinels.findMany({
+        where: {
+          status: LinkStatus.ACCEPTED,
+          OR: [
+            {
+              userSentinelId: memberUserId,
+              userCompanionId: other.userCompanionId,
+            },
+            {
+              userSentinelId: other.userCompanionId,
+              userCompanionId: memberUserId,
+            },
+          ],
+        },
+      });
+      for (const link of links) {
+        if (!groupCircleIds.has(link.circleId)) continue;
+        await tx.linkSentinels.update({
+          where: { id: link.id },
+          data: { status: LinkStatus.REMOVED },
+        });
+      }
+    }
+  }
+
   async leaveGroup(userId: string, groupRootId: string) {
     const myCircle = await this.prisma.circle.findFirst({
       where: {
@@ -453,40 +499,62 @@ export class SentinelService {
       },
     });
     const groupCircleIds = new Set(members.map((m) => m.id));
+    const others = members.filter((m) => m.id !== myCircle.id);
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.circle.update({
-        where: { id: myCircle.id },
-        data: { status: CircleStatus.CLOSED, closedAt: new Date() },
-      });
-
-      for (const member of members) {
-        if (member.id === myCircle.id) continue;
-        const links = await tx.linkSentinels.findMany({
-          where: {
-            status: LinkStatus.ACCEPTED,
-            OR: [
-              {
-                userSentinelId: userId,
-                userCompanionId: member.userCompanionId,
-              },
-              {
-                userSentinelId: member.userCompanionId,
-                userCompanionId: userId,
-              },
-            ],
-          },
-        });
-        for (const link of links) {
-          if (!groupCircleIds.has(link.circleId)) continue;
-          await tx.linkSentinels.update({
-            where: { id: link.id },
-            data: { status: LinkStatus.REMOVED },
-          });
-        }
-      }
-
+      await this.leaveGroupCircle(
+        tx,
+        userId,
+        myCircle.id,
+        others,
+        groupCircleIds,
+      );
       return { left: true };
+    });
+  }
+
+  // Only the founder (whose own circle *is* the group's root) can delete
+  // the whole group — every member's circle closes and every group-created
+  // relationship unwinds, not just the founder's own. A regular member
+  // uses leaveGroup instead, which only ever affects their own membership.
+  async deleteGroup(userId: string, groupRootId: string) {
+    const root = await this.prisma.circle.findUnique({
+      where: { id: groupRootId },
+    });
+    if (
+      !root ||
+      root.circleType !== CircleType.GROUP ||
+      root.groupRootId !== null
+    ) {
+      throw new NotFoundException('Group not found');
+    }
+    if (root.userCompanionId !== userId) {
+      throw new ForbiddenException('Only the group’s founder can delete it');
+    }
+    if (root.status !== CircleStatus.ACTIVE) {
+      throw new ConflictException('This group is already closed');
+    }
+
+    const members = await this.prisma.circle.findMany({
+      where: {
+        status: CircleStatus.ACTIVE,
+        OR: [{ id: groupRootId }, { groupRootId }],
+      },
+    });
+    const groupCircleIds = new Set(members.map((m) => m.id));
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const member of members) {
+        const others = members.filter((m) => m.id !== member.id);
+        await this.leaveGroupCircle(
+          tx,
+          member.userCompanionId,
+          member.id,
+          others,
+          groupCircleIds,
+        );
+      }
+      return { deleted: true };
     });
   }
 

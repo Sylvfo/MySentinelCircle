@@ -440,6 +440,22 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
         ))}
       </ul>
 
+      {detail.timeline.length > 0 && (
+        <>
+          <h3>{t('alerts.detail.timeline.title')}</h3>
+          <ul className="alert-timeline">
+            {detail.timeline.map((e, i) => (
+              <li key={i}>
+                <span className="badge">{t(`alerts.detail.timeline.event.${e.type}`)}</span>
+                <strong>{e.actorLabel}</strong>
+                {e.detail && <span> — {e.detail}</span>}
+                <span style={{ color: 'var(--text-muted)' }}> · {new Date(e.at).toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
       {canRespond && <RespondButtons alertId={alertId} onChange={loadDetail} />}
 
       {canRequestCircle && (

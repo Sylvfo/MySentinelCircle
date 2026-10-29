@@ -161,6 +161,9 @@ export interface GroupMember {
 export interface Group {
   rootId: string;
   label: string;
+  // Only the founder (whose own circle is the group's root) can delete
+  // the whole group — everyone else can only leave it themselves.
+  isFounder: boolean;
   members: GroupMember[];
 }
 
@@ -189,3 +192,6 @@ export const declineGroupInvitation = (id: string) =>
 
 export const leaveGroup = (rootId: string) =>
   apiPost<{ left: true }>(`/sentinel/groups/${rootId}/leave`, {});
+
+export const deleteGroup = (rootId: string) =>
+  apiDelete<{ deleted: true }>(`/sentinel/groups/${rootId}`);

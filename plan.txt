@@ -529,7 +529,12 @@ caller-side changes needed once that happens):
 - Email sending (password reset link) — `ConsoleEmailSenderService` only,
   logs the email to the backend console instead of sending it. Needs a
   real provider (SendGrid, Mailgun, Amazon SES, etc.) behind
-  `EmailSender`/`EMAIL_SENDER`.
+  `EmailSender`/`EMAIL_SENDER` — no code changes elsewhere once one is
+  picked, same swap-in pattern as `SmsSender`. Decided: Sylvie will create
+  one dedicated Google account for the project (not her personal Gmail,
+  currently used for `GOOGLE_CLIENT_ID`'s OAuth project) and use it for
+  both Google Sign-In's Cloud project ownership and signing up with
+  whichever email provider is chosen.
 - SMS sending (OTP codes, Sentinel invitations, alerts) —
   `ConsoleSmsSenderService` only, logs to the backend console instead of
   sending it. Needs a real operator/provider (Twilio likely default, see

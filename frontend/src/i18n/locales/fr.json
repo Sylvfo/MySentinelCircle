@@ -108,6 +108,7 @@
     "confirmDelete": "Supprimer ce cercle ?",
     "members": "Sentinelles",
     "noMembers": "Aucune sentinelle dans ce cercle.",
+    "largeCircleWarning": "Ce cercle compte déjà {{count}} personnes — c'est beaucoup. Tu peux quand même en ajouter si tu veux.",
     "invite": "Inviter une sentinelle",
     "invitePrimaryHint": "Une sentinelle du 1er cercle doit déjà avoir un compte.",
     "invitePhone": "Téléphone (+33…)",
@@ -152,8 +153,12 @@
     "invite": "Inviter",
     "leave": "Quitter le groupe",
     "confirmLeave": "Quitter ce groupe ? Les relations créées uniquement via ce groupe prendront fin.",
+    "delete": "Supprimer le groupe",
+    "confirmDelete": "Supprimer ce groupe entièrement ? Tous les membres seront retirés et les relations créées uniquement via ce groupe prendront fin pour tout le monde.",
+    "invitedSent": "Invitation envoyée à {{who}}.",
     "noEligibleContacts": "Personne à inviter pour l'instant — tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e.",
-    "eligibilityHint": "Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e."
+    "eligibilityHint": "Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e.",
+    "largeGroupWarning": "Ce groupe compte déjà {{count}} personnes — c'est beaucoup. Tu peux quand même en ajouter si tu veux."
   },
   "companions": {
     "title": "Companions",
@@ -214,6 +219,16 @@
       "hide": "Masquer",
       "about": "Concerne : {{name}}",
       "participants": "Sentinelles prévenues",
+      "timeline": {
+        "title": "Chronologie",
+        "event": {
+          "ALERT_RAISED": "Alerte lancée",
+          "CONTACTED": "Contacté·e",
+          "RESPONDED": "A répondu",
+          "LEAD_CLAIMED": "A pris le lead",
+          "ALERT_CLOSED": "Alerte clôturée"
+        }
+      },
       "lead": "Référent·e",
       "currentLead": "Lead actuel : {{name}}",
       "noLeadYet": "Personne n'a encore pris le lead",

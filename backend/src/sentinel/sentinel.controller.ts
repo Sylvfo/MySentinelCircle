@@ -111,6 +111,15 @@ export class SentinelController {
     return this.sentinel.leaveGroup(user.userId, rootId);
   }
 
+  // Founder only — closes the whole group, not just the caller's own membership.
+  @Delete('groups/:rootId')
+  deleteGroup(
+    @CurrentUser() user: { userId: string },
+    @Param('rootId') rootId: string,
+  ) {
+    return this.sentinel.deleteGroup(user.userId, rootId);
+  }
+
   // ---- Invitations & requests -----------------------------------------------
 
   // "Me" invites someone into a circle as a Sentinel (site only).

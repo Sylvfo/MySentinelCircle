@@ -292,6 +292,8 @@ export class AlertService {
     const alert = await this.prisma.alert.findUnique({
       where: { id: alertId },
       include: {
+        launchedBy: { select: { id: true, firstName: true } },
+        closedBy: { select: { id: true, firstName: true } },
         userCompanion: {
           select: {
             id: true,
@@ -361,7 +363,86 @@ export class AlertService {
       alert.firstCircleId,
     );
 
-    return alert;
+    return { ...alert, timeline: this.buildAlertTimeline(alert) };
+  }
+
+  // Chronological view of everything that's happened on this alert —
+  // raised/contacted/responded/lead-claimed/closed — assembled purely from
+  // data already captured elsewhere (no new schema). Scoped the same way
+  // as getAlert itself (companion + 1st circle only): an outer-circle
+  // Sentinel's own view (getMyParticipation) deliberately doesn't get one.
+  private buildAlertTimeline(alert: {
+    launchedAt: Date | null;
+    launchedBy: { firstName: string } | null;
+    messageAlert: string;
+    closedAt: Date | null;
+    closedBy: { firstName: string } | null;
+    participants: {
+      contactedAt: Date | null;
+      answeredAt: Date | null;
+      leadAssignedAt: Date | null;
+      response: string | null;
+      circleName: string;
+      userSentinels: { linkAsSentinel: { firstName: string } };
+    }[];
+  }) {
+    const events: {
+      type:
+        | 'ALERT_RAISED'
+        | 'CONTACTED'
+        | 'RESPONDED'
+        | 'LEAD_CLAIMED'
+        | 'ALERT_CLOSED';
+      at: Date;
+      actorLabel: string;
+      detail?: string;
+    }[] = [];
+
+    if (alert.launchedAt) {
+      events.push({
+        type: 'ALERT_RAISED',
+        at: alert.launchedAt,
+        actorLabel: alert.launchedBy?.firstName ?? 'Sentinel',
+        detail: alert.messageAlert,
+      });
+    }
+
+    for (const p of alert.participants) {
+      const name = p.userSentinels.linkAsSentinel.firstName;
+      if (p.contactedAt) {
+        events.push({
+          type: 'CONTACTED',
+          at: p.contactedAt,
+          actorLabel: name,
+          detail: p.circleName,
+        });
+      }
+      if (p.answeredAt) {
+        events.push({
+          type: 'RESPONDED',
+          at: p.answeredAt,
+          actorLabel: name,
+          detail: p.response ?? undefined,
+        });
+      }
+      if (p.leadAssignedAt) {
+        events.push({
+          type: 'LEAD_CLAIMED',
+          at: p.leadAssignedAt,
+          actorLabel: name,
+        });
+      }
+    }
+
+    if (alert.closedAt) {
+      events.push({
+        type: 'ALERT_CLOSED',
+        at: alert.closedAt,
+        actorLabel: alert.closedBy?.firstName ?? 'Sentinel',
+      });
+    }
+
+    return events.sort((a, b) => a.at.getTime() - b.at.getTime());
   }
 
   // 1st circle (or "Me") targets one specific outer circle with a yes/no

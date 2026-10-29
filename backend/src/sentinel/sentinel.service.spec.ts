@@ -535,6 +535,74 @@ describe('SentinelService', () => {
       });
     });
 
+    describe('listMyGroups', () => {
+      it('flags the founder and lists every member', async () => {
+        prisma.circle.findMany
+          .mockResolvedValueOnce([
+            { id: 'root-1', groupRootId: null }, // alice is the founder here
+            { id: 'circle-alice-2', groupRootId: 'root-2' }, // alice just a member here
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: 'root-1',
+              label: 'Choir',
+              groupRootId: null,
+              userCompanion: { id: 'alice', firstName: 'Alice' },
+            },
+            {
+              id: 'circle-bob',
+              label: 'Choir',
+              groupRootId: 'root-1',
+              userCompanion: { id: 'bob', firstName: 'Bob' },
+            },
+            {
+              id: 'root-2',
+              label: 'Band',
+              groupRootId: null,
+              userCompanion: { id: 'carol', firstName: 'Carol' },
+            },
+            {
+              id: 'circle-alice-2',
+              label: 'Band',
+              groupRootId: 'root-2',
+              userCompanion: { id: 'alice', firstName: 'Alice' },
+            },
+          ]);
+
+        const result = await service.listMyGroups('alice');
+
+        expect(result).toEqual([
+          {
+            rootId: 'root-1',
+            label: 'Choir',
+            isFounder: true,
+            members: [
+              { id: 'alice', firstName: 'Alice' },
+              { id: 'bob', firstName: 'Bob' },
+            ],
+          },
+          {
+            rootId: 'root-2',
+            label: 'Band',
+            isFounder: false,
+            members: [
+              { id: 'carol', firstName: 'Carol' },
+              { id: 'alice', firstName: 'Alice' },
+            ],
+          },
+        ]);
+      });
+
+      it('returns an empty list with no extra query when the caller is in no groups', async () => {
+        prisma.circle.findMany.mockResolvedValueOnce([]);
+
+        const result = await service.listMyGroups('alice');
+
+        expect(result).toEqual([]);
+        expect(prisma.circle.findMany).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe('inviteToGroup', () => {
       it('rejects an inviter who is not a member of the group', async () => {
         prisma.user.findUnique.mockResolvedValueOnce({
@@ -834,6 +902,68 @@ describe('SentinelService', () => {
 
         await expect(service.leaveGroup('carol', 'root-1')).rejects.toThrow(
           NotFoundException,
+        );
+      });
+    });
+
+    describe('deleteGroup', () => {
+      const activeRoot = (overrides: Record<string, unknown> = {}) => ({
+        id: 'root-1',
+        userCompanionId: 'alice',
+        circleType: CircleType.GROUP,
+        groupRootId: null,
+        status: CircleStatus.ACTIVE,
+        ...overrides,
+      });
+
+      it('closes every member’s circle and unwinds every group-created relationship', async () => {
+        prisma.circle.findUnique.mockResolvedValueOnce(activeRoot());
+        prisma.circle.findMany.mockResolvedValueOnce([
+          { id: 'root-1', userCompanionId: 'alice' },
+          { id: 'circle-bob', userCompanionId: 'bob' },
+        ]);
+        prisma.linkSentinels.findMany.mockResolvedValue([
+          { id: 'link-ab', circleId: 'root-1' },
+        ]);
+
+        await service.deleteGroup('alice', 'root-1');
+
+        expect(prisma.circle.update).toHaveBeenCalledWith({
+          where: { id: 'root-1' },
+          data: expect.objectContaining({ status: CircleStatus.CLOSED }),
+        });
+        expect(prisma.circle.update).toHaveBeenCalledWith({
+          where: { id: 'circle-bob' },
+          data: expect.objectContaining({ status: CircleStatus.CLOSED }),
+        });
+      });
+
+      it('rejects a non-founder trying to delete the group', async () => {
+        prisma.circle.findUnique.mockResolvedValueOnce(
+          activeRoot({ userCompanionId: 'alice' }),
+        );
+
+        await expect(service.deleteGroup('bob', 'root-1')).rejects.toThrow(
+          ForbiddenException,
+        );
+        expect(prisma.circle.update).not.toHaveBeenCalled();
+      });
+
+      it('rejects deleting a group that does not exist', async () => {
+        prisma.circle.findUnique.mockResolvedValueOnce(null);
+
+        await expect(service.deleteGroup('alice', 'root-1')).rejects.toThrow(
+          NotFoundException,
+        );
+      });
+
+      it('rejects deleting an already-closed group', async () => {
+        prisma.circle.findUnique.mockResolvedValueOnce(
+          activeRoot({ status: CircleStatus.CLOSED }),
+        );
+
+        await expect(service.deleteGroup('alice', 'root-1')).rejects.toThrow(
+          ConflictException,
         );
       });
     });
