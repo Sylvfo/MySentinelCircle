@@ -6,6 +6,9 @@
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
+  "transformIgnorePatterns": [
+    "node_modules/(?!(@nestjs/schedule)/)"
+  ],
   "globalSetup": "<rootDir>/global-setup.js",
   "globalTeardown": "<rootDir>/global-teardown.js"
 }

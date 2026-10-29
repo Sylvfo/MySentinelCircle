@@ -1,4 +1,10 @@
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import { MessagingMode, SentinelType } from '@prisma/client';
 
 // "Me" adjusts an existing membership: change the Sentinel's type, the
@@ -34,4 +40,11 @@ export class UpdateMembershipDto {
   @IsOptional()
   @IsBoolean()
   canMessageMe?: boolean;
+
+  // Manual outer-circle call rank (lower = called first) for batched alert
+  // escalation — see AlertService.requestCircle. Meaningless for the 1st
+  // circle (never batched) but harmless to set there.
+  @IsOptional()
+  @IsInt()
+  callOrder?: number;
 }

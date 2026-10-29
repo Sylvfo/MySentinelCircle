@@ -318,6 +318,23 @@ function MemberRow({
     ? circles.find((c) => c.id === m.proposedCircleId)?.label
     : null;
 
+  // Manual call order for batched alert escalation (max 2 contacted at a
+  // time, see AlertService.requestCircle) — outer circles only, the 1st
+  // circle always notifies everyone at once.
+  const [callOrderInput, setCallOrderInput] = useState(m.callOrder?.toString() ?? '');
+  const saveCallOrder = async () => {
+    const trimmed = callOrderInput.trim();
+    const value = trimmed === '' ? undefined : Number(trimmed);
+    if (value !== undefined && (!Number.isInteger(value) || value < 1)) return;
+    if (value === undefined || value === m.callOrder) return;
+    try {
+      await updateMembership(m.id, { callOrder: value });
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
   return (
     <div className="row member-row">
       <span>
@@ -361,6 +378,22 @@ function MemberRow({
               <option value="NONE">{t('circles.firstCircleMessagingMode.none')}</option>
               <option value="INDIVIDUAL">{t('circles.firstCircleMessagingMode.individual')}</option>
             </select>
+          </label>
+        )}
+        {!isPrimary && m.status === 'ACCEPTED' && (
+          <label className="row" style={{ gap: '0.3rem' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              {t('circles.callOrder.label')}
+            </span>
+            <input
+              type="number"
+              min={1}
+              style={{ width: '3.5rem' }}
+              placeholder={t('circles.callOrder.random')}
+              value={callOrderInput}
+              onChange={(e) => setCallOrderInput(e.target.value)}
+              onBlur={saveCallOrder}
+            />
           </label>
         )}
         {otherCircles.length > 0 && (

@@ -14,6 +14,7 @@ import {
   updateAlertLabel,
   updateAlertStatus,
   type AlertDetail,
+  type AlertParticipant,
   type AlertSummary,
   type AlertType,
   type MyParticipation,
@@ -404,6 +405,7 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
           <li key={p.id}>
             {p.userSentinels.linkAsSentinel.firstName}
             {p.isLead && <span className="badge">{t('alerts.detail.lead')}</span>}
+            <span className="badge">{t(`alerts.detail.participantStatus.${p.status}`)}</span>
             <span style={{ color: 'var(--text-muted)' }}> — {p.circleName}</span>
             {p.requestedBy && (
               <span style={{ color: 'var(--text-muted)' }}> · {t('alerts.detail.requestedBy', { name: p.requestedBy.firstName })}</span>
@@ -417,7 +419,14 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
 
       {canRespond && <RespondButtons alertId={alertId} onChange={loadDetail} />}
 
-      {canRequestCircle && <RequestCircleForm alertId={alertId} circles={detail.userCompanion.myCircles} onChange={loadDetail} />}
+      {canRequestCircle && (
+        <RequestCircleForm
+          alertId={alertId}
+          circles={detail.userCompanion.myCircles}
+          participants={detail.participants}
+          onChange={loadDetail}
+        />
+      )}
 
       {/* One block per conversation on this alert: the main 1st-circle
           chat, plus one per outer-circle Sentinel who's opened an
@@ -701,10 +710,12 @@ function RespondButtons({ alertId, onChange }: { alertId: string; onChange: () =
 function RequestCircleForm({
   alertId,
   circles,
+  participants,
   onChange,
 }: {
   alertId: string;
   circles: { id: string; label: string }[];
+  participants: AlertParticipant[];
   onChange: () => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -712,6 +723,12 @@ function RequestCircleForm({
   const [question, setQuestion] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Once a circle has at least one contacted member, calling this again is
+  // "contact more" (the next batch of 2), not the original ask.
+  const isRepeatRequest = participants.some(
+    (p) => p.circleId === circleId && p.status !== 'WAITING',
+  );
 
   if (circles.length === 0) {
     return (
@@ -755,7 +772,11 @@ function RequestCircleForm({
           onChange={(e) => setQuestion(e.target.value)}
         />
         <button type="submit" disabled={submitting || !circleId || !question.trim()}>
-          {t('alerts.detail.requestCircle.submit')}
+          {t(
+            isRepeatRequest
+              ? 'alerts.detail.requestCircle.submitMore'
+              : 'alerts.detail.requestCircle.submit',
+          )}
         </button>
       </div>
       {error && <p className="form-error">{error}</p>}

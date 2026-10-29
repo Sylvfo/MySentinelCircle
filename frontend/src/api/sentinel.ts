@@ -24,6 +24,9 @@ export interface Membership {
   initiatedBy: LinkInitiator;
   createdAt: string;
   linkAsSentinel: SentinelRef;
+  // Manual outer-circle call rank for batched alert escalation (lower =
+  // called first); null = random order. Meaningless for the 1st circle.
+  callOrder: number | null;
   // Alert-time: can this Sentinel join their own (1st) circle's live group
   // chat during an alert. Separate from canMessageMe below.
   canMessageOwnCircle: boolean;
@@ -113,6 +116,7 @@ export const updateMembership = (
     canMessageOwnCircle?: boolean;
     firstCircleMessagingMode?: MessagingMode;
     canMessageMe?: boolean;
+    callOrder?: number;
   },
 ) => apiPatch<Membership>(`/sentinel/memberships/${id}`, data);
 

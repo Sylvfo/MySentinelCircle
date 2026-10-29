@@ -497,9 +497,17 @@ OPEN POINTS / TO REVISIT
 - Default wait window before an unresponsive Lead Sentinel's leadership
   passes to the next in succession order — needs a default value (tunable
   per "Me"?).
-- How many circles / how many people within a circle to alert
-  simultaneously during a search, and whether it's worth soliciting
-  everyone every time — still open.
+- How many people within one outer circle to alert simultaneously during a
+  search: DECIDED — at most 2 at a time, in a manually settable order
+  (random if not set). The 1st circle can ask for 2 more at any time, with
+  no enforced wait; the only automation is a one-time notification to the
+  1st circle after 4h of silence suggesting it try more people — never an
+  automatic contact. The 1st circle itself is unaffected: it still notifies
+  everyone at once. Implemented in `AlertService.requestCircle`/
+  `pickNextCircleBatch`/`remindStaleCircleBatches`.
+  How many *circles* to solicit at once (e.g. asking two outer circles in
+  parallel) is still open — `requestCircle` targets one circle per call,
+  nothing yet governs asking several at the same time.
 - Follow-up policy on stale sightings (e.g. someone replies "seen 5 days
   ago") — how far back is still useful, when to stop chasing it — still
   open.

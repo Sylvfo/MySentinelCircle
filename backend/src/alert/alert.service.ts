@@ -6,6 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   AlertParticipantStatus,
   AlertStatus,
@@ -46,6 +47,22 @@ const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   NOCONTACT: 'Sans nouvelles',
   UNKNOWN: 'Alerte',
 };
+
+const OUTER_CIRCLE_BATCH_SIZE = 2;
+const OUTER_CIRCLE_STALE_HOURS = 4;
+// Members without a manual callOrder sort after every manually-ordered one
+// (assumed to stay well under this), in a stable-but-unpredictable order.
+const RANDOM_CALL_ORDER_OFFSET = 1_000_000;
+
+// Deterministic, not cryptographic — just needs to give the same "random"
+// order every time the same alert+link pair is ranked.
+function stableHash(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
 
 @Injectable()
 export class AlertService {
@@ -367,14 +384,36 @@ export class AlertService {
       select: { firstName: true },
     });
 
+    // Members this circle already has an AlertParticipant row for (from a
+    // previous request-circle call on this same alert) that's past WAITING
+    // — i.e. already picked into an earlier batch. Only never-picked
+    // members are eligible for this call's batch.
+    const existing = await this.prisma.alertParticipant.findMany({
+      where: { alertId, userSentinelsId: { in: links.map((l) => l.id) } },
+      select: { userSentinelsId: true, status: true },
+    });
+    const alreadyContacted = new Set(
+      existing
+        .filter((p) => p.status !== AlertParticipantStatus.WAITING)
+        .map((p) => p.userSentinelsId),
+    );
+    const batch = this.pickNextCircleBatch(alertId, links, alreadyContacted);
+    if (batch.length === 0) {
+      throw new BadRequestException(
+        'Everyone in this circle has already been contacted',
+      );
+    }
+
     await this.prisma.$transaction(async (tx) => {
       for (const link of links) {
         await tx.alertParticipant.upsert({
           where: {
             alertId_userSentinelsId: { alertId, userSentinelsId: link.id },
           },
+          // A repeat call must not reset a member who was already
+          // contacted (or has answered) in an earlier batch back to
+          // WAITING — only the frozen snapshot fields get refreshed here.
           update: {
-            status: AlertParticipantStatus.WAITING,
             circleId: circle.id,
             circleName: circle.label,
             canSendPhoneAtAlert: link.canSendPhone,
@@ -382,8 +421,6 @@ export class AlertService {
             firstCircleMessagingModeAtAlert: link.firstCircleMessagingMode,
             isLead: link.leadSlot !== null,
             requestedById: callerId,
-            answeredAt: null,
-            response: null,
           },
           create: {
             status: AlertParticipantStatus.WAITING,
@@ -412,7 +449,7 @@ export class AlertService {
 
     await this.notifyParticipants(
       alertId,
-      links,
+      batch,
       alertCircleRequestSms(companion?.firstName ?? 'Un proche', dto.question),
     );
 
@@ -421,6 +458,22 @@ export class AlertService {
       actorId: callerId,
     });
     return this.getAlert(callerId, alertId);
+  }
+
+  // At most OUTER_CIRCLE_BATCH_SIZE members per call — ordered by manual
+  // callOrder where set, otherwise a stable per-alert pseudo-random order
+  // (same alert+link always ranks the same way, so repeat calls don't
+  // reshuffle who's "next").
+  private pickNextCircleBatch<
+    T extends { id: string; callOrder: number | null },
+  >(alertId: string, links: T[], alreadyContacted: Set<string>): T[] {
+    const eligible = links.filter((l) => !alreadyContacted.has(l.id));
+    const rank = (l: T) =>
+      l.callOrder ??
+      RANDOM_CALL_ORDER_OFFSET + stableHash(`${alertId}:${l.id}`);
+    return [...eligible]
+      .sort((a, b) => rank(a) - rank(b))
+      .slice(0, OUTER_CIRCLE_BATCH_SIZE);
   }
 
   // An account-holding outer-circle Sentinel, authorized via their
@@ -818,5 +871,90 @@ export class AlertService {
         contactedAt: new Date(),
       },
     });
+  }
+
+  // Never auto-contacts anyone — just a one-time nudge to the 1st circle +
+  // companion that a batch has gone quiet, so they can decide (via the
+  // normal request-circle action) whether to try more people.
+  @Cron(CronExpression.EVERY_30_MINUTES)
+  async remindStaleCircleBatches() {
+    const staleThreshold = new Date(
+      Date.now() - OUTER_CIRCLE_STALE_HOURS * 60 * 60 * 1000,
+    );
+    const stale = await this.prisma.alertParticipant.findMany({
+      where: {
+        status: AlertParticipantStatus.CONTACTED,
+        contactedAt: { lt: staleThreshold },
+        alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+      },
+      select: {
+        alertId: true,
+        circleId: true,
+        contactedAt: true,
+        alert: { select: { firstCircleId: true, userCompanionId: true } },
+      },
+    });
+
+    interface StaleBatch {
+      alertId: string;
+      circleId: string;
+      contactedAt: Date;
+      userCompanionId: string;
+      firstCircleId: string;
+    }
+    // One reminder per stale alert+circle batch — the 1st circle is never
+    // batched, so it's excluded. Keep the earliest contactedAt as "when
+    // this batch started waiting", used below to dedupe the reminder.
+    const batches = new Map<string, StaleBatch>();
+    for (const p of stale) {
+      if (!p.contactedAt || p.circleId === p.alert.firstCircleId) continue;
+      const key = `${p.alertId}:${p.circleId}`;
+      const current = batches.get(key);
+      if (!current || p.contactedAt < current.contactedAt) {
+        batches.set(key, {
+          alertId: p.alertId,
+          circleId: p.circleId,
+          contactedAt: p.contactedAt,
+          userCompanionId: p.alert.userCompanionId,
+          firstCircleId: p.alert.firstCircleId,
+        });
+      }
+    }
+
+    for (const batch of batches.values()) {
+      const stillSomeoneLeft = await this.prisma.alertParticipant.count({
+        where: {
+          alertId: batch.alertId,
+          circleId: batch.circleId,
+          status: AlertParticipantStatus.WAITING,
+        },
+      });
+      if (stillSomeoneLeft === 0) continue;
+
+      const alreadyReminded = await this.prisma.notification.count({
+        where: {
+          type: NotificationType.ALERT_CIRCLE_NO_RESPONSE,
+          targetId: batch.alertId,
+          createdAt: { gt: batch.contactedAt },
+        },
+      });
+      if (alreadyReminded > 0) continue;
+
+      const firstCircleMembers = await this.prisma.linkSentinels.findMany({
+        where: { circleId: batch.firstCircleId, status: LinkStatus.ACCEPTED },
+        select: { userSentinelId: true },
+      });
+      const recipients = [
+        batch.userCompanionId,
+        ...firstCircleMembers.map((l) => l.userSentinelId),
+      ];
+      for (const userId of recipients) {
+        await this.notifications.create({
+          userId,
+          type: NotificationType.ALERT_CIRCLE_NO_RESPONSE,
+          targetId: batch.alertId,
+        });
+      }
+    }
   }
 }

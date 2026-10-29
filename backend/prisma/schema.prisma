@@ -105,6 +105,7 @@ enum NotificationType {
   ALERT_ESCALATED
   ALERT_RESPONSE
   ALERT_CLOSED
+  ALERT_CIRCLE_NO_RESPONSE
   NEW_MESSAGE
   SENTINEL_INVITATION_RECEIVED
   SENTINEL_REQUEST_RECEIVED
@@ -216,7 +217,7 @@ model LinkSentinels {
   userCompanionId String
   circleId    String
   proposedCircleId String?   // set only while awaiting consent to move into the 1st circle
-
+  callOrder Int? // manual outer-circle call rank (lower = called first); null = random fallback
 
   linkAsSentinel User   @relation("LinkAsSentinel", fields: [userSentinelId], references: [id], onDelete: Restrict)
   userCompanion      User   @relation("SentinelCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)

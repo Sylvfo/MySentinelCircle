@@ -762,6 +762,33 @@ describe('SentinelService', () => {
       );
     });
 
+    it('sets the outer-circle call order used to batch alert escalation', async () => {
+      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+        id: 'link-1',
+        status: LinkStatus.ACCEPTED,
+        circleId: 'work-1',
+        leadSlot: null,
+        requestedAsLead: false,
+        sentinelType: SentinelType.SENTINEL,
+        canMessageOwnCircle: true,
+        firstCircleMessagingMode: MessagingMode.NONE,
+        canMessageMe: null,
+        callOrder: null,
+        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
+        linkAsSentinel: { userType: UserType.ACCOUNT },
+      });
+      prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
+
+      await service.updateMembership('me', 'link-1', { callOrder: 2 });
+
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'link-1' },
+          data: expect.objectContaining({ callOrder: 2 }),
+        }),
+      );
+    });
+
     it('rejects setting canMessageMe on a Sentinel SMS (no account)', async () => {
       prisma.linkSentinels.findUnique.mockResolvedValueOnce({
         id: 'link-1',

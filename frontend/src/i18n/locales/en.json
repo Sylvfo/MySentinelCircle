@@ -132,6 +132,10 @@
       "label": "Chat with 1st circle during an alert",
       "none": "Not allowed",
       "individual": "Allowed"
+    },
+    "callOrder": {
+      "label": "Call order",
+      "random": "Random"
     }
   },
   "companions": {
@@ -200,11 +204,21 @@
       "send": "Send",
       "me": "Me",
       "response": "Response: {{response}}",
+      "participantStatus": {
+        "WAITING": "Not contacted yet",
+        "CONTACTED": "Contacted, no reply yet",
+        "RESPONDED": "Responded",
+        "ACTIVE": "Active",
+        "DECLINED": "Declined",
+        "UNAVAILABLE": "Unavailable",
+        "CLOSED": "Closed"
+      },
       "requestCircle": {
         "title": "Ask another circle",
         "noCircles": "No other circle to ask.",
         "questionPlaceholder": "E.g. Is she at your place?",
-        "submit": "Send the request"
+        "submit": "Send the request",
+        "submitMore": "Contact 2 more Sentinels"
       },
       "respond": {
         "prompt": "You've been asked to respond about this alert.",
@@ -243,6 +257,7 @@
       "ALERT_ESCALATED": "Your circle has been asked about an alert",
       "ALERT_RESPONSE": "Someone responded to an alert",
       "ALERT_CLOSED": "An alert has been closed",
+      "ALERT_CIRCLE_NO_RESPONSE": "No reply in 4h — contact more Sentinels?",
       "NEW_MESSAGE": "New message",
       "SENTINEL_INVITATION_RECEIVED": "{{who}} invited you as a Sentinel",
       "SENTINEL_REQUEST_RECEIVED": "{{who}} wants to become your Sentinel",

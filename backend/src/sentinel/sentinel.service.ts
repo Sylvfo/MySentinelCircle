@@ -602,6 +602,7 @@ export class SentinelService {
         firstCircleMessagingMode:
           dto.firstCircleMessagingMode ?? link.firstCircleMessagingMode,
         canMessageMe: dto.canMessageMe ?? link.canMessageMe,
+        callOrder: dto.callOrder ?? link.callOrder,
       },
     });
   }

@@ -132,6 +132,10 @@
       "label": "Discuter avec le 1er cercle pendant une alerte",
       "none": "Non autorisé",
       "individual": "Autorisé"
+    },
+    "callOrder": {
+      "label": "Ordre d'appel",
+      "random": "Aléatoire"
     }
   },
   "companions": {
@@ -200,11 +204,21 @@
       "send": "Envoyer",
       "me": "Moi",
       "response": "Réponse : {{response}}",
+      "participantStatus": {
+        "WAITING": "Pas encore contacté·e",
+        "CONTACTED": "Contacté·e, pas de réponse",
+        "RESPONDED": "A répondu",
+        "ACTIVE": "Actif",
+        "DECLINED": "Décliné",
+        "UNAVAILABLE": "Indisponible",
+        "CLOSED": "Clôturé"
+      },
       "requestCircle": {
         "title": "Solliciter un autre cercle",
         "noCircles": "Aucun autre cercle à solliciter.",
         "questionPlaceholder": "Ex. Est-elle chez vous ?",
-        "submit": "Envoyer la demande"
+        "submit": "Envoyer la demande",
+        "submitMore": "Contacter 2 sentinelles de plus"
       },
       "respond": {
         "prompt": "On vous demande de répondre à propos de cette alerte.",
@@ -243,6 +257,7 @@
       "ALERT_ESCALATED": "Votre cercle a été sollicité pour une alerte",
       "ALERT_RESPONSE": "Quelqu'un a répondu à une alerte",
       "ALERT_CLOSED": "Une alerte a été clôturée",
+      "ALERT_CIRCLE_NO_RESPONSE": "Pas de réponse depuis 4h — contacter d'autres sentinelles ?",
       "NEW_MESSAGE": "Nouveau message",
       "SENTINEL_INVITATION_RECEIVED": "{{who}} vous invite comme sentinelle",
       "SENTINEL_REQUEST_RECEIVED": "{{who}} veut devenir votre sentinelle",
