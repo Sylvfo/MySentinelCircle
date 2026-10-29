@@ -667,4 +667,27 @@ describe('UserService', () => {
       expect(result).toEqual({ message: 'Email updated' });
     });
   });
+
+  describe('devSetHasPaid', () => {
+    it('updates hasPaid and returns the profile dto', async () => {
+      prisma.user.update.mockResolvedValueOnce({
+        id: 'my-id',
+        passwordHash: null,
+        googleId: null,
+        hasPaid: true,
+      });
+
+      const result = await service.devSetHasPaid('my-id', { hasPaid: true });
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'my-id' },
+          data: { hasPaid: true },
+        }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({ id: 'my-id', hasPaid: true }),
+      );
+    });
+  });
 });

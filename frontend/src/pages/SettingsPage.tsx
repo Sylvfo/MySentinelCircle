@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ApiError } from '../api/client';
 import {
   changePassword,
+  devSetHasPaid,
   fetchMe,
   requestAddPhone,
   requestEmailChange,
@@ -131,6 +132,18 @@ export function SettingsPage() {
         ) : (
           <AddPhonePanel onChange={reload} onError={setError} />
         )}
+      </section>
+
+      <section className="panel">
+        <h2>{t('settings.dev.title')}</h2>
+        <p className="form-hint">{t('settings.dev.hasPaidHint')}</p>
+        <EditableToggle
+          label={t('settings.dev.hasPaid')}
+          value={me.hasPaid}
+          onSave={(v) => devSetHasPaid(v)}
+          onSaved={reload}
+          onError={setError}
+        />
       </section>
     </div>
   );

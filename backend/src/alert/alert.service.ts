@@ -46,10 +46,12 @@ const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   EMERGENCY: 'Urgence',
   NOCONTACT: 'Sans nouvelles',
   UNKNOWN: 'Alerte',
+  TRAVEL: 'Alerte voyage',
 };
 
 const OUTER_CIRCLE_BATCH_SIZE = 2;
 const OUTER_CIRCLE_STALE_HOURS = 4;
+const FREE_ALERT_TRIAL_LIMIT = 3;
 // Members without a manual callOrder sort after every manually-ordered one
 // (assumed to stay well under this), in a stable-but-unpredictable order.
 const RANDOM_CALL_ORDER_OFFSET = 1_000_000;
@@ -75,6 +77,7 @@ export class AlertService {
 
   async raiseAlert(callerId: string, dto: CreateAlertDto) {
     await this.assertNoActiveAlert(dto.companionId);
+    await this.assertCanAffordAlert(dto.companionId);
 
     const circle = await this.prisma.circle.findFirst({
       where: {
@@ -920,6 +923,26 @@ export class AlertService {
     if (existing) {
       throw new ConflictException(
         'An alert is already active for this companion',
+      );
+    }
+  }
+
+  // Lifetime (not annual) free trial, per plan.txt ACCOUNTS & BILLING —
+  // the companion being alerted is the one whose trial/payment counts,
+  // regardless of who actually raises the alert.
+  private async assertCanAffordAlert(companionId: string) {
+    const companion = await this.prisma.user.findUnique({
+      where: { id: companionId },
+      select: { hasPaid: true },
+    });
+    if (companion?.hasPaid) return;
+
+    const count = await this.prisma.alert.count({
+      where: { userCompanionId: companionId },
+    });
+    if (count >= FREE_ALERT_TRIAL_LIMIT) {
+      throw new ForbiddenException(
+        'Free trial alerts used up — a paid Companion account is needed to raise more',
       );
     }
   }

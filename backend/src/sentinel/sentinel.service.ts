@@ -174,6 +174,13 @@ export class SentinelService {
   async createGroup(userId: string, dto: CreateGroupDto) {
     const founder = await this.getUser(userId);
     this.assertCompleteAccount(founder);
+    // Founding a group is paid (joining one someone else founded stays
+    // free), per plan.txt ACCOUNTS & BILLING — no trial exception here.
+    if (!founder.hasPaid) {
+      throw new ForbiddenException(
+        'A paid Companion account is needed to found a group circle',
+      );
+    }
     return this.prisma.circle.create({
       data: {
         userCompanionId: userId,

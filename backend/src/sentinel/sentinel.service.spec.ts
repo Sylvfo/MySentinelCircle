@@ -520,6 +520,7 @@ describe('SentinelService', () => {
         prisma.user.findUnique.mockResolvedValueOnce({
           id: 'alice',
           userType: UserType.ACCOUNT,
+          hasPaid: true,
         });
         prisma.circle.create.mockResolvedValueOnce({ id: 'root-1' });
 
@@ -532,6 +533,19 @@ describe('SentinelService', () => {
             circleType: CircleType.GROUP,
           },
         });
+      });
+
+      it('rejects founding a group for an unpaid account', async () => {
+        prisma.user.findUnique.mockResolvedValueOnce({
+          id: 'alice',
+          userType: UserType.ACCOUNT,
+          hasPaid: false,
+        });
+
+        await expect(
+          service.createGroup('alice', { label: 'Choir' }),
+        ).rejects.toThrow(ForbiddenException);
+        expect(prisma.circle.create).not.toHaveBeenCalled();
       });
     });
 

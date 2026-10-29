@@ -18,6 +18,7 @@ export interface Me {
   avatarPath?: string | null;
   hasPassword: boolean;
   hasGoogle: boolean;
+  hasPaid: boolean;
 }
 
 export const fetchMe = () => apiGet<Me>('/user/me');
@@ -58,3 +59,7 @@ export const requestEmailChange = (newEmail: string) =>
 
 export const confirmEmailChange = (token: string) =>
   apiPost<{ message: string }>('/user/confirm-email', { token });
+
+// TEMPORARY dev/test affordance — stands in for a real payment provider.
+export const devSetHasPaid = (hasPaid: boolean) =>
+  apiPost<Me>('/user/me/dev-has-paid', { hasPaid });

@@ -341,6 +341,11 @@
       "useCodeEmail": "Envoyer un code par email",
       "codeSentPhone": "Un code a été envoyé par SMS.",
       "codeSentEmail": "Un code a été envoyé par email."
+    },
+    "dev": {
+      "title": "Dev / tests",
+      "hasPaid": "Compte payant (hasPaid)",
+      "hasPaidHint": "Temporaire — remplace un vrai moyen de paiement tant qu'aucun n'est branché."
     }
   }
 }

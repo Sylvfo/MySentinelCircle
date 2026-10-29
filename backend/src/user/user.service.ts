@@ -19,6 +19,7 @@ import type { EmailSender } from '../email/email-sender.interface';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { StepUpCodeRequestDto } from './dto/step-up-code-request.dto';
+import { DevSetHasPaidDto } from './dto/dev-set-has-paid.dto';
 
 const OTP_TTL_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
@@ -45,6 +46,7 @@ const PROFILE_SELECT = {
   avatarPath: true,
   passwordHash: true,
   googleId: true,
+  hasPaid: true,
 } as const;
 
 // Never return the raw hash/id — just whether they exist, so the frontend
@@ -411,6 +413,17 @@ export class UserService {
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { avatarPath: filename },
+      select: PROFILE_SELECT,
+    });
+    return toProfileDto(updated);
+  }
+
+  // TEMPORARY dev/test affordance — stands in for a real payment provider
+  // (see plan.txt ACCOUNTS & BILLING). Remove once one is wired in.
+  async devSetHasPaid(userId: string, dto: DevSetHasPaidDto) {
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { hasPaid: dto.hasPaid },
       select: PROFILE_SELECT,
     });
     return toProfileDto(updated);

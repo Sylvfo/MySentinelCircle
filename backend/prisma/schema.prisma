@@ -83,6 +83,7 @@ enum AlertType {
   UNKNOWN
   EMERGENCY
   NOCONTACT
+  TRAVEL
 }
 
 enum AlertParticipantStatus {

@@ -25,6 +25,7 @@ import { StepUpGoogleDto } from './dto/step-up-google.dto';
 import { StepUpCodeRequestDto } from './dto/step-up-code-request.dto';
 import { StepUpCodeVerifyDto } from './dto/step-up-code-verify.dto';
 import { ChangeEmailRequestDto } from './dto/change-email-request.dto';
+import { DevSetHasPaidDto } from './dto/dev-set-has-paid.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -120,6 +121,15 @@ export class UserController {
     @Body() dto: ChangeEmailRequestDto,
   ) {
     return this.userService.requestEmailChange(user.userId, dto.newEmail);
+  }
+
+  // TEMPORARY dev/test affordance — stands in for a real payment provider.
+  @Post('me/dev-has-paid')
+  devSetHasPaid(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: DevSetHasPaidDto,
+  ) {
+    return this.userService.devSetHasPaid(user.userId, dto);
   }
 
   @Post('me/avatar')

@@ -62,8 +62,32 @@ ACCOUNTS & BILLING
   registered account; otherwise the invite is refused until they sign up.
   This account requirement applies only to the 1st circle — outer circles
   stay account-free / SMS-only.
-- Billing mechanics (plans, what exactly is gated) still TBD — see
-  basedb.txt "a reconcilier".
+- What's gated — DECIDED:
+  - Always free: being a Sentinel (any role), responding to alerts,
+    messaging, configuring your own 1st circle (no safety net at all
+    without it, so no reason to ever charge for it).
+  - Free trial, lifetime (not reset annually): 3 self-raised alerts as
+    Companion, free forever — payment required beyond that. Lets someone
+    experience a real alert escalating before committing money, important
+    for trust in a safety app.
+  - Paid: being an ongoing Companion beyond the 3-alert trial; the
+    `AlertType.TRAVEL` type (added to the schema, not yet migrated) as a
+    specialized/premium alert type; **founding** a Group Circle (see
+    GROUP CIRCLES below) — joining someone *else's* group circle stays
+    free (you're the Sentinel-equivalent there), founding one requires
+    paid Companion status (you're the Companion-equivalent for that group).
+  - `User.hasPaid` already exists in the schema for this but is enforced
+    nowhere in code yet — that's deliberately separate future work, to be
+    done once a real payment provider is wired in (see below).
+- Billing mechanics (the payment provider integration itself) still TBD —
+  see basedb.txt "a reconcilier". Technically: nothing about the current
+  architecture blocks adding an external payment provider (e.g. Stripe) —
+  it's the same REST + webhook pattern already used for SMS (pluggable
+  provider interface, a webhook controller). Use the provider's own hosted
+  checkout (Stripe Checkout/Elements) rather than handling card data
+  directly, and remember the webhook endpoint needs the same signature
+  verification already flagged as missing on the SMS inbound webhook
+  (DEV-ONLY STUBS, below) — don't repeat that gap for payments.
 
 CIRCLES & PERMISSIONS
 ----------------------
@@ -460,6 +484,33 @@ BACKEND MODULES (NestJS, sketch)
                 here vs Sentinel-type-gated and request-based during an
                 alert).
 
+GROUP CIRCLES
+------------------
+- A circle shared between several Sentinels at once (e.g. a choir), not
+  owned by a single companion like every other circle — a mutual mesh:
+  joining makes the new member Sentinel for every existing member, and
+  every existing member Sentinel for them too.
+- Invite-only, and only by someone the inviter already has an accepted
+  Sentinel/Companion link with — a trust chain, not a cold invite to a
+  stranger. The very first member (the founder) has no such requirement.
+- A member must hold a real account (not SMS-only) — the mesh needs
+  everyone to act as both companion and Sentinel, which an SMS-only
+  contact can't do.
+- Model: no separate "group" table — `CircleType.GROUP` + a nullable
+  self-relation (`Circle.groupRootId`). The founder's own circle has
+  `groupRootId: null` and *is* the group; every other member's own circle
+  points at it. `SentinelGroupInvitation` is the one new table, needed
+  because `LinkSentinels` allows only one relationship ever per pair —
+  since joining requires already being connected to the inviter, that
+  pair's one allowed row already exists elsewhere, so the pending invite
+  can't be a second `LinkSentinels` row.
+- Leaving undoes only the relationships the group itself created (a
+  relationship predating the group, or living in some other circle, is
+  left alone). The founder can instead delete the whole group, which
+  cascades the same way to every member.
+- Billing: founding a group requires paid Companion status; joining
+  someone else's group stays free either way — see ACCOUNTS & BILLING.
+
 TECH STACK (confirmed)
 ------------------------
 - Backend      : NestJS + TypeScript
@@ -485,6 +536,17 @@ OPEN POINTS / TO REVISIT
   manual-trigger only).
 - Push notifications on top of SMS for registered app users (nice-to-have,
   not blocking MVP).
+- Small AI assistant (later, not blocking MVP) — three roles: (1) answers
+  visitor questions / presents the site, (2) helps fill things in
+  correctly during setup (e.g. "you need at least N Sentinels") — much of
+  this is already plain rule-based UI hints, not actual AI, (3) reassures
+  (not informs) a worried companion during an active alert — this third
+  one needs careful content/safety design (never invent information,
+  always disclose it's automated), more a product-writing task than a
+  coding one. Decided: call a hosted AI API (e.g. Claude) from the
+  backend rather than self-hosting a model — self-hosting would need real
+  infra and open-source models are weaker for the sensitive reassurance
+  role specifically.
 - SMS provider selection (Twilio vs alternatives) — deferred.
 - Can an Organization become a member of one of "Me"'s circles (not just
   raise ad hoc phone-only alerts) — e.g. a hotel/camp as a temporary
