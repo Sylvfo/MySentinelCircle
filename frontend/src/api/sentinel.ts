@@ -4,7 +4,7 @@ export type SentinelType = 'ONLY_SMS' | 'SENTINEL' | 'LEAD' | 'FIRSTCIRCLE' | 'U
 export type LinkStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'REMOVED' | 'BLOCKED';
 export type LinkInitiator = 'COMPANION' | 'SENTINEL';
 export type LeadSlot = 'LEAD_1' | 'LEAD_2' | 'LEAD_3';
-export type CircleType = 'BASIC' | 'FIRST' | 'ORGANISATION' | 'RESERVED';
+export type CircleType = 'BASIC' | 'FIRST' | 'ORGANISATION' | 'RESERVED' | 'GROUP';
 export type MessagingMode = 'NONE' | 'INDIVIDUAL' | 'GROUP';
 
 export interface SentinelRef {
@@ -150,3 +150,42 @@ export const requestToBeSentinel = (targetPhone: string) =>
   apiPost<Membership>('/sentinel/requests', { targetPhone });
 
 export const listCompanions = () => apiGet<Companion[]>('/sentinel/companions');
+
+// ---- Groups (mutual mesh, invite-by-connection only) -------------------------
+
+export interface GroupMember {
+  id: string;
+  firstName: string;
+}
+
+export interface Group {
+  rootId: string;
+  label: string;
+  members: GroupMember[];
+}
+
+export interface GroupInvitation {
+  id: string;
+  createdAt: string;
+  groupRoot: { id: string; label: string };
+  invitedBy: { id: string; firstName: string };
+}
+
+export const createGroup = (label: string) => apiPost<Circle>('/sentinel/groups', { label });
+
+export const listMyGroups = () => apiGet<Group[]>('/sentinel/groups');
+
+export const listMyGroupInvitations = () =>
+  apiGet<GroupInvitation[]>('/sentinel/groups/invitations');
+
+export const inviteToGroup = (rootId: string, targetUserId: string) =>
+  apiPost<{ id: string; status: LinkStatus }>(`/sentinel/groups/${rootId}/invite`, { targetUserId });
+
+export const acceptGroupInvitation = (id: string) =>
+  apiPost<Circle>(`/sentinel/groups/invitations/${id}/accept`, {});
+
+export const declineGroupInvitation = (id: string) =>
+  apiPost<{ id: string; status: LinkStatus }>(`/sentinel/groups/invitations/${id}/decline`, {});
+
+export const leaveGroup = (rootId: string) =>
+  apiPost<{ left: true }>(`/sentinel/groups/${rootId}/leave`, {});

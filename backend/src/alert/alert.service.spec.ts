@@ -436,6 +436,106 @@ describe('AlertService', () => {
     });
   });
 
+  describe('claimLead', () => {
+    const leadParticipant = (overrides: Record<string, unknown> = {}) => ({
+      id: 'participant-1',
+      isLead: true,
+      alert: { alertStatus: AlertStatus.ACTIVE },
+      ...overrides,
+    });
+
+    it('sets leadAssignedAt and notifies the circle when a Lead claims leadership', async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(
+        leadParticipant(),
+      );
+      prisma.alert.findUnique
+        .mockResolvedValueOnce({
+          userCompanionId: 'alice-id',
+          participants: [{ userSentinels: { userSentinelId: 'bob-id' } }],
+        }) // notifyAlertParticipants
+        .mockResolvedValueOnce({
+          id: 'alert-1',
+          userCompanionId: 'alice-id',
+          firstCircleId: 'circle-1',
+        }); // getAlert
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' }); // getAlert's own permission check
+
+      await service.claimLead('bob-id', 'alert-1');
+
+      expect(prisma.alertParticipant.findFirst).toHaveBeenCalledWith({
+        where: {
+          alertId: 'alert-1',
+          userSentinels: { userSentinelId: 'bob-id' },
+        },
+        include: { alert: { select: { alertStatus: true } } },
+      });
+      expect(prisma.alertParticipant.update).toHaveBeenCalledWith({
+        where: { id: 'participant-1' },
+        data: { leadAssignedAt: expect.any(Date) },
+      });
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'alice-id',
+        type: NotificationType.ALERT_LEAD_CLAIMED,
+        actorUserId: 'bob-id',
+        targetId: 'alert-1',
+      });
+    });
+
+    it('lets a second Lead take over cleanly', async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(
+        leadParticipant({ id: 'participant-2' }),
+      );
+      prisma.alert.findUnique
+        .mockResolvedValueOnce({
+          userCompanionId: 'alice-id',
+          participants: [],
+        })
+        .mockResolvedValueOnce({
+          id: 'alert-1',
+          userCompanionId: 'alice-id',
+          firstCircleId: 'circle-1',
+        });
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
+
+      await service.claimLead('zoe-id', 'alert-1');
+
+      expect(prisma.alertParticipant.update).toHaveBeenCalledWith({
+        where: { id: 'participant-2' },
+        data: { leadAssignedAt: expect.any(Date) },
+      });
+    });
+
+    it('rejects a caller who is not a Lead on this alert', async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(
+        leadParticipant({ isLead: false }),
+      );
+
+      await expect(service.claimLead('bob-id', 'alert-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.alertParticipant.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a caller with no participation on this alert', async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.claimLead('stranger-id', 'alert-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('rejects claiming the lead on an already-resolved alert', async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce(
+        leadParticipant({ alert: { alertStatus: AlertStatus.RESOLVED } }),
+      );
+
+      await expect(service.claimLead('bob-id', 'alert-1')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.alertParticipant.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('requestCircle', () => {
     const alertRow = (overrides: Record<string, unknown> = {}) => ({
       id: 'alert-1',

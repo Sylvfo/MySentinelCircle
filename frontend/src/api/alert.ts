@@ -24,6 +24,10 @@ export interface AlertParticipant {
   id: string;
   status: string;
   isLead: boolean;
+  // When this Lead last claimed active leadership of the alert (null if
+  // never claimed). Whoever has the latest value among isLead participants
+  // is the current lead — see claimLead below.
+  leadAssignedAt: string | null;
   circleId: string;
   circleName: string;
   response: string | null;
@@ -61,6 +65,8 @@ export const raiseAlert = (data: { companionId: string; alertType: AlertType; re
   apiPost<AlertSummary>('/alert/raise', data);
 
 export const closeAlert = (id: string) => apiPost<AlertSummary>(`/alert/${id}/close`, {});
+
+export const claimLead = (id: string) => apiPost<AlertDetail>(`/alert/${id}/claim-lead`, {});
 
 export const listAlerts = () => apiGet<AlertSummary[]>('/alert/mine');
 

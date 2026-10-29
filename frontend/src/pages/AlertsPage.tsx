@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, API_URL } from '../api/client';
 import {
+  claimLead,
   closeAlert,
   getAlert,
   getMyParticipation,
@@ -359,6 +360,15 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
   const canRequestCircle = isAlertManager && detail.alertStatus !== 'RESOLVED';
   const canRespond = myParticipant?.status === 'CONTACTED' && detail.alertStatus !== 'RESOLVED';
 
+  // No "current lead" stored separately — whichever Lead has the latest
+  // leadAssignedAt is the one currently driving the alert. Any Lead can
+  // claim/reclaim it at any time, no wait window (see claimLead).
+  const leadClaims = detail.participants.filter((p) => p.isLead && p.leadAssignedAt);
+  const activeLead = leadClaims.length
+    ? leadClaims.reduce((a, b) => (a.leadAssignedAt! > b.leadAssignedAt! ? a : b))
+    : null;
+  const canClaimLead = myParticipant?.isLead && detail.alertStatus !== 'RESOLVED';
+
   // Who's in the 1st circle, for telling the main chat apart from an
   // isolated one when labeling each entry in detail.conversations below.
   const firstCircleSentinelIds = new Set(
@@ -400,11 +410,24 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
       />
 
       <h3>{t('alerts.detail.participants')}</h3>
+      <p>
+        {activeLead
+          ? t('alerts.detail.currentLead', { name: activeLead.userSentinels.linkAsSentinel.firstName })
+          : t('alerts.detail.noLeadYet')}
+        {canClaimLead && (
+          <button className="ghost" onClick={() => claimLead(alertId).then(loadDetail)}>
+            {t('alerts.detail.claimLead')}
+          </button>
+        )}
+      </p>
       <ul>
         {detail.participants.map((p) => (
           <li key={p.id}>
             {p.userSentinels.linkAsSentinel.firstName}
             {p.isLead && <span className="badge">{t('alerts.detail.lead')}</span>}
+            {activeLead?.id === p.id && (
+              <span className="badge status-accepted">{t('alerts.detail.activeLeadBadge')}</span>
+            )}
             <span className="badge">{t(`alerts.detail.participantStatus.${p.status}`)}</span>
             <span style={{ color: 'var(--text-muted)' }}> — {p.circleName}</span>
             {p.requestedBy && (

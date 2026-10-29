@@ -255,6 +255,39 @@ export class AlertService {
     return updatedAlert;
   }
 
+  // Any Lead Sentinel can claim active leadership of an alert at any time,
+  // including taking it over from another Lead — no wait window, no
+  // succession order, no automation (Sylvie's call: simpler than the
+  // timed-handoff idea originally in plan.txt). "Current lead" isn't
+  // stored separately — it's whichever isLead participant has the latest
+  // leadAssignedAt, derived on read (see getAlert's participants).
+  async claimLead(callerId: string, alertId: string) {
+    const participant = await this.prisma.alertParticipant.findFirst({
+      where: { alertId, userSentinels: { userSentinelId: callerId } },
+      include: { alert: { select: { alertStatus: true } } },
+    });
+    if (!participant) {
+      throw new NotFoundException('You have no participation on this alert');
+    }
+    if (!participant.isLead) {
+      throw new ForbiddenException('Only a Lead Sentinel can claim the lead');
+    }
+    if (participant.alert.alertStatus === AlertStatus.RESOLVED) {
+      throw new ConflictException('This alert is already closed');
+    }
+
+    await this.prisma.alertParticipant.update({
+      where: { id: participant.id },
+      data: { leadAssignedAt: new Date() },
+    });
+
+    await this.notifyAlertParticipants(alertId, {
+      type: NotificationType.ALERT_LEAD_CLAIMED,
+      actorId: callerId,
+    });
+    return this.getAlert(callerId, alertId);
+  }
+
   async getAlert(callerId: string, alertId: string) {
     const alert = await this.prisma.alert.findUnique({
       where: { id: alertId },

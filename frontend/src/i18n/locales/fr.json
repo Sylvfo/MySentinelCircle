@@ -138,6 +138,23 @@
       "random": "Aléatoire"
     }
   },
+  "groups": {
+    "title": "Cercles de groupe",
+    "intro": "Un cercle partagé entre plusieurs sentinelles (ex. une chorale) — le rejoindre te rend sentinelle de chaque membre, et chaque membre devient ta sentinelle aussi. Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e.",
+    "empty": "Tu ne fais encore partie d'aucun groupe.",
+    "newGroup": "Nouveau cercle de groupe",
+    "namePlaceholder": "Ex. Chorale",
+    "create": "Créer",
+    "invitations": "Invitations de groupe",
+    "invitedBy": "{{who}} t'a invité·e dans \"{{group}}\"",
+    "accept": "Accepter",
+    "decline": "Décliner",
+    "invite": "Inviter",
+    "leave": "Quitter le groupe",
+    "confirmLeave": "Quitter ce groupe ? Les relations créées uniquement via ce groupe prendront fin.",
+    "noEligibleContacts": "Personne à inviter pour l'instant — tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e.",
+    "eligibilityHint": "Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e."
+  },
   "companions": {
     "title": "Companions",
     "intro": "Les personnes dont vous êtes la sentinelle — celles que vous surveillez.",
@@ -198,6 +215,10 @@
       "about": "Concerne : {{name}}",
       "participants": "Sentinelles prévenues",
       "lead": "Référent·e",
+      "currentLead": "Lead actuel : {{name}}",
+      "noLeadYet": "Personne n'a encore pris le lead",
+      "claimLead": "Prendre le lead",
+      "activeLeadBadge": "Lead actif",
       "chatTitle": "Chat du 1er cercle",
       "noMessages": "Aucun message pour l'instant.",
       "messagePlaceholder": "Écrire un message...",
@@ -258,11 +279,13 @@
       "ALERT_RESPONSE": "Quelqu'un a répondu à une alerte",
       "ALERT_CLOSED": "Une alerte a été clôturée",
       "ALERT_CIRCLE_NO_RESPONSE": "Pas de réponse depuis 4h — contacter d'autres sentinelles ?",
+      "ALERT_LEAD_CLAIMED": "Quelqu'un a pris le lead sur une alerte",
       "NEW_MESSAGE": "Nouveau message",
       "SENTINEL_INVITATION_RECEIVED": "{{who}} vous invite comme sentinelle",
       "SENTINEL_REQUEST_RECEIVED": "{{who}} veut devenir votre sentinelle",
       "SENTINEL_LINK_ACCEPTED": "{{who}} a accepté",
-      "SENTINEL_LINK_DECLINED": "{{who}} a refusé"
+      "SENTINEL_LINK_DECLINED": "{{who}} a refusé",
+      "SENTINEL_GROUP_INVITED": "{{who}} t'a invité·e dans un groupe"
     }
   },
   "settings": {

@@ -34,6 +34,11 @@ export class AlertController {
     return this.alert.closeAlert(user.userId, id);
   }
 
+  @Post(':id/claim-lead')
+  claimLead(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+    return this.alert.claimLead(user.userId, id);
+  }
+
   @Post(':id/request-circle')
   requestCircle(
     @CurrentUser() user: { userId: string },

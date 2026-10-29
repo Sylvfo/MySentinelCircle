@@ -10,6 +10,7 @@ import { getUnreadCount, listNotifications, markNotificationRead, type Notificat
 function destinationFor(item: NotificationItem): string {
   if (item.type.startsWith('ALERT_')) return '/alerts';
   if (item.type === 'NEW_MESSAGE') return '/messages';
+  if (item.type === 'SENTINEL_GROUP_INVITED') return '/circles';
   return '/companions';
 }
 

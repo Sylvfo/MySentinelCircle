@@ -42,6 +42,8 @@ import { UpdateCircleDto } from './dto/update-circle.dto';
 import { InviteSentinelDto } from './dto/invite-sentinel.dto';
 import { RequestSentinelDto } from './dto/request-sentinel.dto';
 import { UpdateMembershipDto } from './dto/update-membership.dto';
+import { CreateGroupDto } from './dto/create-group.dto';
+import { InviteToGroupDto } from './dto/invite-to-group.dto';
 
 const ACTIVE_STATUSES: LinkStatus[] = [LinkStatus.PENDING, LinkStatus.ACCEPTED];
 const LEAD_SLOTS: LeadSlot[] = [
@@ -153,6 +155,351 @@ export class SentinelService {
       data: { status: CircleStatus.CLOSED, closedAt: new Date() },
     });
     return { deleted: true, movedToReserve: activeLinks.length };
+  }
+
+  // ---- Groups (mutual mesh, invite-by-connection only) -----------------------
+  //
+  // A group (e.g. a choir) isn't its own table — the founder's own GROUP
+  // circle *is* the group (groupRootId: null), and every other member gets
+  // their own GROUP circle pointing at it (groupRootId: <founder's circle
+  // id>), permanently stable even if the founder later leaves. Joining
+  // makes the new member Sentinel for every existing member and vice versa
+  // (full mesh) — but LinkSentinels allows only one relationship ever per
+  // pair, so a pair already connected from outside the group is left alone,
+  // not duplicated. See SentinelGroupInvitation for why the pending invite
+  // can't just be a LinkSentinels row: the inviter and invitee are already
+  // connected (that's the eligibility rule below), so that pair's one
+  // allowed row already exists elsewhere.
+
+  async createGroup(userId: string, dto: CreateGroupDto) {
+    const founder = await this.getUser(userId);
+    this.assertCompleteAccount(founder);
+    return this.prisma.circle.create({
+      data: {
+        userCompanionId: userId,
+        label: dto.label,
+        circleType: CircleType.GROUP,
+      },
+    });
+  }
+
+  // "My" groups, each with its member list (companion id + firstName).
+  async listMyGroups(userId: string) {
+    const myGroupCircles = await this.prisma.circle.findMany({
+      where: {
+        userCompanionId: userId,
+        circleType: CircleType.GROUP,
+        status: CircleStatus.ACTIVE,
+      },
+    });
+    if (myGroupCircles.length === 0) return [];
+
+    const rootIds = myGroupCircles.map((c) => c.groupRootId ?? c.id);
+    const allMemberCircles = await this.prisma.circle.findMany({
+      where: {
+        status: CircleStatus.ACTIVE,
+        OR: rootIds.flatMap((rootId) => [
+          { id: rootId },
+          { groupRootId: rootId },
+        ]),
+      },
+      include: { userCompanion: { select: { id: true, firstName: true } } },
+    });
+    return rootIds.map((rootId) => ({
+      rootId,
+      label: allMemberCircles.find((c) => c.id === rootId)?.label ?? '',
+      members: allMemberCircles
+        .filter((c) => c.id === rootId || c.groupRootId === rootId)
+        .map((c) => c.userCompanion),
+    }));
+  }
+
+  // Only someone the inviter already has an accepted Sentinel/Companion
+  // link with can be invited — a trust chain, not a cold invite.
+  async inviteToGroup(
+    userId: string,
+    groupRootId: string,
+    dto: InviteToGroupDto,
+  ) {
+    const inviter = await this.getUser(userId);
+    this.assertCompleteAccount(inviter);
+
+    const myCircle = await this.prisma.circle.findFirst({
+      where: {
+        userCompanionId: userId,
+        status: CircleStatus.ACTIVE,
+        OR: [{ id: groupRootId }, { groupRootId }],
+      },
+    });
+    if (!myCircle) {
+      throw new ForbiddenException('You are not a member of this group');
+    }
+    if (dto.targetUserId === userId) {
+      throw new BadRequestException('You cannot invite yourself');
+    }
+
+    const target = await this.prisma.user.findUnique({
+      where: { id: dto.targetUserId },
+    });
+    if (!target) throw new NotFoundException('User not found');
+    if (target.userType === UserType.ONLY_SMS) {
+      throw new BadRequestException(
+        'A group member must already have an account',
+      );
+    }
+
+    const alreadyLinked = await this.prisma.linkSentinels.findFirst({
+      where: {
+        status: LinkStatus.ACCEPTED,
+        OR: [
+          { userSentinelId: userId, userCompanionId: dto.targetUserId },
+          { userSentinelId: dto.targetUserId, userCompanionId: userId },
+        ],
+      },
+    });
+    if (!alreadyLinked) {
+      throw new ForbiddenException(
+        'You can only invite someone you are already connected to',
+      );
+    }
+
+    const alreadyMember = await this.prisma.circle.findFirst({
+      where: {
+        userCompanionId: dto.targetUserId,
+        status: CircleStatus.ACTIVE,
+        OR: [{ id: groupRootId }, { groupRootId }],
+      },
+    });
+    if (alreadyMember) {
+      throw new ConflictException(
+        'This person is already a member of the group',
+      );
+    }
+
+    const existingInvitation =
+      await this.prisma.sentinelGroupInvitation.findUnique({
+        where: {
+          groupRootId_invitedUserId: {
+            groupRootId,
+            invitedUserId: dto.targetUserId,
+          },
+        },
+      });
+    if (existingInvitation?.status === LinkStatus.PENDING) {
+      throw new ConflictException('This person has already been invited');
+    }
+
+    const invitation = existingInvitation
+      ? await this.prisma.sentinelGroupInvitation.update({
+          where: { id: existingInvitation.id },
+          data: { status: LinkStatus.PENDING, invitedById: userId },
+        })
+      : await this.prisma.sentinelGroupInvitation.create({
+          data: {
+            groupRootId,
+            invitedUserId: dto.targetUserId,
+            invitedById: userId,
+          },
+        });
+
+    await this.notifications.create({
+      userId: dto.targetUserId,
+      type: NotificationType.SENTINEL_GROUP_INVITED,
+      actorUserId: userId,
+      actorLabel: this.label(inviter),
+      targetId: invitation.id,
+    });
+    return invitation;
+  }
+
+  async respondToGroupInvitation(
+    userId: string,
+    invitationId: string,
+    accept: boolean,
+  ) {
+    const invitation = await this.prisma.sentinelGroupInvitation.findUnique({
+      where: { id: invitationId },
+      include: { groupRoot: true },
+    });
+    if (!invitation) throw new NotFoundException('Invitation not found');
+    if (invitation.invitedUserId !== userId) {
+      throw new ForbiddenException('This invitation is not addressed to you');
+    }
+    if (invitation.status !== LinkStatus.PENDING) {
+      throw new ConflictException('This invitation has already been answered');
+    }
+
+    if (!accept) {
+      return this.prisma.sentinelGroupInvitation.update({
+        where: { id: invitationId },
+        data: { status: LinkStatus.DECLINED },
+      });
+    }
+
+    const members = await this.prisma.circle.findMany({
+      where: {
+        status: CircleStatus.ACTIVE,
+        OR: [
+          { id: invitation.groupRootId },
+          { groupRootId: invitation.groupRootId },
+        ],
+      },
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.sentinelGroupInvitation.update({
+        where: { id: invitationId },
+        data: { status: LinkStatus.ACCEPTED },
+      });
+
+      // A member who left and got re-invited already has a (closed) circle
+      // for this group — @@unique([userCompanionId, groupRootId]) means it
+      // must be reactivated, not duplicated.
+      const previousCircle = await tx.circle.findUnique({
+        where: {
+          userCompanionId_groupRootId: {
+            userCompanionId: userId,
+            groupRootId: invitation.groupRootId,
+          },
+        },
+      });
+      const myCircle = previousCircle
+        ? await tx.circle.update({
+            where: { id: previousCircle.id },
+            data: { status: CircleStatus.ACTIVE, closedAt: null },
+          })
+        : await tx.circle.create({
+            data: {
+              userCompanionId: userId,
+              label: invitation.groupRoot.label,
+              circleType: CircleType.GROUP,
+              groupRootId: invitation.groupRootId,
+            },
+          });
+
+      // Each direction is its own row (@@unique is per directed pair) and
+      // can be in a different state — handled independently: none yet ->
+      // create; REMOVED/DECLINED (e.g. left this same group before) ->
+      // reactivate; BLOCKED -> never touched, permanent; PENDING/ACCEPTED
+      // (already connected, from this group or from outside it) -> leave
+      // as-is.
+      const connect = async (
+        sentinelId: string,
+        companionId: string,
+        circleId: string,
+      ) => {
+        const existing = await tx.linkSentinels.findUnique({
+          where: {
+            userSentinelId_userCompanionId: {
+              userSentinelId: sentinelId,
+              userCompanionId: companionId,
+            },
+          },
+        });
+        if (!existing) {
+          await tx.linkSentinels.create({
+            data: {
+              userSentinelId: sentinelId,
+              userCompanionId: companionId,
+              circleId,
+              status: LinkStatus.ACCEPTED,
+              initiatedBy: LinkInitiator.COMPANION,
+              sentinelType: SentinelType.SENTINEL,
+            },
+          });
+          return;
+        }
+        if (
+          existing.status === LinkStatus.REMOVED ||
+          existing.status === LinkStatus.DECLINED
+        ) {
+          await tx.linkSentinels.update({
+            where: { id: existing.id },
+            data: { status: LinkStatus.ACCEPTED, circleId },
+          });
+        }
+        // BLOCKED, PENDING or ACCEPTED: leave untouched either way.
+      };
+
+      for (const member of members) {
+        await connect(userId, member.userCompanionId, member.id);
+        await connect(member.userCompanionId, userId, myCircle.id);
+      }
+
+      return myCircle;
+    });
+  }
+
+  // Closes the caller's own GROUP circle and undoes the mesh — but only the
+  // relationships the group itself created (circleId is one of the group's
+  // own circles). A relationship that predates the group, or lives in some
+  // other circle, is left untouched.
+  async leaveGroup(userId: string, groupRootId: string) {
+    const myCircle = await this.prisma.circle.findFirst({
+      where: {
+        userCompanionId: userId,
+        status: CircleStatus.ACTIVE,
+        OR: [{ id: groupRootId }, { groupRootId }],
+      },
+    });
+    if (!myCircle) {
+      throw new NotFoundException('You are not a member of this group');
+    }
+
+    const members = await this.prisma.circle.findMany({
+      where: {
+        status: CircleStatus.ACTIVE,
+        OR: [{ id: groupRootId }, { groupRootId }],
+      },
+    });
+    const groupCircleIds = new Set(members.map((m) => m.id));
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.circle.update({
+        where: { id: myCircle.id },
+        data: { status: CircleStatus.CLOSED, closedAt: new Date() },
+      });
+
+      for (const member of members) {
+        if (member.id === myCircle.id) continue;
+        const links = await tx.linkSentinels.findMany({
+          where: {
+            status: LinkStatus.ACCEPTED,
+            OR: [
+              {
+                userSentinelId: userId,
+                userCompanionId: member.userCompanionId,
+              },
+              {
+                userSentinelId: member.userCompanionId,
+                userCompanionId: userId,
+              },
+            ],
+          },
+        });
+        for (const link of links) {
+          if (!groupCircleIds.has(link.circleId)) continue;
+          await tx.linkSentinels.update({
+            where: { id: link.id },
+            data: { status: LinkStatus.REMOVED },
+          });
+        }
+      }
+
+      return { left: true };
+    });
+  }
+
+  // Group invitations addressed to me, awaiting my answer.
+  listMyGroupInvitations(userId: string) {
+    return this.prisma.sentinelGroupInvitation.findMany({
+      where: { invitedUserId: userId, status: LinkStatus.PENDING },
+      include: {
+        groupRoot: { select: { id: true, label: true } },
+        invitedBy: { select: { id: true, firstName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   // ---- Me -> Sentinel invitation (site only) --------------------------------

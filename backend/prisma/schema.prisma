@@ -47,6 +47,7 @@ enum CircleType {
   FIRST
   ORGANISATION
   RESERVED
+  GROUP
 }
 
 enum CircleStatus {
@@ -106,6 +107,8 @@ enum NotificationType {
   ALERT_RESPONSE
   ALERT_CLOSED
   ALERT_CIRCLE_NO_RESPONSE
+  ALERT_LEAD_CLAIMED
+  SENTINEL_GROUP_INVITED
   NEW_MESSAGE
   SENTINEL_INVITATION_RECEIVED
   SENTINEL_REQUEST_RECEIVED
@@ -165,7 +168,8 @@ model User {
 
   notifications      Notification[] @relation("NotificationRecipient")
   actorNotifications Notification[] @relation("NotificationActor")
-
+groupInvitationsReceived SentinelGroupInvitation[] @relation("GroupInvited")
+groupInvitationsSent     SentinelGroupInvitation[] @relation("GroupInviter")
 
   conversationMemberships ConversationParticipant[]
   sentMessages            Message[]
@@ -191,7 +195,13 @@ model Circle {
   userSentinels       LinkSentinels[]
   alertsAsFirstCircle Alert[]            @relation("AlertFirstCircle")
   alertParticipations AlertParticipant[]
+  groupRootId  String?
+  groupRoot    Circle?  @relation("GroupMembers", fields: [groupRootId], references: [id], onDelete: Restrict)
+  groupMembers Circle[] @relation("GroupMembers")
+  groupInvitations SentinelGroupInvitation[]
 
+
+@@unique([userCompanionId, groupRootId])
   @@unique([id, userCompanionId])
   @@index([userCompanionId, status])
 }
@@ -229,6 +239,20 @@ model LinkSentinels {
   @@unique([userSentinelId, userCompanionId])
   @@unique([circleId, leadSlot])
   @@index([userCompanionId, status])
+}
+
+model SentinelGroupInvitation {
+  id            String     @id @default(cuid())
+  createdAt     DateTime   @default(now())
+  groupRootId   String
+  groupRoot     Circle     @relation(fields: [groupRootId], references: [id], onDelete: Restrict)
+  invitedUserId String
+  invitedUser   User       @relation("GroupInvited", fields: [invitedUserId], references: [id], onDelete: Restrict)
+  invitedById   String
+  invitedBy     User       @relation("GroupInviter", fields: [invitedById], references: [id], onDelete: Restrict)
+  status        LinkStatus @default(PENDING)
+
+  @@unique([groupRootId, invitedUserId])
 }
 
 model LinkSentinelsEvent {
@@ -301,6 +325,8 @@ model AlertParticipant {
   response    String?
 
   isLead         Boolean   @default(false)
+// Repurposed as "when this Lead last claimed active leadership of the
+// alert" (see AlertService.claimLead) — not just a contact-time freeze.
   leadAssignedAt DateTime?
   circleId       String
   circle         Circle    @relation(fields: [circleId], references: [id], onDelete: Restrict)

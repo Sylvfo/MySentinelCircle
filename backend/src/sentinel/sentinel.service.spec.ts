@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   CircleStatus,
@@ -42,6 +43,13 @@ describe('SentinelService', () => {
       count: jest.Mock;
     };
     user: { findUnique: jest.Mock; create: jest.Mock };
+    sentinelGroupInvitation: {
+      findUnique: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+    $transaction: jest.Mock;
   };
   let sms: { send: jest.Mock };
   let notifications: { create: jest.Mock };
@@ -65,6 +73,17 @@ describe('SentinelService', () => {
         count: jest.fn(),
       },
       user: { findUnique: jest.fn(), create: jest.fn() },
+      sentinelGroupInvitation: {
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      $transaction: jest.fn((arg: unknown) =>
+        typeof arg === 'function'
+          ? (arg as (tx: unknown) => unknown)(prisma)
+          : Promise.all(arg as Promise<unknown>[]),
+      ),
     };
     sms = { send: jest.fn() };
     alert = { tryHandleInboundSms: jest.fn().mockResolvedValue(null) };
@@ -492,6 +511,353 @@ describe('SentinelService', () => {
         }),
       );
       expect(result).toEqual({ deleted: true, movedToReserve: 2 });
+    });
+  });
+
+  describe('groups', () => {
+    describe('createGroup', () => {
+      it('creates the founder’s own GROUP circle', async () => {
+        prisma.user.findUnique.mockResolvedValueOnce({
+          id: 'alice',
+          userType: UserType.ACCOUNT,
+        });
+        prisma.circle.create.mockResolvedValueOnce({ id: 'root-1' });
+
+        await service.createGroup('alice', { label: 'Choir' });
+
+        expect(prisma.circle.create).toHaveBeenCalledWith({
+          data: {
+            userCompanionId: 'alice',
+            label: 'Choir',
+            circleType: CircleType.GROUP,
+          },
+        });
+      });
+    });
+
+    describe('inviteToGroup', () => {
+      it('rejects an inviter who is not a member of the group', async () => {
+        prisma.user.findUnique.mockResolvedValueOnce({
+          id: 'alice',
+          userType: UserType.ACCOUNT,
+        });
+        prisma.circle.findFirst.mockResolvedValueOnce(null);
+
+        await expect(
+          service.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('rejects inviting a target the inviter is not already connected to', async () => {
+        prisma.user.findUnique
+          .mockResolvedValueOnce({ id: 'alice', userType: UserType.ACCOUNT })
+          .mockResolvedValueOnce({ id: 'bob', userType: UserType.ACCOUNT });
+        prisma.circle.findFirst.mockResolvedValueOnce({ id: 'root-1' });
+        prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
+
+        await expect(
+          service.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('rejects inviting a target with no account', async () => {
+        prisma.user.findUnique
+          .mockResolvedValueOnce({ id: 'alice', userType: UserType.ACCOUNT })
+          .mockResolvedValueOnce({ id: 'bob', userType: UserType.ONLY_SMS });
+        prisma.circle.findFirst.mockResolvedValueOnce({ id: 'root-1' });
+
+        await expect(
+          service.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('creates the invitation and notifies the target when eligible', async () => {
+        prisma.user.findUnique
+          .mockResolvedValueOnce({
+            id: 'alice',
+            firstName: 'Alice',
+            userType: UserType.ACCOUNT,
+          })
+          .mockResolvedValueOnce({ id: 'bob', userType: UserType.ACCOUNT });
+        prisma.circle.findFirst
+          .mockResolvedValueOnce({ id: 'root-1' }) // membership check
+          .mockResolvedValueOnce(null); // not already a member
+        prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce(null);
+        prisma.sentinelGroupInvitation.create.mockResolvedValueOnce({
+          id: 'invite-1',
+        });
+
+        await service.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' });
+
+        expect(prisma.sentinelGroupInvitation.create).toHaveBeenCalledWith({
+          data: {
+            groupRootId: 'root-1',
+            invitedUserId: 'bob',
+            invitedById: 'alice',
+          },
+        });
+        expect(notifications.create).toHaveBeenCalledWith({
+          userId: 'bob',
+          type: NotificationType.SENTINEL_GROUP_INVITED,
+          actorUserId: 'alice',
+          actorLabel: 'Alice',
+          targetId: 'invite-1',
+        });
+      });
+
+      it('rejects inviting someone with an already-pending invitation', async () => {
+        prisma.user.findUnique
+          .mockResolvedValueOnce({ id: 'alice', userType: UserType.ACCOUNT })
+          .mockResolvedValueOnce({ id: 'bob', userType: UserType.ACCOUNT });
+        prisma.circle.findFirst
+          .mockResolvedValueOnce({ id: 'root-1' })
+          .mockResolvedValueOnce(null);
+        prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce({
+          id: 'invite-1',
+          status: LinkStatus.PENDING,
+        });
+
+        await expect(
+          service.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
+        ).rejects.toThrow(ConflictException);
+      });
+    });
+
+    describe('respondToGroupInvitation', () => {
+      const pendingInvitation = (overrides: Record<string, unknown> = {}) => ({
+        id: 'invite-1',
+        invitedUserId: 'carol',
+        groupRootId: 'root-1',
+        status: LinkStatus.PENDING,
+        groupRoot: { id: 'root-1', label: 'Choir' },
+        ...overrides,
+      });
+
+      it('creates the full mesh when accepting, with 2 existing members', async () => {
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce(
+          pendingInvitation(),
+        );
+        prisma.circle.findMany.mockResolvedValueOnce([
+          { id: 'root-1', userCompanionId: 'alice' },
+          { id: 'circle-bob', userCompanionId: 'bob' },
+        ]);
+        prisma.circle.findUnique.mockResolvedValueOnce(null); // no previous circle for this group
+        prisma.circle.create.mockResolvedValueOnce({
+          id: 'circle-carol',
+          userCompanionId: 'carol',
+        });
+        prisma.linkSentinels.findUnique.mockResolvedValue(null);
+
+        await service.respondToGroupInvitation('carol', 'invite-1', true);
+
+        expect(prisma.sentinelGroupInvitation.update).toHaveBeenCalledWith({
+          where: { id: 'invite-1' },
+          data: { status: LinkStatus.ACCEPTED },
+        });
+        expect(prisma.circle.create).toHaveBeenCalledWith({
+          data: {
+            userCompanionId: 'carol',
+            label: 'Choir',
+            circleType: CircleType.GROUP,
+            groupRootId: 'root-1',
+          },
+        });
+        expect(prisma.linkSentinels.create).toHaveBeenCalledTimes(4); // 2 members x 2 directions
+        expect(prisma.linkSentinels.create).toHaveBeenCalledWith({
+          data: {
+            userSentinelId: 'carol',
+            userCompanionId: 'alice',
+            circleId: 'root-1',
+            status: LinkStatus.ACCEPTED,
+            initiatedBy: LinkInitiator.COMPANION,
+            sentinelType: SentinelType.SENTINEL,
+          },
+        });
+        expect(prisma.linkSentinels.create).toHaveBeenCalledWith({
+          data: {
+            userSentinelId: 'alice',
+            userCompanionId: 'carol',
+            circleId: 'circle-carol',
+            status: LinkStatus.ACCEPTED,
+            initiatedBy: LinkInitiator.COMPANION,
+            sentinelType: SentinelType.SENTINEL,
+          },
+        });
+      });
+
+      it('reactivates a previous closed circle and removed relationships when rejoining', async () => {
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce(
+          pendingInvitation(),
+        );
+        prisma.circle.findMany.mockResolvedValueOnce([
+          { id: 'root-1', userCompanionId: 'alice' },
+        ]);
+        // carol already has a (closed) circle for this group from a
+        // previous membership — @@unique([userCompanionId, groupRootId])
+        // means it must be reused, not re-created.
+        prisma.circle.findUnique.mockResolvedValueOnce({
+          id: 'circle-carol',
+          status: CircleStatus.CLOSED,
+        });
+        prisma.circle.update.mockResolvedValueOnce({
+          id: 'circle-carol',
+          status: CircleStatus.ACTIVE,
+        });
+        prisma.linkSentinels.findUnique
+          .mockResolvedValueOnce({ id: 'l1', status: LinkStatus.REMOVED }) // carol -> alice
+          .mockResolvedValueOnce({ id: 'l2', status: LinkStatus.REMOVED }); // alice -> carol
+
+        await service.respondToGroupInvitation('carol', 'invite-1', true);
+
+        expect(prisma.circle.create).not.toHaveBeenCalled();
+        expect(prisma.circle.update).toHaveBeenCalledWith({
+          where: { id: 'circle-carol' },
+          data: { status: CircleStatus.ACTIVE, closedAt: null },
+        });
+        expect(prisma.linkSentinels.create).not.toHaveBeenCalled();
+        expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+          where: { id: 'l1' },
+          data: { status: LinkStatus.ACCEPTED, circleId: 'root-1' },
+        });
+        expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+          where: { id: 'l2' },
+          data: { status: LinkStatus.ACCEPTED, circleId: 'circle-carol' },
+        });
+      });
+
+      it('skips a member already connected to the invitee from outside the group', async () => {
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce(
+          pendingInvitation(),
+        );
+        prisma.circle.findMany.mockResolvedValueOnce([
+          { id: 'root-1', userCompanionId: 'alice' },
+          { id: 'circle-bob', userCompanionId: 'bob' },
+        ]);
+        prisma.circle.findUnique.mockResolvedValueOnce(null); // no previous circle for this group
+        prisma.circle.create.mockResolvedValueOnce({
+          id: 'circle-carol',
+          userCompanionId: 'carol',
+        });
+        prisma.linkSentinels.findUnique
+          .mockResolvedValueOnce(null) // carol -> alice: not yet connected
+          .mockResolvedValueOnce(null) // alice -> carol: not yet connected
+          .mockResolvedValueOnce({ id: 'l1', status: LinkStatus.ACCEPTED }) // carol -> bob: already connected
+          .mockResolvedValueOnce({ id: 'l2', status: LinkStatus.ACCEPTED }); // bob -> carol: already connected
+
+        await service.respondToGroupInvitation('carol', 'invite-1', true);
+
+        expect(prisma.linkSentinels.create).toHaveBeenCalledTimes(2); // alice <-> carol only
+      });
+
+      it('declines without touching LinkSentinels', async () => {
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce(
+          pendingInvitation(),
+        );
+        prisma.sentinelGroupInvitation.update.mockResolvedValueOnce({
+          id: 'invite-1',
+          status: LinkStatus.DECLINED,
+        });
+
+        await service.respondToGroupInvitation('carol', 'invite-1', false);
+
+        expect(prisma.sentinelGroupInvitation.update).toHaveBeenCalledWith({
+          where: { id: 'invite-1' },
+          data: { status: LinkStatus.DECLINED },
+        });
+        expect(prisma.linkSentinels.create).not.toHaveBeenCalled();
+      });
+
+      it('rejects responding to an invitation not addressed to the caller', async () => {
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce(
+          pendingInvitation(),
+        );
+
+        await expect(
+          service.respondToGroupInvitation('mallory', 'invite-1', true),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('rejects responding to an invitation that was already answered', async () => {
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce(
+          pendingInvitation({ status: LinkStatus.ACCEPTED }),
+        );
+
+        await expect(
+          service.respondToGroupInvitation('carol', 'invite-1', true),
+        ).rejects.toThrow(ConflictException);
+      });
+    });
+
+    describe('leaveGroup', () => {
+      it('closes the caller’s circle and removes group-created relationships only', async () => {
+        prisma.circle.findFirst.mockResolvedValueOnce({
+          id: 'circle-carol',
+          userCompanionId: 'carol',
+        });
+        prisma.circle.findMany.mockResolvedValueOnce([
+          { id: 'root-1', userCompanionId: 'alice' },
+          { id: 'circle-bob', userCompanionId: 'bob' },
+          { id: 'circle-carol', userCompanionId: 'carol' },
+        ]);
+        prisma.linkSentinels.findMany
+          .mockResolvedValueOnce([
+            // carol <-> alice: created by the group (circleId is a group circle)
+            { id: 'link-ca-1', circleId: 'root-1' },
+            { id: 'link-ca-2', circleId: 'circle-carol' },
+          ])
+          .mockResolvedValueOnce([
+            // carol <-> bob: predates the group (circleId is unrelated)
+            { id: 'link-cb-1', circleId: 'some-other-circle' },
+          ]);
+
+        await service.leaveGroup('carol', 'root-1');
+
+        expect(prisma.circle.update).toHaveBeenCalledWith({
+          where: { id: 'circle-carol' },
+          data: expect.objectContaining({ status: CircleStatus.CLOSED }),
+        });
+        expect(prisma.linkSentinels.update).toHaveBeenCalledTimes(2);
+        expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+          where: { id: 'link-ca-1' },
+          data: { status: LinkStatus.REMOVED },
+        });
+        expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+          where: { id: 'link-ca-2' },
+          data: { status: LinkStatus.REMOVED },
+        });
+      });
+
+      it('rejects leaving a group the caller is not a member of', async () => {
+        prisma.circle.findFirst.mockResolvedValueOnce(null);
+
+        await expect(service.leaveGroup('carol', 'root-1')).rejects.toThrow(
+          NotFoundException,
+        );
+      });
+    });
+
+    describe('listMyGroupInvitations', () => {
+      it('lists pending invitations addressed to me', async () => {
+        prisma.sentinelGroupInvitation.findMany.mockResolvedValueOnce([
+          { id: 'invite-1', groupRoot: { id: 'root-1', label: 'Choir' } },
+        ]);
+
+        const result = await service.listMyGroupInvitations('carol');
+
+        expect(prisma.sentinelGroupInvitation.findMany).toHaveBeenCalledWith({
+          where: { invitedUserId: 'carol', status: LinkStatus.PENDING },
+          include: {
+            groupRoot: { select: { id: true, label: true } },
+            invitedBy: { select: { id: true, firstName: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        expect(result).toEqual([
+          { id: 'invite-1', groupRoot: { id: 'root-1', label: 'Choir' } },
+        ]);
+      });
     });
   });
 

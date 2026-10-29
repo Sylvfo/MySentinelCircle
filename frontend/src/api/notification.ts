@@ -6,10 +6,12 @@ export type NotificationType =
   | 'ALERT_RESPONSE'
   | 'ALERT_CLOSED'
   | 'ALERT_CIRCLE_NO_RESPONSE'
+  | 'ALERT_LEAD_CLAIMED'
   | 'NEW_MESSAGE'
   | 'SENTINEL_INVITATION_RECEIVED'
   | 'SENTINEL_REQUEST_RECEIVED'
-  | 'SENTINEL_LINK_ANSWERED';
+  | 'SENTINEL_LINK_ANSWERED'
+  | 'SENTINEL_GROUP_INVITED';
 
 export interface NotificationItem {
   id: string;

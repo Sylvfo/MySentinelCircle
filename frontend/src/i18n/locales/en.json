@@ -138,6 +138,23 @@
       "random": "Random"
     }
   },
+  "groups": {
+    "title": "Group Circles",
+    "intro": "A circle shared between several Sentinels (e.g. a choir) — joining makes you Sentinel for every member, and every member your Sentinel too. You can only invite someone you're already connected to.",
+    "empty": "You're not in any group yet.",
+    "newGroup": "New group circle",
+    "namePlaceholder": "E.g. Choir",
+    "create": "Create",
+    "invitations": "Group invitations",
+    "invitedBy": "{{who}} invited you to \"{{group}}\"",
+    "accept": "Accept",
+    "decline": "Decline",
+    "invite": "Invite",
+    "leave": "Leave group",
+    "confirmLeave": "Leave this group? Relationships created only through this group will end.",
+    "noEligibleContacts": "No one to invite yet — you can only invite someone you're already connected to.",
+    "eligibilityHint": "You can only invite someone you're already connected to."
+  },
   "companions": {
     "title": "Companions",
     "intro": "The people you are the Sentinel for — those you watch over.",
@@ -198,6 +215,10 @@
       "about": "About: {{name}}",
       "participants": "Notified Sentinels",
       "lead": "Lead",
+      "currentLead": "Current lead: {{name}}",
+      "noLeadYet": "No one has claimed the lead yet",
+      "claimLead": "Take the lead",
+      "activeLeadBadge": "Active lead",
       "chatTitle": "1st circle chat",
       "noMessages": "No message yet.",
       "messagePlaceholder": "Write a message...",
@@ -258,11 +279,13 @@
       "ALERT_RESPONSE": "Someone responded to an alert",
       "ALERT_CLOSED": "An alert has been closed",
       "ALERT_CIRCLE_NO_RESPONSE": "No reply in 4h — contact more Sentinels?",
+      "ALERT_LEAD_CLAIMED": "Someone took the lead on an alert",
       "NEW_MESSAGE": "New message",
       "SENTINEL_INVITATION_RECEIVED": "{{who}} invited you as a Sentinel",
       "SENTINEL_REQUEST_RECEIVED": "{{who}} wants to become your Sentinel",
       "SENTINEL_LINK_ACCEPTED": "{{who}} accepted",
-      "SENTINEL_LINK_DECLINED": "{{who}} declined"
+      "SENTINEL_LINK_DECLINED": "{{who}} declined",
+      "SENTINEL_GROUP_INVITED": "{{who}} invited you to a group"
     }
   },
   "settings": {

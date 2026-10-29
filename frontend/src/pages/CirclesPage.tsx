@@ -2,35 +2,78 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../api/client';
 import {
+  acceptGroupInvitation,
   acceptMembership,
   createCircle,
+  createGroup,
+  declineGroupInvitation,
   declineMembership,
   deleteCircle,
   inviteSentinel,
+  inviteToGroup,
+  leaveGroup,
   listCircles,
+  listCompanions,
   listIncomingRequests,
+  listMyGroupInvitations,
+  listMyGroups,
   removeMembership,
   updateCircle,
   updateMembership,
   type Circle,
+  type Group,
+  type GroupInvitation,
   type IncomingRequest,
   type Membership,
   type MessagingMode,
 } from '../api/sentinel';
 
+interface GroupContact {
+  userId: string;
+  label: string;
+}
+
 export function CirclesPage() {
   const { t } = useTranslation();
   const [circles, setCircles] = useState<Circle[]>([]);
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupInvitations, setGroupInvitations] = useState<GroupInvitation[]>([]);
+  const [groupContacts, setGroupContacts] = useState<GroupContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const reload = async () => {
     setError(null);
     try {
-      const [c, r] = await Promise.all([listCircles(), listIncomingRequests()]);
+      const [c, r, g, gi, companions] = await Promise.all([
+        listCircles(),
+        listIncomingRequests(),
+        listMyGroups(),
+        listMyGroupInvitations(),
+        listCompanions(),
+      ]);
       setCircles(c);
       setRequests(r);
+      setGroups(g);
+      setGroupInvitations(gi);
+
+      // Who I can invite into a group circle — anyone I already have an
+      // accepted Sentinel/Companion link with (mirrors the eligibility
+      // rule the backend enforces), merged by userId the same way
+      // MessagesPage merges its own contact list.
+      const bySentinel: GroupContact[] = c.flatMap((circle) =>
+        circle.userSentinels
+          .filter((m) => m.status === 'ACCEPTED' && m.sentinelType !== 'ONLY_SMS')
+          .map((m) => ({ userId: m.linkAsSentinel.id, label: m.linkAsSentinel.firstName })),
+      );
+      const byCompanion: GroupContact[] = companions.map((comp) => ({
+        userId: comp.companion.id,
+        label: comp.companion.email ?? comp.companion.phone ?? '…',
+      }));
+      const merged = new Map<string, GroupContact>();
+      for (const contact of [...bySentinel, ...byCompanion]) merged.set(contact.userId, contact);
+      setGroupContacts([...merged.values()]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     }
@@ -56,6 +99,20 @@ export function CirclesPage() {
       ) : (
         circles.map((circle) => (
           <CircleCard key={circle.id} circle={circle} circles={circles} onChange={reload} onError={setError} />
+        ))
+      )}
+
+      <h2>{t('groups.title')}</h2>
+      <p style={{ color: 'var(--text-muted)' }}>{t('groups.intro')}</p>
+
+      <GroupInvitationsInbox invitations={groupInvitations} onChange={reload} />
+      <CreateGroupForm onCreated={reload} onError={setError} />
+
+      {groups.length === 0 ? (
+        <div className="empty-state">{t('groups.empty')}</div>
+      ) : (
+        groups.map((g) => (
+          <GroupCard key={g.rootId} group={g} contacts={groupContacts} onChange={reload} onError={setError} />
         ))
       )}
     </div>
@@ -477,5 +534,151 @@ function InviteForm({
         </button>
       </div>
     </form>
+  );
+}
+
+// ---- Group circles (mutual mesh, invite-by-connection only) -----------------
+
+function GroupInvitationsInbox({
+  invitations,
+  onChange,
+}: {
+  invitations: GroupInvitation[];
+  onChange: () => void;
+}) {
+  const { t } = useTranslation();
+  if (invitations.length === 0) return null;
+
+  return (
+    <section className="panel">
+      <h2>{t('groups.invitations')}</h2>
+      {invitations.map((inv) => (
+        <div key={inv.id} className="row">
+          <span>
+            {t('groups.invitedBy', { who: inv.invitedBy.firstName, group: inv.groupRoot.label })}
+          </span>
+          <span className="row-actions">
+            <button onClick={() => acceptGroupInvitation(inv.id).then(onChange)}>
+              {t('groups.accept')}
+            </button>
+            <button className="ghost" onClick={() => declineGroupInvitation(inv.id).then(onChange)}>
+              {t('groups.decline')}
+            </button>
+          </span>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function CreateGroupForm({ onCreated, onError }: { onCreated: () => void; onError: (m: string) => void }) {
+  const { t } = useTranslation();
+  const [label, setLabel] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await createGroup(label.trim());
+      setLabel('');
+      onCreated();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form className="panel inline-form" onSubmit={submit}>
+      <h2>{t('groups.newGroup')}</h2>
+      <div className="row">
+        <input
+          value={label}
+          required
+          placeholder={t('groups.namePlaceholder')}
+          onChange={(e) => setLabel(e.target.value)}
+        />
+        <button type="submit" disabled={submitting || !label.trim()}>
+          {t('groups.create')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function GroupCard({
+  group,
+  contacts,
+  onChange,
+  onError,
+}: {
+  group: Group;
+  contacts: GroupContact[];
+  onChange: () => void;
+  onError: (m: string) => void;
+}) {
+  const { t } = useTranslation();
+  const memberIds = new Set(group.members.map((m) => m.id));
+  const eligible = contacts.filter((c) => !memberIds.has(c.userId));
+  const [targetUserId, setTargetUserId] = useState(eligible[0]?.userId ?? '');
+
+  const invite = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!targetUserId) return;
+    try {
+      await inviteToGroup(group.rootId, targetUserId);
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
+  const leave = async () => {
+    if (!window.confirm(t('groups.confirmLeave'))) return;
+    try {
+      await leaveGroup(group.rootId);
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+
+  return (
+    <section className="panel">
+      <div className="row">
+        <h2>{group.label}</h2>
+        <button className="ghost" onClick={leave}>
+          {t('groups.leave')}
+        </button>
+      </div>
+
+      {group.members.map((m) => (
+        <div key={m.id} className="row member-row">
+          <span>{m.firstName}</span>
+        </div>
+      ))}
+
+      <form className="row" onSubmit={invite}>
+        {eligible.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)' }}>{t('groups.noEligibleContacts')}</p>
+        ) : (
+          <>
+            <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)}>
+              {eligible.map((c) => (
+                <option key={c.userId} value={c.userId}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            <button type="submit" disabled={!targetUserId}>
+              {t('groups.invite')}
+            </button>
+          </>
+        )}
+      </form>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('groups.eligibilityHint')}</p>
+    </section>
   );
 }
