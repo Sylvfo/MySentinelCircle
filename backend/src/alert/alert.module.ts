@@ -6,7 +6,7 @@ import { AlertController } from './alert.controller';
   providers: [AlertService],
   controllers: [AlertController],
   // SentinelService delegates to it as an inbound-SMS fallback (one webhook
-  // for the whole app, see sentinel.service.ts's handleInboundSms).
+  // for the whole app, see sms-inbound.service.ts).
   exports: [AlertService],
 })
 export class AlertModule {}

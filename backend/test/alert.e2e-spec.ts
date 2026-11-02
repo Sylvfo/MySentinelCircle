@@ -4,6 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AlertStatus, AlertType, CircleType } from '@prisma/client';
 import { AppModule } from './../src/app.module';
+import { PrismaService } from './../src/prisma/prisma.service';
 import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from './../src/email/email-sender.interface';
 import { SMS_SENDER } from './../src/sms/sms-sender.interface';
@@ -83,6 +84,7 @@ const byString = (a: string, b: string) => a.localeCompare(b);
 
 describe('Alert (e2e)', () => {
   let app: INestApplication<App>;
+  let prisma: PrismaService;
   let sentOtps: { phone: string; code: string }[];
   let sentSms: { phone: string; body: string }[];
 
@@ -111,6 +113,7 @@ describe('Alert (e2e)', () => {
       })
       .compile();
 
+    prisma = moduleFixture.get(PrismaService);
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
@@ -631,7 +634,7 @@ describe('Alert (e2e)', () => {
       const detailRes = await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
       const detail = detailRes.body as AlertDetailBody;
 
@@ -646,6 +649,67 @@ describe('Alert (e2e)', () => {
       expect(outerParticipants.every((p) => p.status === 'CONTACTED')).toBe(
         true,
       );
+    });
+
+    it('takes SMS replies in full: a digit, a change of mind, then a further question', async () => {
+      const companion = await signupAccount('Noah');
+      await buildFirstCircle(companion.accessToken, 1);
+      const { circle: outerCircle, sentinels: outerSentinels } =
+        await buildOuterCircle(companion.accessToken, 'Sport', 1);
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.MISSING,
+          reason: 'Introuvable',
+        })
+        .expect(201);
+      const alert = raiseRes.body as AlertBody;
+      const detailRes = await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/request-circle`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
+        .expect(201);
+      const participant = (detailRes.body as AlertDetailBody).participants.find(
+        (p) => p.circleId === outerCircle.id,
+      )!;
+
+      const reply = (body: string) =>
+        request(app.getHttpServer())
+          .post('/sentinel/sms/inbound')
+          .send({ from: outerSentinels[0].phone, body })
+          .expect(201);
+      const latestResponse = async () =>
+        (
+          await prisma.alertParticipant.findUnique({
+            where: { id: participant.id },
+          })
+        )?.response;
+
+      await reply('1');
+      expect(await latestResponse()).toBe('YES');
+
+      await reply('2');
+      expect(await latestResponse()).toBe('LATER');
+
+      await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/questions`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ questionKind: 'WHERE_SEEN', participantIds: [participant.id] })
+        .expect(201);
+
+      await reply('a la gare, hier');
+      expect(await latestResponse()).toBe('a la gare, hier');
+
+      const questions = await prisma.alertQuestion.findMany({
+        where: { alertParticipantId: participant.id },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(questions.map((q) => q.response)).toEqual([
+        'LATER',
+        'a la gare, hier',
+      ]);
     });
 
     it('records an outer-circle Sentinel’s SMS OUI/NON reply, without it being misread as "leave the circle"', async () => {
@@ -666,7 +730,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-il chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
       sentSms.length = 0;
 
@@ -688,7 +752,7 @@ describe('Alert (e2e)', () => {
         (p) => p.circleId === outerCircle.id,
       )!;
       expect(participant.status).toBe('RESPONDED');
-      expect(participant.response).toBe('NON');
+      expect(participant.response).toBe('NO');
 
       // The Sentinel must still be an active member of the circle — a NON
       // meant for the alert question must never be read as "remove me".
@@ -730,20 +794,27 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-il chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       // respond() returns the updated participant directly, not the full
       // getAlert() detail — an outer-circle Sentinel isn't allowed to view
       // that (only "Me" or the 1st circle are).
+      const participation = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}/my-participation`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .expect(200);
+      const { questions } = participation.body as {
+        questions: { id: string }[];
+      };
       const respondRes = await request(app.getHttpServer())
         .post(`/alert/${alert.id}/respond`)
         .set('Authorization', auth(outerSentinels[0].accessToken))
-        .send({ accepted: true })
+        .send({ reply: 'YES', questionId: questions[0].id })
         .expect(201);
       const participant = respondRes.body as AlertParticipantBody;
       expect(participant.status).toBe('RESPONDED');
-      expect(participant.response).toBe('OUI');
+      expect(participant.response).toBe('YES');
 
       const detailRes = await request(app.getHttpServer())
         .get(`/alert/${alert.id}`)
@@ -754,7 +825,7 @@ describe('Alert (e2e)', () => {
         (p) => p.circleId === outerCircle.id,
       )!;
       expect(updated.status).toBe('RESPONDED');
-      expect(updated.response).toBe('OUI');
+      expect(updated.response).toBe('YES');
     });
 
     it('rejects responding when the caller has no pending request on this alert', async () => {
@@ -774,7 +845,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${(raiseRes.body as AlertBody).id}/respond`)
         .set('Authorization', auth(stranger.accessToken))
-        .send({ accepted: true })
+        .send({ reply: 'GOING' })
         .expect(403);
     });
 
@@ -800,7 +871,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${(raiseRes.body as AlertBody).id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: othersCircle.id, question: 'x' })
+        .send({ circleId: othersCircle.id, questionKind: 'CAN_VISIT' })
         .expect(400);
     });
 
@@ -826,7 +897,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${(raiseRes.body as AlertBody).id}/request-circle`)
         .set('Authorization', auth(stranger.accessToken))
-        .send({ circleId: outerCircle.id, question: 'x' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(403);
     });
   });
@@ -850,7 +921,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       // The full alert is off-limits to them...
@@ -926,7 +997,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       const openRes = await request(app.getHttpServer())
@@ -1014,7 +1085,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'x' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -1043,7 +1114,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -1158,7 +1229,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       // sentinels[1] is not the Lead (leadCount: 1) — still allowed, any
@@ -1267,7 +1338,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(sentinels[0].accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       detailRes = await request(app.getHttpServer())

@@ -1,3 +1,4 @@
+import { NotificationType } from '@prisma/client';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { UnauthorizedException } from '@nestjs/common';
@@ -208,8 +209,11 @@ describe('AccountDeletionService', () => {
 
     await service.deleteAccount('me');
 
-    expect(sms.send).toHaveBeenCalledTimes(1);
-    expect(notifications.create).not.toHaveBeenCalled();
+    expect(sms.send).not.toHaveBeenCalled();
+    expect(notifications.create).toHaveBeenCalledTimes(1);
+    expect(notifications.create).toHaveBeenCalledWith(
+      expect.objectContaining({ type: NotificationType.SENTINEL_LEFT }),
+    );
   });
 
   it('tells the Sentinels of the deleted person', async () => {

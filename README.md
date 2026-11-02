@@ -65,7 +65,7 @@ To restore the demo accounts later, run `make db-seed`. It can be re-run safely 
 | `make` | Backend and frontend on the host, MariaDB in Docker | http://localhost:5173 |
 | `make docker-up` | Everything in Docker, behind nginx | https://localhost:4444 (accept the self-signed certificate) |
 
-`make nosmsnow` is optional: run it in its own terminal to see SMS and reply to them. See [NOSMSNOW.md](documentation/NOSMSNOW.md).
+`make nosmsnow` is optional: run it in its own terminal to see SMS and reply to them. With `make docker-up`, use `make nosmsnow-docker`. See [NOSMSNOW.md](documentation/NOSMSNOW.md).
 
 ### After a `git pull`
 

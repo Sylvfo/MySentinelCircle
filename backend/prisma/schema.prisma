@@ -116,7 +116,10 @@ enum NotificationType {
   SENTINEL_LINK_ANSWERED
   DEATH_NOTICE_REPORTED
   DEATH_NOTICE_CONFIRMED
-  DEATH_NOTICE_REJECTED  
+  DEATH_NOTICE_REJECTED
+  SENTINEL_LEFT
+  CIRCLE_MOVE_PROPOSED
+  CIRCLE_MOVE_ANSWERED
 }
 
 model User {
@@ -169,6 +172,9 @@ model User {
   myAlerts    Alert[]         @relation("MyAlertsAsCompanion")
 
   linksAsSentinel LinkSentinels[] @relation("LinkAsSentinel")
+
+  alertQuestionsAsked AlertQuestion[] @relation("AlertQuestionAskedBy")
+
 
   launchedAlerts Alert[]      @relation("AlertLaunchedBy")
   closedAlerts   Alert[]      @relation("AlertClosedBy")
@@ -358,6 +364,7 @@ model AlertParticipant {
 
   alertId String
   alert   Alert  @relation(fields: [alertId], references: [id], onDelete: Restrict)
+  questions AlertQuestion[]
 
   userSentinelsId String
   userSentinels   LinkSentinels @relation(fields: [userSentinelsId], references: [id], onDelete: Restrict)
@@ -433,6 +440,25 @@ model Notification {
   targetId String?
 
   @@index([userId, readAt, createdAt])
+}
+
+// One question sent to one participant during an alert.
+model AlertQuestion {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kind       String    // CAN_VISIT, LAST_NEWS, SEEMED_OK or WHERE_SEEN
+  response   String?   @db.VarChar(300) // reply code, or free text for WHERE_SEEN
+  answeredAt DateTime?
+
+  askedById String
+  askedBy   User   @relation("AlertQuestionAskedBy", fields: [askedById], references: [id], onDelete: Restrict)
+
+  alertParticipantId String
+  alertParticipant   AlertParticipant @relation(fields: [alertParticipantId], references: [id], onDelete: Restrict)
+
+  @@index([alertParticipantId, createdAt])
 }
 
 /*
