@@ -31,11 +31,57 @@ Supporting pieces of that workflow:
 
 ## How to run it
 
+### Prerequisites
+
+Docker with Compose v2, Node.js 22, GNU Make, OpenSSL.
+
+### First install on a new machine
+
 ```
-make
+git clone https://github.com/Sylvfo/MySentinelCircle.git
+cd MySentinelCircle
+make setup
 ```
 
-→ https://localhost:4444/
+`make setup` can be re-run safely: it keeps existing env files and data. It:
+
+1. creates `.env`, `backend/.env` and `backend/.env.test` from their examples
+2. installs the backend and frontend dependencies
+3. generates the self-signed certificates in `nginx/ssl/`
+4. starts MariaDB and creates the tables from the Prisma migrations
+5. creates the `mysentinelcircle_test` database
+6. seeds the demo accounts, listed with their password in `backend/test-users.local.md`
+
+To use your own database passwords, copy `.env.example` to `.env` and edit it before running `make setup`.
+
+Google sign-in stays off in the backend until `GOOGLE_CLIENT_ID` is set in `backend/.env`.
+
+### Start the app
+
+| Command | Mode | Open |
+|---|---|---|
+| `make` | Backend and frontend on the host, MariaDB in Docker | http://localhost:5173 |
+| `make docker-up` | Everything in Docker, behind nginx | https://localhost:4444 (accept the self-signed certificate) |
+
+`make nosmsnow` is optional: run it in its own terminal to see SMS and reply to them. See [NOSMSNOW.md](documentation/NOSMSNOW.md).
+
+### After a `git pull`
+
+```
+make install db-migrate
+```
+
+`make docker-up` applies pending migrations on its own when the backend starts.
+
+### Stop the app
+
+```
+make docker-down
+```
+
+Your data stays in the Docker volumes, and `make db-down` stops only MariaDB.
+
+`docker compose down -v` also **permanently deletes** those volumes: the dev and test databases and the uploaded files. After that, `make setup` rebuilds the tables and demo accounts, but nothing else comes back.
 
 ## Documentation
 

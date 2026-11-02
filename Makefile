@@ -1,20 +1,40 @@
-.PHONY: all install back front dev db-up db-down db-logs db-test-init certs docker-up docker-down nosmsnow
+.PHONY: all setup env install back front dev db-up db-down db-logs db-migrate db-seed db-test-init certs docker-up docker-down nosmsnow
 
 # Default target — `make` alone runs this
 all: dev
+
+# First install on a new machine — safe to re-run, keeps existing env files and data
+setup: env install certs db-up db-migrate db-test-init db-seed
+
+# Creates missing env files from their examples, DB credentials taken from the root .env
+env:
+	@[ -f .env ] || cp .env.example .env
+	@[ -f backend/.env ] || cp backend/.env.example backend/.env
+	@[ -f backend/.env.test ] || cp backend/.env.test.example backend/.env.test
+	@set -a; . ./.env; set +a; \
+	sed -i "s|<MARIADB_USER>|$$MARIADB_USER|g; s|<MARIADB_PASSWORD>|$$MARIADB_PASSWORD|g; s|<MARIADB_DATABASE>|$$MARIADB_DATABASE|g" \
+		backend/.env backend/.env.test
 
 install:
 	cd backend && npm install
 	cd frontend && npm install
 
 db-up:
-	docker compose up -d mariadb
+	docker compose up -d --wait mariadb
 
 db-down:
-	docker compose down
+	docker compose stop mariadb
 
 db-logs:
 	docker compose logs -f mariadb
+
+# Applies pending migrations to the dev DB — never drops data
+db-migrate:
+	cd backend && npx prisma generate && npx prisma migrate deploy
+
+# Demo accounts, idempotent — dev DB only
+db-seed:
+	cd backend && npm run seed:dev
 
 db-test-init:
 	bash backend/scripts/create-test-db.sh
