@@ -41,6 +41,12 @@ export function sentinelLeftSms(sentinelLabel: string): string {
   return `${sentinelLabel} ne fait plus partie de vos Sentinels sur ${APP}.`;
 }
 
+// Sent to "Me" when their only Lead Sentinel deleted their account: without
+// a Lead, no alert can be raised.
+export function lastLeadLeftSms(): string {
+  return `Vous n'avez plus de Lead Sentinel sur ${APP}. Designez-en un pour pouvoir lancer une alerte.`;
+}
+
 // Confirmation to the Sentinel who just opted out.
 export function sentinelLeaveConfirmSms(ownerLabel: string): string {
   return `C'est note : vous n'etes plus Sentinel de ${ownerLabel} sur ${APP}.`;

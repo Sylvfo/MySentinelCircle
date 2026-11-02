@@ -50,7 +50,7 @@ describe('AlertService', () => {
       findFirst: jest.Mock;
     };
     notification: { count: jest.Mock };
-    user: { findUnique: jest.Mock };
+    user: { findUnique: jest.Mock; findFirst: jest.Mock };
     $transaction: jest.Mock;
   };
   let sms: { send: jest.Mock };
@@ -107,7 +107,7 @@ describe('AlertService', () => {
         findFirst: jest.fn(),
       },
       notification: { count: jest.fn() },
-      user: { findUnique: jest.fn() },
+      user: { findUnique: jest.fn(), findFirst: jest.fn() },
       $transaction: jest.fn((arg: unknown) =>
         typeof arg === 'function'
           ? (arg as (tx: unknown) => unknown)(prisma)
@@ -152,6 +152,7 @@ describe('AlertService', () => {
       prisma.user.findUnique.mockResolvedValueOnce({
         firstName: 'Alice',
         phone: '+41790000000',
+        phoneVerifiedAt: new Date(),
       });
       prisma.alert.create.mockResolvedValueOnce({ id: 'alert-1' });
       prisma.alert.findUnique.mockResolvedValueOnce({
@@ -273,6 +274,86 @@ describe('AlertService', () => {
       expect(sms.send).toHaveBeenCalledWith('+41790000000', expect.any(String));
     });
 
+    describe('who can answer the alert', () => {
+      const dto = {
+        companionId: 'alice-id',
+        alertType: AlertType.NOCONTACT,
+        reason: 'sans nouvelles',
+      };
+      const arrange = (
+        links: ReturnType<typeof linkRow>[],
+        companion: { phone: string | null; phoneVerifiedAt: Date | null } = {
+          phone: '+41790000000',
+          phoneVerifiedAt: new Date(),
+        },
+      ) => {
+        prisma.alert.findFirst.mockResolvedValueOnce(null);
+        prisma.circle.findFirst.mockResolvedValueOnce(circle);
+        prisma.linkSentinels.findMany.mockResolvedValueOnce(links);
+        prisma.user.findUnique
+          .mockResolvedValueOnce({ status: 'ACTIVE' })
+          .mockResolvedValueOnce({ hasPaid: true })
+          .mockResolvedValueOnce({ firstName: 'Alice', ...companion })
+          .mockResolvedValue({ firstName: 'Dana' });
+        prisma.alert.create.mockResolvedValueOnce({ id: 'alert-1' });
+      };
+      const leadWithoutPhone = () =>
+        linkRow({
+          linkAsSentinel: {
+            id: 'sentinel-1',
+            firstName: 'Bea',
+            phone: null,
+          },
+        });
+
+      it('refuses your own alert without a verified phone', async () => {
+        arrange([linkRow()], { phone: null, phoneVerifiedAt: null });
+
+        await expect(service.raiseAlert('alice-id', dto)).rejects.toThrow(
+          'Add and verify your phone number',
+        );
+      });
+
+      it('refuses your own alert when no Lead has a phone', async () => {
+        arrange([leadWithoutPhone()]);
+
+        await expect(service.raiseAlert('alice-id', dto)).rejects.toThrow(
+          'A Lead Sentinel with a phone number',
+        );
+      });
+
+      it('refuses a plain Sentinel when no Lead has a phone', async () => {
+        arrange([leadWithoutPhone()]);
+        prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link' });
+
+        await expect(
+          service.raiseAlert('outer-sentinel-id', dto),
+        ).rejects.toThrow('A Lead Sentinel with a phone number');
+      });
+
+      it('refuses a Lead with no other Sentinel to answer', async () => {
+        arrange([linkRow()]);
+        prisma.linkSentinels.findFirst
+          .mockResolvedValueOnce({ id: 'link' })
+          .mockResolvedValueOnce(null);
+
+        await expect(service.raiseAlert('sentinel-1', dto)).rejects.toThrow(
+          'another Sentinel',
+        );
+      });
+
+      it('lets a Lead raise it when another Sentinel can answer', async () => {
+        arrange([linkRow()]);
+        prisma.linkSentinels.findFirst
+          .mockResolvedValueOnce({ id: 'link' })
+          .mockResolvedValueOnce({ id: 'other-link' });
+
+        await expect(service.raiseAlert('sentinel-1', dto)).resolves.toEqual({
+          id: 'alert-1',
+        });
+      });
+    });
+
     it('rejects when the caller has no accepted Sentinel link to the companion at all', async () => {
       prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' }); // assertCompanionNotDeceased
       prisma.alert.findFirst.mockResolvedValueOnce(null);
@@ -366,6 +447,7 @@ describe('AlertService', () => {
       prisma.user.findUnique.mockResolvedValueOnce({
         firstName: 'Alice',
         phone: '+41790000000',
+        phoneVerifiedAt: new Date(),
       });
       prisma.alert.create.mockResolvedValueOnce({ id: 'alert-1' });
       prisma.alert.findUnique.mockResolvedValueOnce({
@@ -408,6 +490,7 @@ describe('AlertService', () => {
       prisma.user.findUnique.mockResolvedValueOnce({
         firstName: 'Alice',
         phone: '+41790000000',
+        phoneVerifiedAt: new Date(),
       });
       prisma.alert.create.mockResolvedValueOnce({ id: 'alert-1' });
       prisma.alert.findUnique.mockResolvedValueOnce({

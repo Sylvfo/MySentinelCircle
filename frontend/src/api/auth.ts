@@ -1,16 +1,12 @@
 import { apiPost } from './client';
 
-export type SignupResult = { userId: string } | { accessToken: string };
-
 export const signupEmail = (
   firstName: string,
   lastName: string | undefined,
   userName: string,
   email: string,
   password: string,
-  phone: string | undefined,
-) =>
-  apiPost<SignupResult>('/auth/signup/email', { firstName, lastName, userName, email, password, phone });
+) => apiPost<{ accessToken: string }>('/auth/signup/email', { firstName, lastName, userName, email, password });
 
 export const loginEmail = (email: string, password: string) =>
   apiPost<{ accessToken: string }>('/auth/login/email', { email, password });
@@ -19,9 +15,11 @@ export const signupGoogle = (
   firstName: string,
   lastName: string | undefined,
   userName: string,
-  phone: string | undefined,
   idToken: string,
-) => apiPost<SignupResult>('/auth/signup/google', { firstName, lastName, userName, phone, idToken });
+) => apiPost<{ accessToken: string }>('/auth/signup/google', { firstName, lastName, userName, idToken });
+
+export const loginPhone = (phone: string, password: string) =>
+  apiPost<{ accessToken: string }>('/auth/login/phone', { phone, password });
 
 export const loginGoogle = (idToken: string) =>
   apiPost<{ accessToken: string }>('/auth/login/google', { idToken });
@@ -41,5 +39,3 @@ export const confirmPasswordReset = (token: string, newPassword: string) =>
   apiPost<{ message: string }>('/auth/password-reset/confirm', { token, newPassword });
 
 // Dev-only — backend refuses in production regardless.
-export const devLogin = (phone: string) =>
-  apiPost<{ accessToken: string }>('/auth/dev-login', { phone });

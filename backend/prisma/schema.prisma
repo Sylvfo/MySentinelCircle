@@ -132,6 +132,9 @@ model User {
   userName     String? @unique
   email        String? @unique
   passwordHash String?
+  loginAttempts    Int       @default(0)
+  loginLockedUntil DateTime?
+
   googleId     String? @unique
   avatarPath String?
   stepUpVerifiedAt        DateTime?
@@ -142,6 +145,7 @@ model User {
 
   phone           String? @unique
   phoneVerifiedAt DateTime?
+  pendingPhone String?
 
   isMajor      Boolean @default(true)
   publicStatus String?

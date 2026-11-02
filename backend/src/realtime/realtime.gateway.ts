@@ -7,6 +7,8 @@ import {
 import { Server, Socket } from 'socket.io';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { UserStatus } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeNotifier } from './realtime-notifier.interface';
 
 // Push-only gateway: no @SubscribeMessage handlers, clients never send
@@ -26,6 +28,7 @@ export class RealtimeGateway
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -38,6 +41,14 @@ export class RealtimeGateway
       const payload = await this.jwt.verifyAsync<{ sub: string }>(token, {
         secret: this.config.get<string>('JWT_SECRET'),
       });
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { status: true },
+      });
+      if (!user || user.status === UserStatus.DELETED) {
+        client.disconnect();
+        return;
+      }
       (client.data as { userId: string }).userId = payload.sub;
       await client.join(`user:${payload.sub}`);
     } catch {
@@ -47,6 +58,10 @@ export class RealtimeGateway
 
   handleDisconnect() {
     // socket.io drops room membership on its own — nothing to clean up.
+  }
+
+  disconnectUser(userId: string): void {
+    this.server.in(`user:${userId}`).disconnectSockets(true);
   }
 
   notifyNewMessage(userId: string, conversationId: string): void {

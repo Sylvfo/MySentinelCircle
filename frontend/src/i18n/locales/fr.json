@@ -54,8 +54,6 @@
     "requestCode": "Recevoir un code",
     "continue": "Continuer",
     "validate": "Valider",
-    "switchToPhone": "Se connecter par téléphone (OTP)",
-    "switchToPassword": "Se connecter par email + mot de passe",
     "forgotPassword": "Mot de passe oublié ?",
     "forgotTitle": "Réinitialiser ton mot de passe",
     "forgotSent": "Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.",
@@ -74,7 +72,6 @@
     "haveAccount": "Déjà un compte ?",
     "signIn": "Se connecter",
     "otpLabel": "Code à 6 chiffres",
-    "otpSentSignup": "Un code a été envoyé au {{phone}}.",
     "otpSent": "Code envoyé au {{phone}}.",
     "resend": "Renvoyer le code",
     "resent": "Nouveau code envoyé.",
@@ -84,11 +81,11 @@
       "signup": "Erreur lors de la création du compte",
       "invalidCode": "Code invalide"
     },
-    "devLogin": {
-      "divider": "Connexion rapide (dev)",
-      "placeholder": "Numéro de téléphone",
-      "submit": "Connexion rapide"
-    }
+    "justLooking": "Juste regarder comment ça marche",
+    "backToPhone": "Revenir à la connexion par téléphone",
+    "firstTimeOrForgot": "Première fois ou mot de passe oublié ? Recevoir un code",
+    "newPasswordTitle": "Choisis un mot de passe",
+    "keepPassword": "Garder mon mot de passe actuel"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -393,6 +390,39 @@
       "recipientsTitle": "Qui prévenir",
       "noRecipients": "Tu n'as pas encore de sentinelle.",
       "personalMessagePlaceholder": "Message personnel optionnel pour cette personne"
+    },
+    "delete": {
+      "title": "Supprimer mon compte",
+      "warning": "Ton nom, ton numéro, ton email, ta photo et tes cercles disparaissent, et tu ne seras plus Sentinel de personne. Tes messages et l'historique des alertes restent visibles pour les autres, signés « Compte supprimé ». C'est immédiat et définitif.",
+      "start": "Supprimer mon compte",
+      "word": "SUPPRIMER",
+      "confirm": "Pour confirmer, écris {{word}}",
+      "submit": "Supprimer définitivement"
+    }
+  },
+  "welcome": {
+    "title": "Bienvenue",
+    "alreadySentinel": "Tu es déjà Sentinel : tes liens sont conservés.",
+    "emailTitle": "Email de secours",
+    "emailHint": "Facultatif. Il te permettra de récupérer ton compte si tu perds ton téléphone.",
+    "emailSubmit": "Ajouter cet email",
+    "emailSent": "Un lien de confirmation a été envoyé à {{email}}.",
+    "later": "Plus tard"
+  },
+  "securityScore": {
+    "title": "Solidité de mon filet",
+    "levels": {
+      "notReady": "Pas encore prêt",
+      "minimum": "Minimum atteint",
+      "fair": "Correct",
+      "good": "Bon",
+      "great": "Très bien",
+      "excellent": "Excellent"
+    },
+    "missing": {
+      "phone": "Ajoute et vérifie ton numéro de téléphone",
+      "lead": "Choisis un Lead Sentinel avec un numéro",
+      "sentinel": "Ajoute un autre Sentinel avec un numéro"
     }
   }
 }

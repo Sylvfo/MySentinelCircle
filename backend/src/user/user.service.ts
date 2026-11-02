@@ -11,13 +11,15 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes, randomInt, createHash } from 'crypto';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
-import { LinkStatus, UserType, UserStatus } from '@prisma/client';
+import { CircleType, LinkStatus, UserType, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { DEFAULT_CIRCLES } from '../sentinel/default-circles';
 import { OTP_SENDER } from '../auth/otp/otp-sender.interface';
 import type { OtpSender } from '../auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from '../email/email-sender.interface';
 import type { EmailSender } from '../email/email-sender.interface';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { CompleteProfileDto } from './dto/complete-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { StepUpCodeRequestDto } from './dto/step-up-code-request.dto';
 import { DevSetHasPaidDto } from './dto/dev-set-has-paid.dto';
@@ -109,13 +111,46 @@ export class UserService {
     return toProfileDto(user);
   }
 
+  // Turns a phone-verified ONLY_SMS row into a real account, keeping its id
+  // so the LinkSentinels of an already-invited Sentinel still resolve.
+  async completeProfile(userId: string, dto: CompleteProfileDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user?.userType !== UserType.ONLY_SMS || !user.phoneVerifiedAt) {
+      throw new ForbiddenException('This account is already complete');
+    }
+    if (dto.userName) {
+      const taken = await this.prisma.user.findUnique({
+        where: { userName: dto.userName },
+      });
+      if (taken) throw new ConflictException('Username already taken');
+    }
+    // Someone may already have asked to watch over this person, which
+    // creates the 1st circle: only one per account.
+    const hasFirstCircle = await this.prisma.circle.count({
+      where: { userCompanionId: userId, circleType: CircleType.FIRST },
+    });
+    const { password, ...profile } = dto;
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...profile,
+        passwordHash: await bcrypt.hash(password, 10),
+        userType: UserType.ACCOUNT,
+        myCircles: {
+          create: DEFAULT_CIRCLES.filter(
+            (c) => !hasFirstCircle || c.circleType !== CircleType.FIRST,
+          ),
+        },
+      },
+      select: PROFILE_SELECT,
+    });
+    return toProfileDto(updated);
+  }
+
   // Phone can be added after signup for an account created without one
-  // (UserType.UNCOMPLETE). If the phone already belongs to a passive
-  // Sentinel-stub (ONLY_SMS, created when someone invited that number
-  // before its owner had an account), that stub is claimed into the
-  // caller's own account instead of being rejected: its LinkSentinels rows
-  // move onto the caller, and the stub row is anonymized (never deleted,
-  // per the schema's historization rule) rather than kept dangling.
+  // (UserType.UNCOMPLETE). The number only waits in pendingPhone here —
+  // nothing changes until verifyAddPhone proves its owner holds it, so
+  // `phone` stays usable and a stub can't be taken over by typing its number.
   // If the caller already has a phone (this is a CHANGE, not a first add),
   // a fresh step-up verification is required first — same as email change.
   async requestAddPhone(userId: string, phone: string) {
@@ -126,24 +161,12 @@ export class UserService {
 
     const existing = await this.prisma.user.findUnique({ where: { phone } });
 
-    if (existing && existing.id !== userId) {
-      if (existing.userType !== UserType.ONLY_SMS) {
-        throw new ConflictException('Phone already in use');
-      }
-      await this.prisma.$transaction([
-        this.prisma.linkSentinels.updateMany({
-          where: { userSentinelId: existing.id },
-          data: { userSentinelId: userId },
-        }),
-        this.prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            phone: null,
-            status: UserStatus.DELETED,
-            deletedAt: new Date(),
-          },
-        }),
-      ]);
+    if (
+      existing &&
+      existing.id !== userId &&
+      existing.userType !== UserType.ONLY_SMS
+    ) {
+      throw new ConflictException('Phone already in use');
     }
 
     const code = String(randomInt(100000, 1000000));
@@ -151,7 +174,7 @@ export class UserService {
     await this.prisma.user.update({
       where: { id: userId },
       data: {
-        phone,
+        pendingPhone: phone,
         otpCodeHash,
         otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60_000),
         otpAttempts: 0,
@@ -161,9 +184,14 @@ export class UserService {
     return { message: 'Code sent' };
   }
 
+  // If the verified phone belongs to a passive Sentinel-stub (ONLY_SMS,
+  // created when someone invited that number before its owner had an
+  // account), that stub is claimed into the caller's own account: its
+  // LinkSentinels rows move onto the caller, and the stub row is anonymized
+  // (never deleted, per the schema's historization rule).
   async verifyAddPhone(userId: string, code: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user?.otpCodeHash || !user.otpExpiresAt) {
+    if (!user?.pendingPhone || !user.otpCodeHash || !user.otpExpiresAt) {
       throw new UnauthorizedException('No pending code');
     }
     if (user.otpAttempts >= OTP_MAX_ATTEMPTS) {
@@ -182,9 +210,39 @@ export class UserService {
       throw new UnauthorizedException('Invalid code');
     }
 
+    const existing = await this.prisma.user.findUnique({
+      where: { phone: user.pendingPhone },
+    });
+    if (
+      existing &&
+      existing.id !== userId &&
+      existing.userType !== UserType.ONLY_SMS
+    ) {
+      throw new ConflictException('Phone already in use');
+    }
+
+    if (existing && existing.id !== userId) {
+      await this.prisma.$transaction([
+        this.prisma.linkSentinels.updateMany({
+          where: { userSentinelId: existing.id },
+          data: { userSentinelId: userId },
+        }),
+        this.prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            phone: null,
+            status: UserStatus.DELETED,
+            deletedAt: new Date(),
+          },
+        }),
+      ]);
+    }
+
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
+        phone: user.pendingPhone,
+        pendingPhone: null,
         otpCodeHash: null,
         otpExpiresAt: null,
         otpAttempts: 0,
@@ -219,6 +277,23 @@ export class UserService {
     return { message: 'Password updated' };
   }
 
+  // Forgotten password, or first password on a phone account: the fresh
+  // step-up from the SMS code stands in for the old password.
+  async setPassword(userId: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Account not found');
+    this.assertStepUpFresh(user);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: await bcrypt.hash(newPassword, 10),
+        loginAttempts: 0,
+        loginLockedUntil: null,
+      },
+    });
+    return { message: 'Password updated' };
+  }
+
   // --- Step-up identity re-verification ---------------------------------
   // Gate in front of changing email or an already-set phone: prove it's
   // still you via ANY credential the account already has, not necessarily
@@ -248,6 +323,8 @@ export class UserService {
     return { message: 'Identity verified' };
   }
 
+  // Shares the OTP fields with add-phone, so pendingPhone is cleared: a code
+  // sent to another channel must never validate the pending number.
   async stepUpCodeRequest(userId: string, dto: StepUpCodeRequestDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const code = String(randomInt(100000, 1000000));
@@ -263,6 +340,7 @@ export class UserService {
           otpCodeHash,
           otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60_000),
           otpAttempts: 0,
+          pendingPhone: null,
         },
       });
       await this.otpSender.send(user.phone, code);
@@ -275,6 +353,7 @@ export class UserService {
           otpCodeHash,
           otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60_000),
           otpAttempts: 0,
+          pendingPhone: null,
         },
       });
       await this.emailSender.send(user.email, 'Code de vérification', code);
@@ -318,7 +397,7 @@ export class UserService {
 
   // Throws unless step-up was completed in the last STEP_UP_TTL_MINUTES —
   // called before any sensitive change (email, or a phone that's already set).
-  private assertStepUpFresh(user: { stepUpVerifiedAt: Date | null }) {
+  assertStepUpFresh(user: { stepUpVerifiedAt: Date | null }) {
     const freshEnough =
       user.stepUpVerifiedAt &&
       user.stepUpVerifiedAt >
@@ -422,8 +501,12 @@ export class UserService {
   }
 
   // TEMPORARY dev/test affordance — stands in for a real payment provider
-  // (see plan.txt ACCOUNTS & BILLING). Remove once one is wired in.
+  // (see plan.txt ACCOUNTS & BILLING). Remove once one is wired in. Closed
+  // unless ALLOW_DEV_ROUTES is explicitly "true".
   async devSetHasPaid(userId: string, dto: DevSetHasPaidDto) {
+    if (this.config.get('ALLOW_DEV_ROUTES') !== 'true') {
+      throw new ForbiddenException('Dev routes are disabled');
+    }
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { hasPaid: dto.hasPaid },

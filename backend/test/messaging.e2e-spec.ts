@@ -89,8 +89,8 @@ describe('Messaging (e2e)', () => {
   async function signupAccount(firstName: string) {
     const phone = testPhone();
     const signupRes = await request(app.getHttpServer())
-      .post('/auth/signup/phone')
-      .send({ firstName, phone })
+      .post('/auth/otp/request')
+      .send({ phone })
       .expect(201);
     const signupBody = signupRes.body as AuthResponseBody;
     const code = sentOtps[sentOtps.length - 1].code;
@@ -99,6 +99,11 @@ describe('Messaging (e2e)', () => {
       .send({ userId: signupBody.userId, code })
       .expect(201);
     const verifyBody = verifyRes.body as AuthResponseBody;
+    await request(app.getHttpServer())
+      .post('/user/me/complete-profile')
+      .set('Authorization', `Bearer ${verifyBody.accessToken}`)
+      .send({ firstName, password: 'password123' })
+      .expect(201);
     return {
       accessToken: verifyBody.accessToken as string,
       userId: signupBody.userId as string,

@@ -30,6 +30,7 @@ import {
 } from '../api/sentinel';
 import { Tile } from '../components/Tile';
 import { CircleRing } from '../components/CircleRing';
+import { SecurityScoreBar } from '../components/SecurityScoreBar';
 import { PRIMARY_AVATAR_COLOR, circlePalette } from '../theme';
 
 // Soft guidance only — nothing stops a circle from growing past this, it
@@ -54,6 +55,7 @@ export function CirclesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedCircleId, setExpandedCircleId] = useState<string | null>(null);
+  const [scoreRefresh, setScoreRefresh] = useState(0);
   const toggleExpand = (id: string) => setExpandedCircleId((cur) => (cur === id ? null : id));
 
   const reload = async () => {
@@ -67,6 +69,7 @@ export function CirclesPage() {
         listCompanions(),
       ]);
       setCircles(c);
+      setScoreRefresh((n) => n + 1);
       setRequests(r);
       setGroups(g);
       setGroupInvitations(gi);
@@ -116,6 +119,10 @@ export function CirclesPage() {
       <h1>{t('circles.title')}</h1>
       <p style={{ color: 'var(--text-muted)' }}>{t('circles.intro')}</p>
       {error && <p className="form-error">{error}</p>}
+
+      <Tile title={t('securityScore.title')}>
+        <SecurityScoreBar refreshKey={scoreRefresh} />
+      </Tile>
 
       <RequestsInbox requests={requests} circles={circles} onChange={reload} />
       <CreateCircleForm onCreated={reload} onError={setError} />

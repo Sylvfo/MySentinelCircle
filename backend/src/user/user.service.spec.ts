@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { UserType, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { UserService } from './user.service';
@@ -18,12 +22,15 @@ describe('UserService', () => {
       update: jest.Mock;
       updateMany: jest.Mock;
     };
+    circle: { count: jest.Mock };
     $transaction: jest.Mock;
   };
   let otpSender: { send: jest.Mock };
   let emailSender: { send: jest.Mock };
+  let config: { get: jest.Mock };
 
   beforeEach(async () => {
+    config = { get: jest.fn() };
     prisma = {
       user: { findUnique: jest.fn(), update: jest.fn() },
       linkSentinels: {
@@ -32,6 +39,7 @@ describe('UserService', () => {
         update: jest.fn(),
         updateMany: jest.fn(),
       },
+      circle: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     otpSender = { send: jest.fn() };
@@ -41,7 +49,7 @@ describe('UserService', () => {
       providers: [
         UserService,
         { provide: PrismaService, useValue: prisma },
-        { provide: ConfigService, useValue: { get: jest.fn() } },
+        { provide: ConfigService, useValue: config },
         { provide: OTP_SENDER, useValue: otpSender },
         { provide: EMAIL_SENDER, useValue: emailSender },
       ],
@@ -136,6 +144,112 @@ describe('UserService', () => {
     });
   });
 
+  describe('completeProfile', () => {
+    it('stores a hashed password and promotes to ACCOUNT', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        userType: UserType.ONLY_SMS,
+        phoneVerifiedAt: new Date(),
+      });
+      prisma.user.update.mockResolvedValue({
+        id: 'my-id',
+        passwordHash: 'hash',
+        googleId: null,
+      });
+
+      await service.completeProfile('my-id', {
+        firstName: 'Ada',
+        password: 'password123',
+      });
+
+      const data = prisma.user.update.mock.calls[0][0].data;
+      expect(data.userType).toBe(UserType.ACCOUNT);
+      expect(data).not.toHaveProperty('password');
+      await expect(
+        bcrypt.compare('password123', data.passwordHash),
+      ).resolves.toBe(true);
+    });
+  });
+
+  describe('completeProfile — default circles', () => {
+    const labels = (data: { myCircles: { create: { label: string }[] } }) =>
+      data.myCircles.create.map((c) => c.label);
+
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        userType: UserType.ONLY_SMS,
+        phoneVerifiedAt: new Date(),
+      });
+      prisma.user.update.mockResolvedValue({
+        id: 'my-id',
+        passwordHash: 'hash',
+        googleId: null,
+      });
+    });
+
+    it('creates the 1st circle and the three default ones', async () => {
+      await service.completeProfile('my-id', {
+        firstName: 'Ada',
+        password: 'password123',
+      });
+
+      expect(labels(prisma.user.update.mock.calls[0][0].data)).toEqual([
+        'Premier cercle',
+        'Voisins',
+        'Sport',
+        'Travail',
+      ]);
+    });
+
+    it('never creates a second 1st circle', async () => {
+      prisma.circle.count.mockResolvedValue(1);
+
+      await service.completeProfile('my-id', {
+        firstName: 'Ada',
+        password: 'password123',
+      });
+
+      expect(labels(prisma.user.update.mock.calls[0][0].data)).toEqual([
+        'Voisins',
+        'Sport',
+        'Travail',
+      ]);
+    });
+  });
+
+  describe('setPassword', () => {
+    it('rejects without a fresh step-up', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        stepUpVerifiedAt: null,
+      });
+
+      await expect(service.setPassword('my-id', 'password123')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('sets the password and lifts a lock', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        stepUpVerifiedAt: new Date(),
+      });
+
+      await service.setPassword('my-id', 'password123');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'my-id' },
+        data: {
+          passwordHash: expect.any(String),
+          loginAttempts: 0,
+          loginLockedUntil: null,
+        },
+      });
+    });
+  });
+
   describe('changePassword', () => {
     it('rejects when the account has no password to change', async () => {
       prisma.user.findUnique.mockResolvedValue({
@@ -195,7 +309,7 @@ describe('UserService', () => {
       expect(otpSender.send).not.toHaveBeenCalled();
     });
 
-    it('sets the phone and sends an OTP when it is free', async () => {
+    it('keeps the number pending and sends an OTP when it is free', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.user.update.mockResolvedValue({ id: 'my-id' });
 
@@ -204,8 +318,11 @@ describe('UserService', () => {
       expect(prisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'my-id' },
-          data: expect.objectContaining({ phone: '+33600000000' }),
+          data: expect.objectContaining({ pendingPhone: '+33600000000' }),
         }),
+      );
+      expect(prisma.user.update.mock.calls[0][0].data).not.toHaveProperty(
+        'phone',
       );
       expect(otpSender.send).toHaveBeenCalledWith(
         '+33600000000',
@@ -214,7 +331,7 @@ describe('UserService', () => {
       expect(result).toEqual({ message: 'Code sent' });
     });
 
-    it('claims a passive ONLY_SMS stub and anonymizes it', async () => {
+    it('leaves a passive ONLY_SMS stub untouched until the code is verified', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'stub-id',
         userType: UserType.ONLY_SMS,
@@ -223,23 +340,12 @@ describe('UserService', () => {
 
       await service.requestAddPhone('my-id', '+33600000000');
 
-      expect(prisma.linkSentinels.updateMany).toHaveBeenCalledWith({
-        where: { userSentinelId: 'stub-id' },
-        data: { userSentinelId: 'my-id' },
-      });
-      expect(prisma.user.update).toHaveBeenCalledWith({
-        where: { id: 'stub-id' },
-        data: {
-          phone: null,
-          status: UserStatus.DELETED,
-          deletedAt: expect.any(Date),
-        },
-      });
-      // and the caller's own row still gets the phone + OTP
+      expect(prisma.linkSentinels.updateMany).not.toHaveBeenCalled();
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
       expect(prisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'my-id' },
-          data: expect.objectContaining({ phone: '+33600000000' }),
+          data: expect.objectContaining({ pendingPhone: '+33600000000' }),
         }),
       );
     });
@@ -257,9 +363,26 @@ describe('UserService', () => {
       );
     });
 
+    it('rejects a code when no number is pending', async () => {
+      const otpCodeHash = await bcrypt.hash('123456', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        pendingPhone: null,
+        otpCodeHash,
+        otpExpiresAt: new Date(Date.now() + 60_000),
+        otpAttempts: 0,
+      });
+
+      await expect(service.verifyAddPhone('my-id', '123456')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
     it('rejects after too many attempts', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'my-id',
+        pendingPhone: '+33600000000',
         otpCodeHash: 'hash',
         otpExpiresAt: new Date(Date.now() + 60_000),
         otpAttempts: 5,
@@ -273,6 +396,7 @@ describe('UserService', () => {
     it('rejects an expired code', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'my-id',
+        pendingPhone: '+33600000000',
         otpCodeHash: 'hash',
         otpExpiresAt: new Date(Date.now() - 60_000),
         otpAttempts: 0,
@@ -287,6 +411,7 @@ describe('UserService', () => {
       const otpCodeHash = await bcrypt.hash('123456', 10);
       prisma.user.findUnique.mockResolvedValue({
         id: 'my-id',
+        pendingPhone: '+33600000000',
         otpCodeHash,
         otpExpiresAt: new Date(Date.now() + 60_000),
         otpAttempts: 0,
@@ -301,15 +426,84 @@ describe('UserService', () => {
       });
     });
 
+    it('claims a passive ONLY_SMS stub once the code is valid', async () => {
+      const otpCodeHash = await bcrypt.hash('123456', 10);
+      prisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'my-id',
+          pendingPhone: '+33600000000',
+          otpCodeHash,
+          otpExpiresAt: new Date(Date.now() + 60_000),
+          otpAttempts: 0,
+          userType: UserType.UNCOMPLETE,
+        })
+        .mockResolvedValueOnce({
+          id: 'stub-id',
+          userType: UserType.ONLY_SMS,
+        });
+      prisma.user.update.mockResolvedValue({
+        id: 'my-id',
+        passwordHash: null,
+        googleId: null,
+      });
+
+      await service.verifyAddPhone('my-id', '123456');
+
+      expect(prisma.linkSentinels.updateMany).toHaveBeenCalledWith({
+        where: { userSentinelId: 'stub-id' },
+        data: { userSentinelId: 'my-id' },
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'stub-id' },
+        data: {
+          phone: null,
+          status: UserStatus.DELETED,
+          deletedAt: expect.any(Date),
+        },
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'my-id' },
+          data: expect.objectContaining({
+            phone: '+33600000000',
+            pendingPhone: null,
+          }),
+        }),
+      );
+    });
+
+    it('rejects a number taken by a real account in the meantime', async () => {
+      const otpCodeHash = await bcrypt.hash('123456', 10);
+      prisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'my-id',
+          pendingPhone: '+33600000000',
+          otpCodeHash,
+          otpExpiresAt: new Date(Date.now() + 60_000),
+          otpAttempts: 0,
+        })
+        .mockResolvedValueOnce({
+          id: 'other-id',
+          userType: UserType.ACCOUNT,
+        });
+
+      await expect(service.verifyAddPhone('my-id', '123456')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
     it('promotes UNCOMPLETE to ACCOUNT on success', async () => {
       const otpCodeHash = await bcrypt.hash('123456', 10);
-      prisma.user.findUnique.mockResolvedValue({
+      prisma.user.findUnique.mockResolvedValueOnce({
         id: 'my-id',
+        pendingPhone: '+33600000000',
         otpCodeHash,
         otpExpiresAt: new Date(Date.now() + 60_000),
         otpAttempts: 0,
         userType: UserType.UNCOMPLETE,
       });
+      prisma.user.findUnique.mockResolvedValueOnce(null);
       prisma.user.update.mockResolvedValue({
         id: 'my-id',
         userType: UserType.ACCOUNT,
@@ -335,13 +529,15 @@ describe('UserService', () => {
 
     it('does not change userType when it was already something other than UNCOMPLETE', async () => {
       const otpCodeHash = await bcrypt.hash('123456', 10);
-      prisma.user.findUnique.mockResolvedValue({
+      prisma.user.findUnique.mockResolvedValueOnce({
         id: 'my-id',
+        pendingPhone: '+33600000000',
         otpCodeHash,
         otpExpiresAt: new Date(Date.now() + 60_000),
         otpAttempts: 0,
         userType: UserType.ACCOUNT,
       });
+      prisma.user.findUnique.mockResolvedValueOnce(null);
       prisma.user.update.mockResolvedValue({
         id: 'my-id',
         userType: UserType.ACCOUNT,
@@ -472,6 +668,23 @@ describe('UserService', () => {
   });
 
   describe('stepUpCodeRequest', () => {
+    it('clears a pending phone so its code cannot validate that number', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        email: 'me@example.com',
+        pendingPhone: '+33600000000',
+      });
+      prisma.user.update.mockResolvedValue({ id: 'my-id' });
+
+      await service.stepUpCodeRequest('my-id', { channel: 'email' });
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ pendingPhone: null }),
+        }),
+      );
+    });
+
     it('rejects the phone channel when there is no verified phone', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'my-id',
@@ -679,7 +892,15 @@ describe('UserService', () => {
   });
 
   describe('devSetHasPaid', () => {
+    it('is refused unless ALLOW_DEV_ROUTES is "true"', async () => {
+      await expect(
+        service.devSetHasPaid('my-id', { hasPaid: true }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
     it('updates hasPaid and returns the profile dto', async () => {
+      config.get.mockReturnValue('true');
       prisma.user.update.mockResolvedValueOnce({
         id: 'my-id',
         passwordHash: null,

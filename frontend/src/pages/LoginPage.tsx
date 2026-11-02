@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { devLogin, linkGoogle, loginEmail, loginGoogle, requestOtp } from '../api/auth';
+import { linkGoogle, loginEmail, loginGoogle, loginPhone, requestOtp } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
@@ -12,11 +12,9 @@ interface LocationState {
 }
 
 export function LoginPage() {
-  const [mode, setMode] = useState<'password' | 'phone'>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
-  const [devPhone, setDevPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const { applyToken } = useAuth();
@@ -24,6 +22,7 @@ export function LoginPage() {
   const location = useLocation();
   const { t } = useTranslation();
   const pendingGoogleIdToken = (location.state as LocationState | null)?.pendingGoogleIdToken;
+  const [mode, setMode] = useState<'phone' | 'password'>(pendingGoogleIdToken ? 'password' : 'phone');
 
   const handlePasswordSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -64,27 +63,24 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const { userId } = await requestOtp(phone);
-      navigate('/otp', { state: { userId, phone } });
+      const { accessToken } = await loginPhone(phone.trim(), password);
+      await applyToken(accessToken);
+      navigate('/dashboard');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
+      setError(err instanceof ApiError ? err.message : t('auth.errors.login'));
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Dev-only quick login (no password/OTP) — import.meta.env.DEV is false
-  // in a production build, so this block never ships.
-  const handleDevLoginSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleCodeRequest = async () => {
     setError(null);
     setSubmitting(true);
     try {
-      const { accessToken } = await devLogin(devPhone);
-      await applyToken(accessToken);
-      navigate('/dashboard');
+      const { userId } = await requestOtp(phone.trim());
+      navigate('/otp', { state: { userId, phone } });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.login'));
+      setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
     } finally {
       setSubmitting(false);
     }
@@ -101,79 +97,89 @@ export function LoginPage() {
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('auth.linkGooglePrompt')}</p>
       )}
 
-      {mode === 'password' ? (
-        <form onSubmit={handlePasswordSubmit}>
-          <label>
-            {t('auth.email')}
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
-          <label>
-            {t('auth.password')}
-            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          </label>
-          {error && <p className="form-error">{error}</p>}
-          <button type="submit" disabled={submitting}>
-            {t('auth.login')}
-          </button>
-          <p className="switch-link">
-            <Link to="/forgot-password">{t('auth.forgotPassword')}</Link>
-          </p>
-        </form>
-      ) : (
-        <form onSubmit={handlePhoneSubmit}>
-          <label>
-            {t('auth.phone')}
-            <input
-              type="tel"
-              required
-              placeholder="+33612345678"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </label>
-          {error && <p className="form-error">{error}</p>}
-          <button type="submit" disabled={submitting}>
-            {t('auth.requestCode')}
-          </button>
-        </form>
-      )}
-
-      <p className="switch-link">
-        <button
-          type="button"
-          className="google-btn-placeholder"
-          style={{ width: '100%', border: 'none', marginBottom: '0.5rem' }}
-          onClick={() => setMode(mode === 'password' ? 'phone' : 'password')}
-        >
-          {mode === 'password' ? t('auth.switchToPhone') : t('auth.switchToPassword')}
-        </button>
-      </p>
-
-      <div className="auth-divider">{t('common.or')}</div>
-      <GoogleSignInButton
-        onCredential={handleGoogleCredential}
-        fallbackLabel={t('auth.googleLogin', { state: t('common.comingSoon') })}
-      />
-
-      <p className="switch-link">
-        {t('auth.noAccount')} <Link to="/signup">{t('auth.createAccount')}</Link>
-      </p>
-
-      {import.meta.env.DEV && (
-        <div style={{ marginTop: '1rem' }}>
-          <div className="auth-divider">{t('auth.devLogin.divider')}</div>
-          <form onSubmit={handleDevLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <input
-              type="tel"
-              placeholder={t('auth.devLogin.placeholder')}
-              value={devPhone}
-              onChange={(e) => setDevPhone(e.target.value)}
-            />
-            <button type="submit" disabled={submitting || !devPhone.trim()}>
-              {t('auth.devLogin.submit')}
+      {mode === 'phone' ? (
+        <>
+          <form onSubmit={handlePhoneSubmit}>
+            <label>
+              {t('auth.phone')}
+              <input
+                type="tel"
+                required
+                placeholder="+33612345678"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </label>
+            <label>
+              {t('auth.password')}
+              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            </label>
+            {error && <p className="form-error">{error}</p>}
+            <button type="submit" disabled={submitting}>
+              {t('auth.login')}
             </button>
           </form>
-        </div>
+          <p className="switch-link">
+            <button
+              type="button"
+              disabled={submitting || !phone.trim()}
+              onClick={handleCodeRequest}
+              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer' }}
+            >
+              {t('auth.firstTimeOrForgot')}
+            </button>
+          </p>
+          <p className="switch-link">
+            <button
+              type="button"
+              className="google-btn-placeholder"
+              style={{ width: '100%', border: 'none' }}
+              onClick={() => setMode('password')}
+            >
+              {t('auth.justLooking')}
+            </button>
+          </p>
+        </>
+      ) : (
+        <>
+          <form onSubmit={handlePasswordSubmit}>
+            <label>
+              {t('auth.email')}
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            </label>
+            <label>
+              {t('auth.password')}
+              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            </label>
+            {error && <p className="form-error">{error}</p>}
+            <button type="submit" disabled={submitting}>
+              {t('auth.login')}
+            </button>
+            <p className="switch-link">
+              <Link to="/forgot-password">{t('auth.forgotPassword')}</Link>
+            </p>
+          </form>
+
+          <div className="auth-divider">{t('common.or')}</div>
+          <GoogleSignInButton
+            onCredential={handleGoogleCredential}
+            fallbackLabel={t('auth.googleLogin', { state: t('common.comingSoon') })}
+          />
+
+          <p className="switch-link">
+            {t('auth.noAccount')} <Link to="/signup">{t('auth.createAccount')}</Link>
+          </p>
+          <p className="switch-link">
+            <button
+              type="button"
+              className="google-btn-placeholder"
+              style={{ width: '100%', border: 'none' }}
+              onClick={() => setMode('phone')}
+            >
+              {t('auth.backToPhone')}
+            </button>
+          </p>
+        </>
       )}
     </div>
   );

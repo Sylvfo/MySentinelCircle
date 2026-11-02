@@ -56,6 +56,8 @@ To use your own database passwords, copy `.env.example` to `.env` and edit it be
 
 Google sign-in stays off in the backend until `GOOGLE_CLIENT_ID` is set in `backend/.env`.
 
+To restore the demo accounts later, run `make db-seed`. It can be re-run safely and only touches the accounts it created.
+
 ### Start the app
 
 | Command | Mode | Open |

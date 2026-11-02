@@ -2,7 +2,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   IsEmail,
   IsOptional,
-  IsPhoneNumber,
   IsString,
   Matches,
   MaxLength,
@@ -23,8 +22,9 @@ export class SignupEmailDto {
   @MaxLength(80)
   lastName?: string;
 
-  // Visible to other users (invitation target) — mandatory, unlike lastName
-  // and phone which can be filled in later.
+  // Visible to other users (invitation target) — mandatory, unlike lastName.
+  // No phone here: this path creates a UserType.UNCOMPLETE account, which
+  // adds and verifies its phone later (POST /user/phone/request).
   @ApiProperty({ minLength: 3, maxLength: 30 })
   @IsString()
   @MinLength(3)
@@ -39,11 +39,4 @@ export class SignupEmailDto {
   @ApiProperty({ minLength: 8 })
   @MinLength(8)
   password: string;
-
-  // Optional at signup — an account without a phone is created as
-  // UserType.UNCOMPLETE and can browse, but can't have/be a Sentinel.
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsPhoneNumber()
-  phone?: string;
 }

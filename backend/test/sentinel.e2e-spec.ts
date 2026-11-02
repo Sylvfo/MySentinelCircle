@@ -73,13 +73,13 @@ describe('Sentinel (e2e)', () => {
     await app.close();
   });
 
-  // Full, verified account via phone+OTP signup — used for both companions
+  // Full, verified account via phone+OTP — used for both companions
   // and account-holding Sentinels throughout this spec.
   async function signupAccount(firstName: string) {
     const phone = testPhone();
     const signupRes = await request(app.getHttpServer())
-      .post('/auth/signup/phone')
-      .send({ firstName, phone })
+      .post('/auth/otp/request')
+      .send({ phone })
       .expect(201);
     const signupBody = signupRes.body as AuthResponseBody;
     const code = sentOtps[sentOtps.length - 1].code;
@@ -88,6 +88,11 @@ describe('Sentinel (e2e)', () => {
       .send({ userId: signupBody.userId, code })
       .expect(201);
     const verifyBody = verifyRes.body as AuthResponseBody;
+    await request(app.getHttpServer())
+      .post('/user/me/complete-profile')
+      .set('Authorization', `Bearer ${verifyBody.accessToken}`)
+      .send({ firstName, password: 'password123' })
+      .expect(201);
     return {
       accessToken: verifyBody.accessToken as string,
       userId: signupBody.userId as string,
@@ -100,14 +105,8 @@ describe('Sentinel (e2e)', () => {
   }
 
   describe('Circles', () => {
-    it('always exposes the 1st and reserve circles, sorted FIRST -> BASIC -> RESERVED', async () => {
+    it('starts a new account with the default circles, sorted FIRST -> BASIC -> RESERVED', async () => {
       const { accessToken } = await signupAccount('Ada');
-
-      await request(app.getHttpServer())
-        .post('/sentinel/circles')
-        .set('Authorization', auth(accessToken))
-        .send({ label: 'Voisins' })
-        .expect(201);
 
       const res = await request(app.getHttpServer())
         .get('/sentinel/circles')
@@ -117,8 +116,57 @@ describe('Sentinel (e2e)', () => {
       expect(circles.map((c) => c.circleType)).toEqual([
         CircleType.FIRST,
         CircleType.BASIC,
+        CircleType.BASIC,
+        CircleType.BASIC,
         CircleType.RESERVED,
       ]);
+      expect(
+        circles
+          .filter((c) => c.circleType === CircleType.BASIC)
+          .map((c) => c.label)
+          .sort(),
+      ).toEqual(['Sport', 'Travail', 'Voisins']);
+    });
+
+    it('raises the security score as Sentinels accept, never counting a pending one', async () => {
+      const { accessToken } = await signupAccount('Ada');
+      const score = async () => {
+        const res = await request(app.getHttpServer())
+          .get('/sentinel/security-score')
+          .set('Authorization', auth(accessToken))
+          .expect(200);
+        return res.body as { score: number; missing: string[] };
+      };
+      expect(await score()).toMatchObject({
+        score: 11,
+        missing: ['lead', 'sentinel'],
+      });
+
+      const circles = await request(app.getHttpServer())
+        .get('/sentinel/circles')
+        .set('Authorization', auth(accessToken))
+        .expect(200);
+      const first = (circles.body as CircleBody[]).find(
+        (c) => c.circleType === CircleType.FIRST,
+      )!;
+      const lead = await signupAccount('Lea');
+      const invite = await request(app.getHttpServer())
+        .post(`/sentinel/circles/${first.id}/invite`)
+        .set('Authorization', auth(accessToken))
+        .send({ phone: lead.phone, name: 'Lea', requestedAsLead: true })
+        .expect(201);
+      expect((await score()).score).toBe(11);
+
+      await request(app.getHttpServer())
+        .post(`/sentinel/memberships/${(invite.body as LinkBody).id}/accept`)
+        .set('Authorization', auth(lead.accessToken))
+        .send({})
+        .expect(201);
+      expect(await score()).toMatchObject({
+        score: 22,
+        missing: ['sentinel'],
+      });
+      expect(JSON.stringify(await score())).not.toContain(lead.phone);
     });
 
     it('cannot delete the 1st or reserve circle', async () => {

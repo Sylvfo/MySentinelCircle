@@ -13,3 +13,8 @@ DTO = Data Transfer Object. C'est juste la forme attendue du body d'une requête
 Ici (create-alert.dto.ts) : quand une requête arrive sur POST /alert, NestJS construit un CreateAlertDto à partir du JSON reçu, et les décorateurs 
 (@IsString(), @IsEnum(), @MinLength(1)) valident automatiquement avant que le code du controller/service ne s'exécute — si alertType n'est pas une 
 valeur valide de l'enum AlertType, ou si reason est vide, la requête est rejetée (400) sans toucher à la logique métier.
+
+
+Taille des services : sentinel.service.ts fait 1805 lignes et alert.service.ts 1107, soit près de la moitié des 6288 lignes du backend. C'est le vrai point faible : sentinel gère trop de sujets à la fois (cercles, groupes, avis de décès, SMS entrant). Certaines méthodes dépassent aussi 100 lignes, comme listCompanions (137) ou requestCircle (128).
+Couverture globale : elle n'est que de 59 % en unitaire, surtout parce que les controllers sont à 0 %. Les 6 fichiers e2e doivent en couvrir une partie, à vérifier.
+Sécurité des dépendances : il reste les 5 vulnérabilités vues avec npm audit.

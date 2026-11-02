@@ -53,52 +53,99 @@ describe('Auth (e2e)', () => {
     await app.close();
   });
 
-  it('signs up by phone, verifies the OTP, and logs back in via phone+OTP', async () => {
+  it('creates an account from a new number and recognizes it afterwards', async () => {
     const phone = testPhone();
 
-    const signupRes = await request(app.getHttpServer())
-      .post('/auth/signup/phone')
-      .send({ firstName: 'Ada', phone })
+    const firstRes = await request(app.getHttpServer())
+      .post('/auth/otp/request')
+      .send({ phone })
       .expect(201);
-    const signupBody = signupRes.body as AuthResponseBody;
-    expect(signupBody.userId).toBeDefined();
+    const firstBody = firstRes.body as AuthResponseBody;
+    expect(firstBody.userId).toBeDefined();
     expect(sentOtps).toHaveLength(1);
 
     const verifyRes = await request(app.getHttpServer())
       .post('/auth/otp/verify')
-      .send({ userId: signupBody.userId, code: sentOtps[0].code })
+      .send({ userId: firstBody.userId, code: sentOtps[0].code })
       .expect(201);
-    const verifyBody = verifyRes.body as AuthResponseBody;
-    expect(verifyBody.accessToken).toBeDefined();
+    const accessToken = (verifyRes.body as AuthResponseBody).accessToken;
 
-    const loginRequestRes = await request(app.getHttpServer())
+    await request(app.getHttpServer())
+      .post('/user/me/complete-profile')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ firstName: 'Ada', password: 'password123' })
+      .expect(201);
+    const meRes = await request(app.getHttpServer())
+      .get('/user/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect((meRes.body as { userType: string }).userType).toBe('ACCOUNT');
+
+    const secondRes = await request(app.getHttpServer())
       .post('/auth/otp/request')
       .send({ phone })
       .expect(201);
-    const loginRequestBody = loginRequestRes.body as AuthResponseBody;
-    expect(loginRequestBody.userId).toBe(signupBody.userId);
-    expect(sentOtps).toHaveLength(2);
-
-    const loginVerifyRes = await request(app.getHttpServer())
-      .post('/auth/otp/verify')
-      .send({ userId: signupBody.userId, code: sentOtps[1].code })
-      .expect(201);
-    const loginVerifyBody = loginVerifyRes.body as AuthResponseBody;
-    expect(loginVerifyBody.accessToken).toBeDefined();
+    expect((secondRes.body as AuthResponseBody).userId).toBe(firstBody.userId);
   });
 
-  it('rejects a second signup with an already-claimed phone', async () => {
+  it('logs in with phone and password, and locks after five failures', async () => {
     const phone = testPhone();
+    const firstRes = await request(app.getHttpServer())
+      .post('/auth/otp/request')
+      .send({ phone })
+      .expect(201);
+    const { userId } = firstRes.body as AuthResponseBody;
+    const verifyRes = await request(app.getHttpServer())
+      .post('/auth/otp/verify')
+      .send({ userId, code: sentOtps[0].code })
+      .expect(201);
+    const accessToken = (verifyRes.body as AuthResponseBody).accessToken;
 
+    // the password is mandatory, and an account gets one only this way
     await request(app.getHttpServer())
-      .post('/auth/signup/phone')
-      .send({ firstName: 'Ada', phone })
+      .post('/user/me/complete-profile')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ firstName: 'Ada' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/user/me/complete-profile')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ firstName: 'Ada', password: 'password123' })
       .expect(201);
 
     await request(app.getHttpServer())
-      .post('/auth/signup/phone')
-      .send({ firstName: 'Bea', phone })
-      .expect(409);
+      .post('/auth/login/phone')
+      .send({ phone, password: 'password123' })
+      .expect(201);
+
+    for (let i = 0; i < 5; i++) {
+      await request(app.getHttpServer())
+        .post('/auth/login/phone')
+        .send({ phone, password: 'wrong-password' })
+        .expect(401);
+    }
+    await request(app.getHttpServer())
+      .post('/auth/login/phone')
+      .send({ phone, password: 'password123' })
+      .expect(401);
+  });
+
+  it('answers an unknown number like a wrong password', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/login/phone')
+      .send({ phone: testPhone(), password: 'password123' })
+      .expect(401);
+  });
+
+  it('sends no second code inside the cooldown', async () => {
+    const phone = testPhone();
+    for (let i = 0; i < 2; i++) {
+      await request(app.getHttpServer())
+        .post('/auth/otp/request')
+        .send({ phone })
+        .expect(201);
+    }
+    expect(sentOtps).toHaveLength(1);
   });
 
   it('signs up by email, verifies the phone via OTP, and logs in with the password', async () => {
@@ -108,20 +155,22 @@ describe('Auth (e2e)', () => {
 
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({
-        firstName: 'Ada',
-        userName: testUsername(),
-        email,
-        password,
-        phone,
-      })
+      .send({ firstName: 'Ada', userName: testUsername(), email, password })
       .expect(201);
-    const signupBody = signupRes.body as AuthResponseBody;
+    const { accessToken } = signupRes.body as AuthResponseBody;
+    expect(sentOtps).toHaveLength(0);
+
+    await request(app.getHttpServer())
+      .post('/user/phone/request')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ phone })
+      .expect(201);
     expect(sentOtps).toHaveLength(1);
 
     await request(app.getHttpServer())
-      .post('/auth/otp/verify')
-      .send({ userId: signupBody.userId, code: sentOtps[0].code })
+      .post('/user/phone/verify')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ code: sentOtps[0].code })
       .expect(201);
 
     const loginRes = await request(app.getHttpServer())
@@ -163,25 +212,13 @@ describe('Auth (e2e)', () => {
   });
 
   it('resets a forgotten password end-to-end and logs in with the new one', async () => {
-    const phone = testPhone();
     const email = testEmail();
     const password = 'password123';
     const newPassword = 'newpassword456';
 
-    const signupRes = await request(app.getHttpServer())
-      .post('/auth/signup/email')
-      .send({
-        firstName: 'Ada',
-        userName: testUsername(),
-        email,
-        password,
-        phone,
-      })
-      .expect(201);
-    const signupBody = signupRes.body as AuthResponseBody;
     await request(app.getHttpServer())
-      .post('/auth/otp/verify')
-      .send({ userId: signupBody.userId, code: sentOtps[0].code })
+      .post('/auth/signup/email')
+      .send({ firstName: 'Ada', userName: testUsername(), email, password })
       .expect(201);
 
     await request(app.getHttpServer())

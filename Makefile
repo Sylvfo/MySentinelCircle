@@ -68,4 +68,4 @@ docker-down:
 # Optional, opt-in — terminal stand-in for a real SMS/email provider.
 # Not wired into dev/all; run it in its own terminal when you want it.
 nosmsnow:
-	cd nosmsnow && node server.js
+	cd nosmsnow && 
