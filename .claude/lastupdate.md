@@ -1,65 +1,96 @@
 # Last update
 
-**Date**: 2026-10-28
-**Branch**: `messages`
+**Date**: 2026-10-29 11:53
+**Branch**: `alerts_size_and_order_circles`
 
 ## Done this session
 
-- **Alert↔messaging architecture clarified via a diagram artifact** (no code) — how SMS and in-app replies
-  converge on the same `recordResponse()`, how `requestCircle` fans out and each reply lands independently,
-  and why only `closeAlert()` is reachable from the companion/1st circle. Link saved in memory
-  (`reference_alert_response_flow_diagram.md`).
-- **Real-time WebSocket push** for new messages and alert changes — JWT-authenticated Socket.IO gateway
-  (`backend/src/realtime/`), one room per user, a `REALTIME_NOTIFIER` interface `alert`/`messaging` inject
-  (mirrors the `SmsSender` pattern) instead of depending on socket.io directly. Client just refetches over
-  the existing REST endpoints on `message:new`/`alert:changed` — no second source of truth. Committed `07918b6`.
-- **Isolated outer-circle-Sentinel↔1st-circle chat during an alert** (`GET /alert/:id/circle-chat`) — each
-  requester gets their own isolated `Conversation`, gated by `firstCircleMessagingMode` (frozen per-alert, same
-  pattern as the other alert-time settings). `CirclesPage` got the authorization toggle for it that didn't
-  exist at all — a real gap only caught because Sylvie went looking for it in the browser.
-  `AlertDetailPanel` now renders every conversation on an alert (main chat + N isolated ones), not just the
-  first one — extracted a shared `ConversationThread` component for it.
-- **Image messages** (`MessageType.IMAGE`, existed in the schema, nothing ever used it) — upload mirrors the
-  existing avatar pattern (multer, 5MB, jpg/png/webp), stored under `uploads/messages/`, served back at
-  `GET /uploads/messages/:filename`. Both chat UIs (alert conversations, Messages page) render and send them.
-- **4 real bugs found and fixed via live Docker testing** (not just mocked specs): a stale `nest --watch`
-  process (the documented EADDRINUSE race) kept serving pre-change code after a save; `MessagesPage`'s contact
-  list rendered a mutual Sentinel/companion relationship twice with the same React key; `AlertDetailPanel`'s
-  `message:new` listener reloaded the whole alert on *any* message anywhere, tripping the app-wide rate limit
-  under heavy testing; **nginx was running a stale image entirely missing the already-committed
-  `location /uploads/` block** — avatar uploads (not just this session's image messages) had silently never
-  worked through nginx. Fixed by rebuilding the nginx image (no `nginx.conf` edit needed, Sylvie confirmed
-  the rebuild in-turn per the infra procedure). Isolated-chat + image-messages + all 4 fixes committed and
-  pushed as `8fe5d9d`; she's planning a PR from this branch (has the description text).
-- `/docu all`: `backend/prisma/DB_schema.md` (added the `canMessageMe` cascade, entirely undocumented before),
-  `STACK_SCHEMA.md` (was still saying real-time was "never built" — full rewrite of that section plus the
-  `realtime` module), `TEST.md` (counts were already current; added 2 honest coverage-gap notes), `FEATURES.md`
-  (refreshed counts; #12/#18/#19 all now closed on GitHub, no more label mismatches to flag). `API.md` and
-  `PERMISSIONSCLAUDE.md` checked, no drift, left untouched. **Uncommitted** — see below.
+- **Security & code quality review** (SonarCloud, connected mid-session — token in root `.env`,
+  gitignored, project key `Sylvfo_MySentinelCircle`, queryable directly via its API). Fixed: OTP
+  codes generated with `Math.random()` instead of `crypto.randomInt`; 16 floating promises missing
+  `void`; a hardcoded CI database password; missing `--ignore-scripts`/`--no-install` hardening;
+  11 `.sort()` calls without a comparator; `Modal.tsx` rebuilt as a native `<dialog>`; a log-injection
+  gap in `nosmsnow/server.js`. Also fixed a real bug found along the way: `MessagesPage`'s
+  `message:new` listener was refetching the whole contact roster on every message anywhere, tripping
+  the rate limit. **`npm audit`**: triaged and fixed the real ones — backend 21 → 13 vulnerabilities
+  (the remaining 13 are dev-tooling-only or need a major bump), frontend 2 → **0** (`multer` needed
+  an `overrides` entry in `package.json` since `@nestjs/platform-express` pins its own copy).
+  **Found but deliberately left unfixed**: the inbound SMS webhook trusts the caller-supplied phone
+  number with no signature verification — documented in `plan.txt` under "DEV-ONLY STUBS", to fix
+  before a real SMS provider is wired in. **Deliberately left as-is** (Sylvie's call): the 3 locked
+  Dockerfiles' remaining 5 Sonar findings (root user, recursive `COPY`) — not worth the risk/
+  complexity for dev-only containers. Committed/merged via PR #43 (→`main`), #44/#45 (→`dev`).
+
+- **Outer-circle alert escalation, batched to 2 at a time** — resolves `plan.txt`'s former "how many
+  people to alert simultaneously" open point (now updated there too). Manual call order per
+  Sentinel (stable random fallback if unset), max 2 contacted per `requestCircle` call, the 1st
+  circle can request more at any time with no enforced wait, and a one-time reminder notification
+  after 4h of silence — never an automatic contact. The 1st circle itself still notifies everyone at
+  once, unchanged. `AlertService.pickNextCircleBatch` / `@Cron remindStaleCircleBatches` (new
+  `@nestjs/schedule` dep — needed `transformIgnorePatterns` in both Jest configs, its build is
+  ESM-only). `callOrder` input on `CirclesPage.tsx`, participant status badges + relabeling button
+  on `AlertsPage.tsx`. Verified live: 2 contacted → next call contacts the last 1 → third call
+  cleanly rejected. **Committed** (`05ce6bd`, includes the npm audit fixes too).
+
+- **Lead Sentinel: claim active leadership of an alert** — replaces `plan.txt`'s old timed/
+  succession-order handoff idea with something simpler Sylvie proposed: every Lead is already
+  notified when an alert is raised (unchanged); whoever claims it first is driving, and any other
+  Lead can take it over at any time, no timers. Reused the schema's already-dead `AlertParticipant.
+  leadAssignedAt` field instead of adding a column — repurposed as "when this Lead last claimed
+  leadership." New `POST /alert/:id/claim-lead`; "current lead" is derived on read (latest
+  `leadAssignedAt` among `isLead` participants), not stored separately. `AlertsPage.tsx` shows who's
+  currently leading + a "take the lead" button for eligible Leads. Verified live (claim + reject
+  non-Lead). **Uncommitted.**
+
+- **Group circles** (e.g. a choir — mutual mesh, invite-only-if-already-connected). Framed at length
+  with Sylvie, including a real back-and-forth on the data model (she pushed back on 2 new tables;
+  found a genuine constraint — `LinkSentinels` allows only one relationship ever per pair — that
+  means 1 new table is unavoidable for the pending invite, but the "group" itself needed no table at
+  all: the founder's own `Circle` *is* the group, `CircleType.GROUP` + a nullable self-relation
+  `groupRootId`). New model `SentinelGroupInvitation`. Joining meshes the new member with every
+  existing member (skipping pairs already connected from outside the group); leaving undoes only the
+  relationships the group itself created. **Two real bugs found and fixed via live testing**: (1)
+  the first proposed schema was missing a back-relation field, which made `prisma migrate dev` fail
+  silently with no migration ever created — several rounds of Sylvie saying "done" before this was
+  caught; (2) rejoining a group after leaving 500'd (`Circle`'s `@@unique([userCompanionId,
+  groupRootId])` collided with the old closed circle) — fixed by reactivating the previous circle/
+  relationships instead of blindly creating new ones, now covered by a regression test. Originally
+  built as its own `/groups` page, then **folded into `CirclesPage.tsx`** per Sylvie's request and
+  relabeled "Group Circles" / "Cercles de groupe" — no more separate nav entry. **Uncommitted.**
+
+Backend: 217/217 tests passing, build/lint clean. Frontend: build/lint clean.
 
 ## Left to do / not yet addressed
 
-- **Browser smoke test of tranches C/D/E frontend** (step-up panel, change-email flow, change-phone flow) —
-  still not done, unrelated to this session's work. (The alert/messaging frontend, by contrast, *has* now been
-  thoroughly clicked through live by Sylvie this session — that's how all 4 bugs above were found.)
-- **The 0–10 availability-reply scale** (recruiting someone into an active search, distinct from a plain
-  yes/no sighting question) — still not started.
+- **`MessagingMode.GROUP`** (the chat-mode enum value, unrelated to the new Group Circles feature —
+  worth a disambiguating rename if it causes confusion later) — still behaves identically to
+  `INDIVIDUAL`, deliberately not exposed as a distinct UI option until it means something different.
+- **Browser smoke test of tranches C/D/E frontend** (step-up panel, change-email flow,
+  change-phone flow) — still not done, unrelated to recent sessions' work.
+- **The 0–10 availability-reply scale** (recruiting into an active search, vs. a plain yes/no
+  sighting question) — still not started.
 - **Self-service account deletion/closure** (GitHub issue #29) — still open, nothing started.
 - `claimOrCreateByPhone` race condition — accepted gap, documented in `plan.txt`, not fixed.
-- Real SMS/email provider — still console-only stubs (NoSMSNow is a dev-only proxy, see `NOSMSNOW.md`).
-- `organization` backend module — still an empty skeleton; blocks the Organization↔1st-circle chat too.
-- `MessageType.SYSTEM` — still unused (`IMAGE` is live now, `SYSTEM` isn't).
-- `MessagingMode.GROUP` — still behaves identically to `INDIVIDUAL` (both just grant the isolated chat);
-  deliberately not exposed as a distinct option in the UI until/unless it's meant to do something else.
-- `npm audit`: grew to 21 vulnerabilities (8 low, 2 moderate, 9 high, 2 critical) via transitive deps — up
-  from the 3 high-severity ones noted previously; not investigated, none introduced by anything added this
-  session (checked at the time `socket.io`/`socket.io-client` were installed — clean).
+- Real SMS/email provider — still console-only stubs (NoSMSNow is a dev-only proxy). The inbound
+  webhook also needs signature verification before this happens (see above).
+- `organization` backend module — still an empty skeleton; blocks the Organization↔1st-circle
+  chat too.
+- `MessageType.SYSTEM` — still unused (`IMAGE` is live, `SYSTEM` isn't).
+- `npm audit`: backend's remaining 13 (dev-tooling-only, or need a major version bump) not
+  addressed — judged not worth it; revisit only if one of those tools' exposure changes.
 
 ## Git — uncommitted at the time of this pause
 
-Only this turn's `/docu all` output: `FEATURES.md`, `STACK_SCHEMA.md`, `TEST.md`,
-`backend/prisma/DB_schema.md` — modified, not yet staged or committed.
+On `alerts_size_and_order_circles` — the Lead-claim feature and the Group Circles feature, both
+implemented and verified live but not committed:
+`backend/prisma/schema.prisma`, two new migration folders (`20261029092757_add_alert_lead_claimed_
+notification_type`, `20261029102626_add_group_circles`), `backend/src/alert/alert.controller.ts` +
+`alert.service.ts` + its spec, `backend/src/sentinel/sentinel.controller.ts` + `sentinel.service.ts`
++ its spec, two new DTOs (`create-group.dto.ts`, `invite-to-group.dto.ts`), `frontend/src/api/
+alert.ts` + `notification.ts` + `sentinel.ts`, `frontend/src/components/NotificationBell.tsx`,
+`frontend/src/i18n/locales/{en,fr}.json`, `frontend/src/pages/AlertsPage.tsx` + `CirclesPage.tsx`.
 
-`HEAD` is `8fe5d9d`, already pushed (`origin/messages` is up to date). No PR open yet for this branch.
+`main`/`dev` are up to date with the security-review work (PRs #43/#44/#45). The outer-circle-
+batching commit (`05ce6bd`) is on this branch but this branch itself has no PR open yet.
 
 Not committed/pushed — ask Sylvie before doing either.

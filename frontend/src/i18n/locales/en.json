@@ -31,7 +31,8 @@
     "dashboard": "Dashboard",
     "circles": "Circles",
     "companions": "Companions",
-    "alerts": "Alerts",
+    "alerts": "Raise Alert",
+    "history": "History",
     "messages": "Messages",
     "settings": "Settings",
     "logout": "Log out"
@@ -92,10 +93,24 @@
   "dashboard": {
     "title": "Dashboard",
     "activeAlerts": "Active alerts",
-    "circles": "Circles",
-    "companions": "Companions",
+    "circles": "My Circles",
+    "circlesHint": "{{count}} people watching over you",
+    "companions": "My Companions",
+    "companionsHint": "{{count}} people you watch over",
     "unreadMessages": "Unread messages",
-    "placeholder": "Summaries will be wired up once the Sentinel/Alert/Messaging modules are built."
+    "open": "Open",
+    "alerts": "Alerts",
+    "raiseAlert": "Raise Alert",
+    "raiseAlertHint": "Raise an alert for yourself or someone you protect.",
+    "placeholder": "Summaries will be wired up once the Sentinel/Alert/Messaging modules are built.",
+    "runningAlert": {
+      "title": "Running Alert",
+      "activeCount": "{{count}} active alert(s)",
+      "about": "About:",
+      "whatToDo": "What you have to do:",
+      "whatToDoHint": "Check the details and respond if you're asked to.",
+      "viewDetails": "View details →"
+    }
   },
   "circles": {
     "title": "Circles",
@@ -108,6 +123,7 @@
     "confirmDelete": "Delete this circle?",
     "members": "Sentinels",
     "noMembers": "No Sentinel in this circle.",
+    "largeCircleWarning": "This circle already has {{count}} people — that's a lot. You can still add more if you want.",
     "invite": "Invite a Sentinel",
     "invitePrimaryHint": "A 1st-circle Sentinel must already have an account.",
     "invitePhone": "Phone (+33…)",
@@ -132,7 +148,32 @@
       "label": "Chat with 1st circle during an alert",
       "none": "Not allowed",
       "individual": "Allowed"
+    },
+    "callOrder": {
+      "label": "Call order",
+      "random": "Random"
     }
+  },
+  "groups": {
+    "title": "Group Circles",
+    "intro": "A circle shared between several Sentinels (e.g. a choir) — joining makes you Sentinel for every member, and every member your Sentinel too. You can only invite someone you're already connected to.",
+    "empty": "You're not in any group yet.",
+    "newGroup": "New group circle",
+    "namePlaceholder": "E.g. Choir",
+    "create": "Create",
+    "invitations": "Group invitations",
+    "invitedBy": "{{who}} invited you to \"{{group}}\"",
+    "accept": "Accept",
+    "decline": "Decline",
+    "invite": "Invite",
+    "leave": "Leave group",
+    "confirmLeave": "Leave this group? Relationships created only through this group will end.",
+    "delete": "Delete group",
+    "confirmDelete": "Delete this group entirely? Every member will be removed and relationships created only through this group will end for everyone.",
+    "invitedSent": "Invitation sent to {{who}}.",
+    "noEligibleContacts": "No one to invite yet — you can only invite someone you're already connected to.",
+    "eligibilityHint": "You can only invite someone you're already connected to.",
+    "largeGroupWarning": "This group already has {{count}} people — that's a lot. You can still add more if you want."
   },
   "companions": {
     "title": "Companions",
@@ -153,11 +194,22 @@
     "requestSent": "Request sent.",
     "circleMoveProposed": "{{who}} is proposing you join their 1st circle",
     "acceptCircleMove": "Accept",
-    "declineCircleMove": "Decline"
+    "declineCircleMove": "Decline",
+    "deathNotice": {
+      "deceasedBadge": "Deceased",
+      "viewAnnouncement": "View announcement",
+      "announcementTitle": "Announcement",
+      "personalMessageLabel": "For you:",
+      "pendingReport": "{{who}} reported this person's death — awaiting confirmation",
+      "confirm": "Confirm",
+      "reject": "Reject (mistake)",
+      "report": "Report a death",
+      "confirmReport": "Report this person's death? A second Sentinel will need to confirm before anyone else is told."
+    }
   },
   "alerts": {
-    "title": "Alerts",
-    "intro": "Active alerts and history.",
+    "title": "Raise Alert",
+    "intro": "Launch a new alert for yourself or someone you protect.",
     "empty": "No alert yet.",
     "status": {
       "SENT": "Sent",
@@ -193,18 +245,42 @@
       "hide": "Hide",
       "about": "About: {{name}}",
       "participants": "Notified Sentinels",
+      "timeline": {
+        "title": "Timeline",
+        "event": {
+          "ALERT_RAISED": "Alert raised",
+          "CONTACTED": "Contacted",
+          "RESPONDED": "Responded",
+          "LEAD_CLAIMED": "Took the lead",
+          "ALERT_CLOSED": "Alert closed"
+        }
+      },
       "lead": "Lead",
+      "currentLead": "Current lead: {{name}}",
+      "noLeadYet": "No one has claimed the lead yet",
+      "claimLead": "Take the lead",
+      "activeLeadBadge": "Active lead",
       "chatTitle": "1st circle chat",
       "noMessages": "No message yet.",
       "messagePlaceholder": "Write a message...",
       "send": "Send",
       "me": "Me",
       "response": "Response: {{response}}",
+      "participantStatus": {
+        "WAITING": "Not contacted yet",
+        "CONTACTED": "Contacted, no reply yet",
+        "RESPONDED": "Responded",
+        "ACTIVE": "Active",
+        "DECLINED": "Declined",
+        "UNAVAILABLE": "Unavailable",
+        "CLOSED": "Closed"
+      },
       "requestCircle": {
         "title": "Ask another circle",
         "noCircles": "No other circle to ask.",
         "questionPlaceholder": "E.g. Is she at your place?",
-        "submit": "Send the request"
+        "submit": "Send the request",
+        "submitMore": "Contact 2 more Sentinels"
       },
       "respond": {
         "prompt": "You've been asked to respond about this alert.",
@@ -228,6 +304,16 @@
       }
     }
   },
+  "history": {
+    "title": "History",
+    "intro": "Resolved alerts.",
+    "empty": "No resolved alert yet."
+  },
+  "runningAlertPage": {
+    "title": "Running Alert",
+    "intro": "What's happening right now.",
+    "empty": "No alert in progress."
+  },
   "messages": {
     "title": "Messages",
     "intro": "Chat with your Sentinels, or with the people you protect.",
@@ -243,11 +329,17 @@
       "ALERT_ESCALATED": "Your circle has been asked about an alert",
       "ALERT_RESPONSE": "Someone responded to an alert",
       "ALERT_CLOSED": "An alert has been closed",
+      "ALERT_CIRCLE_NO_RESPONSE": "No reply in 4h — contact more Sentinels?",
+      "ALERT_LEAD_CLAIMED": "Someone took the lead on an alert",
       "NEW_MESSAGE": "New message",
       "SENTINEL_INVITATION_RECEIVED": "{{who}} invited you as a Sentinel",
       "SENTINEL_REQUEST_RECEIVED": "{{who}} wants to become your Sentinel",
       "SENTINEL_LINK_ACCEPTED": "{{who}} accepted",
-      "SENTINEL_LINK_DECLINED": "{{who}} declined"
+      "SENTINEL_LINK_DECLINED": "{{who}} declined",
+      "SENTINEL_GROUP_INVITED": "{{who}} invited you to a group",
+      "DEATH_NOTICE_REPORTED": "A death was reported — your confirmation is needed",
+      "DEATH_NOTICE_CONFIRMED": "A death has been announced",
+      "DEATH_NOTICE_REJECTED": "Your death report was rejected as a mistake"
     }
   },
   "settings": {
@@ -288,6 +380,19 @@
       "useCodeEmail": "Send a code to my email",
       "codeSentPhone": "A code was sent to your phone.",
       "codeSentEmail": "A code was sent to your email."
+    },
+    "dev": {
+      "title": "Dev / testing",
+      "hasPaid": "Paid account (hasPaid)",
+      "hasPaidHint": "Temporary — stands in for a real payment provider until one is wired in."
+    },
+    "deathNotice": {
+      "title": "In case of death",
+      "intro": "Written in advance: the announcement sent to the Sentinels you choose below, once a death is confirmed.",
+      "announcementLabel": "Announcement message",
+      "recipientsTitle": "Who to notify",
+      "noRecipients": "You have no Sentinel yet.",
+      "personalMessagePlaceholder": "Optional personal message for this person"
     }
   }
 }

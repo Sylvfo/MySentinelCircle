@@ -12,6 +12,8 @@ import { DashboardPage } from './pages/DashboardPage';
 import { CirclesPage } from './pages/CirclesPage';
 import { CompanionsPage } from './pages/CompanionsPage';
 import { AlertsPage } from './pages/AlertsPage';
+import { RunningAlertPage } from './pages/RunningAlertPage';
+import { HistoryPage } from './pages/HistoryPage';
 import { MessagesPage } from './pages/MessagesPage';
 import { SettingsPage } from './pages/SettingsPage';
 
@@ -32,6 +34,8 @@ function App() {
             <Route path="/circles" element={<CirclesPage />} />
             <Route path="/companions" element={<CompanionsPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/running-alert" element={<RunningAlertPage />} />
+            <Route path="/history" element={<HistoryPage />} />
             <Route path="/messages" element={<MessagesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

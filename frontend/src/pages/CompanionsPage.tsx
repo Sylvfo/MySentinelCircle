@@ -4,15 +4,22 @@ import { ApiError } from '../api/client';
 import {
   acceptCircleMove,
   acceptMembership,
+  confirmDeath,
   declineCircleMove,
   declineMembership,
+  getDeathNoticeAnnouncement,
   leaveMembership,
   listCompanions,
   listMyInvitations,
+  rejectDeathReport,
+  reportDeath,
   requestToBeSentinel,
   type Companion,
+  type DeathNoticeAnnouncement,
   type Invitation,
 } from '../api/sentinel';
+import { Modal } from '../components/Modal';
+import { Tile } from '../components/Tile';
 
 export function CompanionsPage() {
   const { t } = useTranslation();
@@ -50,41 +57,51 @@ export function CompanionsPage() {
       {companions.length === 0 ? (
         <div className="empty-state">{t('companions.empty')}</div>
       ) : (
-        <section className="panel">
+        <div className="tile-grid">
           {companions.map((c) => (
-            <div key={c.linkId} className="row member-row">
-              <span>
-                {c.companion.email || c.companion.phone}
-                <span className="badge">{t('companions.inCircle', { label: c.circle.label })}</span>
-                <span className="badge">{t(`sentinel.type.${c.sentinelType}`)}</span>
-              </span>
-              {c.proposedCircle ? (
-                <span className="row-actions">
+            <Tile
+              key={c.linkId}
+              title={c.companion.email || c.companion.phone}
+              actions={
+                !c.proposedCircle && (
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      if (window.confirm(t('companions.confirmLeave'))) void leaveMembership(c.linkId).then(reload);
+                    }}
+                  >
+                    {t('companions.leave')}
+                  </button>
+                )
+              }
+            >
+              <div className="row">
+                <span>
+                  <span className="badge">{t('companions.inCircle', { label: c.circle.label })}</span>
+                  <span className="badge">{t(`sentinel.type.${c.sentinelType}`)}</span>
+                </span>
+              </div>
+              {c.proposedCircle && (
+                <div className="row">
                   <span>
                     {t('companions.circleMoveProposed', {
                       who: c.companion.email || c.companion.phone,
                     })}
                   </span>
-                  <button onClick={() => acceptCircleMove(c.linkId).then(reload)}>
-                    {t('companions.acceptCircleMove')}
-                  </button>
-                  <button className="ghost" onClick={() => declineCircleMove(c.linkId).then(reload)}>
-                    {t('companions.declineCircleMove')}
-                  </button>
-                </span>
-              ) : (
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    if (window.confirm(t('companions.confirmLeave'))) void leaveMembership(c.linkId).then(reload);
-                  }}
-                >
-                  {t('companions.leave')}
-                </button>
+                  <span className="row-actions">
+                    <button onClick={() => acceptCircleMove(c.linkId).then(reload)}>
+                      {t('companions.acceptCircleMove')}
+                    </button>
+                    <button className="ghost" onClick={() => declineCircleMove(c.linkId).then(reload)}>
+                      {t('companions.declineCircleMove')}
+                    </button>
+                  </span>
+                </div>
               )}
-            </div>
+              <DeathNoticeControls companion={c} onChange={reload} onError={setError} />
+            </Tile>
           ))}
-        </section>
+        </div>
       )}
     </div>
   );
@@ -95,8 +112,7 @@ function InvitationsInbox({ invitations, onChange }: { invitations: Invitation[]
   if (invitations.length === 0) return null;
 
   return (
-    <section className="panel">
-      <h2>{t('companions.invitations')}</h2>
+    <Tile title={t('companions.invitations')}>
       {invitations.map((inv) => (
         <div key={inv.id} className="row">
           <span>
@@ -110,8 +126,104 @@ function InvitationsInbox({ invitations, onChange }: { invitations: Invitation[]
           </span>
         </div>
       ))}
-    </section>
+    </Tile>
   );
+}
+
+// Report/confirm/reject a death, and view the announcement once deceased.
+// Eligibility (who sees which button) is decided server-side and carried
+// on the companion row (listCompanions) — this component just renders it.
+function DeathNoticeControls({
+  companion,
+  onChange,
+  onError,
+}: {
+  companion: Companion;
+  onChange: () => void;
+  onError: (m: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [announcement, setAnnouncement] = useState<DeathNoticeAnnouncement | null>(null);
+
+  const run = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await action();
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const { deathNotice } = companion;
+  const companionId = companion.companion.id;
+
+  if (deathNotice.isDeceased) {
+    return (
+      <span className="row-actions">
+        <span className="badge">{t('companions.deathNotice.deceasedBadge')}</span>
+        <button
+          className="ghost"
+          onClick={() =>
+            getDeathNoticeAnnouncement(companionId)
+              .then(setAnnouncement)
+              .catch((err) => onError(err instanceof ApiError ? err.message : String(err)))
+          }
+        >
+          {t('companions.deathNotice.viewAnnouncement')}
+        </button>
+        {announcement && (
+          <Modal title={t('companions.deathNotice.announcementTitle')} onClose={() => setAnnouncement(null)}>
+            <p>{announcement.announcementMessage}</p>
+            {announcement.personalMessage && (
+              <p>
+                <strong>{t('companions.deathNotice.personalMessageLabel')}</strong> {announcement.personalMessage}
+              </p>
+            )}
+          </Modal>
+        )}
+      </span>
+    );
+  }
+
+  if (deathNotice.pending) {
+    return (
+      <span className="row-actions">
+        <span>
+          {t('companions.deathNotice.pendingReport', { who: deathNotice.pending.reportedByLabel })}
+        </span>
+        {deathNotice.pending.canConfirmOrReject && (
+          <>
+            <button disabled={busy} onClick={() => run(() => confirmDeath(companionId))}>
+              {t('companions.deathNotice.confirm')}
+            </button>
+            <button className="ghost" disabled={busy} onClick={() => run(() => rejectDeathReport(companionId))}>
+              {t('companions.deathNotice.reject')}
+            </button>
+          </>
+        )}
+      </span>
+    );
+  }
+
+  if (deathNotice.canReport) {
+    return (
+      <button
+        className="ghost"
+        disabled={busy}
+        onClick={() => {
+          if (window.confirm(t('companions.deathNotice.confirmReport'))) void run(() => reportDeath(companionId));
+        }}
+      >
+        {t('companions.deathNotice.report')}
+      </button>
+    );
+  }
+
+  return null;
 }
 
 function RequestForm({ onError }: { onError: (m: string) => void }) {

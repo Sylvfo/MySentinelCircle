@@ -5,7 +5,7 @@ import {
   Inject,
   Injectable,
 } from '@nestjs/common';
-import { MessageType, NotificationType } from '@prisma/client';
+import { MessageType, NotificationType, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SentinelService } from '../sentinel/sentinel.service';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -101,6 +101,7 @@ export class MessagingService {
       userId,
       conversationId,
     );
+    await this.assertNoDeceasedParticipant(conversationId);
     if (conversation.closedAt) {
       throw new ConflictException('This conversation is closed');
     }
@@ -215,6 +216,20 @@ export class MessagingService {
     if (!allowed) {
       throw new ForbiddenException(
         'Messaging is not currently allowed between you two',
+      );
+    }
+  }
+
+  // Existing messages stay readable (listMessages is untouched) — only
+  // sending a new one is blocked once any active participant is deceased.
+  private async assertNoDeceasedParticipant(conversationId: string) {
+    const participants = await this.prisma.conversationParticipant.findMany({
+      where: { conversationId, leftAt: null },
+      select: { user: { select: { status: true } } },
+    });
+    if (participants.some((p) => p.user.status === UserStatus.DECEASED)) {
+      throw new ForbiddenException(
+        'This conversation includes a deceased participant — no new messages can be sent',
       );
     }
   }

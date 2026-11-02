@@ -10,7 +10,7 @@ import { ConfirmEmailChangeDto } from './dto/confirm-email-change.dto';
 export class EmailConfirmationController {
   constructor(private readonly userService: UserService) {}
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('confirm-email')
   confirmEmailChange(@Body() dto: ConfirmEmailChangeDto) {
     return this.userService.confirmEmailChange(dto.token);

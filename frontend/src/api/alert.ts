@@ -24,6 +24,10 @@ export interface AlertParticipant {
   id: string;
   status: string;
   isLead: boolean;
+  // When this Lead last claimed active leadership of the alert (null if
+  // never claimed). Whoever has the latest value among isLead participants
+  // is the current lead — see claimLead below.
+  leadAssignedAt: string | null;
   circleId: string;
   circleName: string;
   response: string | null;
@@ -53,6 +57,17 @@ export interface AlertDetail extends AlertSummary {
     // can still read the full history as part of the alert detail.
     messages: { id: string; body: string; createdAt: string; sender: { id: string; firstName: string } }[];
   }[];
+  // Chronological view of everything that's happened on this alert,
+  // assembled server-side from the same data as `participants` above —
+  // same companion/1st-circle-only visibility as the rest of AlertDetail.
+  timeline: TimelineEvent[];
+}
+
+export interface TimelineEvent {
+  type: 'ALERT_RAISED' | 'CONTACTED' | 'RESPONDED' | 'LEAD_CLAIMED' | 'ALERT_CLOSED';
+  at: string;
+  actorLabel: string;
+  detail?: string;
 }
 
 // Not the bare /alert root — nginx's reverse-proxy requires a trailing path
@@ -61,6 +76,8 @@ export const raiseAlert = (data: { companionId: string; alertType: AlertType; re
   apiPost<AlertSummary>('/alert/raise', data);
 
 export const closeAlert = (id: string) => apiPost<AlertSummary>(`/alert/${id}/close`, {});
+
+export const claimLead = (id: string) => apiPost<AlertDetail>(`/alert/${id}/claim-lead`, {});
 
 export const listAlerts = () => apiGet<AlertSummary[]>('/alert/mine');
 

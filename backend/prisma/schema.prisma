@@ -19,6 +19,7 @@ enum UserStatus {
   ACTIVE
   PAUSED
   DELETED
+  DECEASED
 }
 
 enum SentinelType {
@@ -47,6 +48,7 @@ enum CircleType {
   FIRST
   ORGANISATION
   RESERVED
+  GROUP
 }
 
 enum CircleStatus {
@@ -82,6 +84,7 @@ enum AlertType {
   UNKNOWN
   EMERGENCY
   NOCONTACT
+  TRAVEL
 }
 
 enum AlertParticipantStatus {
@@ -105,10 +108,16 @@ enum NotificationType {
   ALERT_ESCALATED
   ALERT_RESPONSE
   ALERT_CLOSED
+  ALERT_CIRCLE_NO_RESPONSE
+  ALERT_LEAD_CLAIMED
+  SENTINEL_GROUP_INVITED
   NEW_MESSAGE
   SENTINEL_INVITATION_RECEIVED
   SENTINEL_REQUEST_RECEIVED
   SENTINEL_LINK_ANSWERED
+  DEATH_NOTICE_REPORTED
+  DEATH_NOTICE_CONFIRMED
+  DEATH_NOTICE_REJECTED  
 }
 
 model User {
@@ -149,6 +158,8 @@ model User {
   passwordResetTokenHash  String?   @unique
   passwordResetExpiresAt  DateTime?
 
+  deceasedAt DateTime?
+  deathAnnouncementMessage String?
 
   myCircles   Circle[]        @relation("MyCirclesAsCompanion")
   myUserSentinels LinkSentinels[] @relation("SentinelCompanion")
@@ -164,10 +175,21 @@ model User {
 
   notifications      Notification[] @relation("NotificationRecipient")
   actorNotifications Notification[] @relation("NotificationActor")
-
+  groupInvitationsReceived SentinelGroupInvitation[] @relation("GroupInvited")
+  groupInvitationsSent     SentinelGroupInvitation[] @relation("GroupInviter")
 
   conversationMemberships ConversationParticipant[]
   sentMessages            Message[]
+
+    deathReportedAt    DateTime?      // NEW — set when a Lead reports; cleared back to null on reject
+  deathReportedById  String?        // NEW
+  deathReportedBy    User?          @relation("DeathReportedBy", fields: [deathReportedById], references: [id], onDelete: Restrict)  // NEW
+  deathReportsFiled  User[]         @relation("DeathReportedBy")  // NEW — reverse side of the self-relation
+
+  deathConfirmedById    String?     // NEW
+  deathConfirmedBy      User?       @relation("DeathConfirmedBy", fields: [deathConfirmedById], references: [id], onDelete: Restrict)  // NEW
+  deathConfirmationsMade User[]     @relation("DeathConfirmedBy")  // NEW — reverse side
+
 }
 
 model Circle {
@@ -190,7 +212,13 @@ model Circle {
   userSentinels       LinkSentinels[]
   alertsAsFirstCircle Alert[]            @relation("AlertFirstCircle")
   alertParticipations AlertParticipant[]
+  groupRootId  String?
+  groupRoot    Circle?  @relation("GroupMembers", fields: [groupRootId], references: [id], onDelete: Restrict)
+  groupMembers Circle[] @relation("GroupMembers")
+  groupInvitations SentinelGroupInvitation[]
 
+
+@@unique([userCompanionId, groupRootId])
   @@unique([id, userCompanionId])
   @@index([userCompanionId, status])
 }
@@ -216,18 +244,34 @@ model LinkSentinels {
   userCompanionId String
   circleId    String
   proposedCircleId String?   // set only while awaiting consent to move into the 1st circle
-
+  callOrder Int? // manual outer-circle call rank (lower = called first); null = random fallback
 
   linkAsSentinel User   @relation("LinkAsSentinel", fields: [userSentinelId], references: [id], onDelete: Restrict)
   userCompanion      User   @relation("SentinelCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
   circle         Circle @relation(fields: [circleId, userCompanionId], references: [id, userCompanionId], onDelete: Restrict)
-
+  notifyOnDeath        Boolean    @default(false)  // NEW — opted in by the companion as a death-notice recipient
+  deathPersonalMessage String?    @db.Text         
+  deathNotifiedAt      DateTime?                     
   events              LinkSentinelsEvent[]
   alertParticipations AlertParticipant[]
 
   @@unique([userSentinelId, userCompanionId])
   @@unique([circleId, leadSlot])
   @@index([userCompanionId, status])
+}
+
+model SentinelGroupInvitation {
+  id            String     @id @default(cuid())
+  createdAt     DateTime   @default(now())
+  groupRootId   String
+  groupRoot     Circle     @relation(fields: [groupRootId], references: [id], onDelete: Restrict)
+  invitedUserId String
+  invitedUser   User       @relation("GroupInvited", fields: [invitedUserId], references: [id], onDelete: Restrict)
+  invitedById   String
+  invitedBy     User       @relation("GroupInviter", fields: [invitedById], references: [id], onDelete: Restrict)
+  status        LinkStatus @default(PENDING)
+
+  @@unique([groupRootId, invitedUserId])
 }
 
 model LinkSentinelsEvent {
@@ -300,6 +344,8 @@ model AlertParticipant {
   response    String?
 
   isLead         Boolean   @default(false)
+// Repurposed as "when this Lead last claimed active leadership of the
+// alert" (see AlertService.claimLead) — not just a contact-time freeze.
   leadAssignedAt DateTime?
   circleId       String
   circle         Circle    @relation(fields: [circleId], references: [id], onDelete: Restrict)

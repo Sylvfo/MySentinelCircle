@@ -17,6 +17,8 @@ import { InviteSentinelDto } from './dto/invite-sentinel.dto';
 import { RequestSentinelDto } from './dto/request-sentinel.dto';
 import { UpdateMembershipDto } from './dto/update-membership.dto';
 import { AcceptMembershipDto } from './dto/accept-membership.dto';
+import { CreateGroupDto } from './dto/create-group.dto';
+import { InviteToGroupDto } from './dto/invite-to-group.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('sentinel')
@@ -53,6 +55,69 @@ export class SentinelController {
     @Param('id') id: string,
   ) {
     return this.sentinel.deleteCircle(user.userId, id);
+  }
+
+  // ---- Groups (mutual mesh, invite-by-connection only) -----------------------
+
+  @Post('groups')
+  createGroup(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: CreateGroupDto,
+  ) {
+    return this.sentinel.createGroup(user.userId, dto);
+  }
+
+  @Get('groups')
+  listGroups(@CurrentUser() user: { userId: string }) {
+    return this.sentinel.listMyGroups(user.userId);
+  }
+
+  // Group invitations addressed to me, awaiting my answer.
+  @Get('groups/invitations')
+  myGroupInvitations(@CurrentUser() user: { userId: string }) {
+    return this.sentinel.listMyGroupInvitations(user.userId);
+  }
+
+  @Post('groups/:rootId/invite')
+  inviteToGroup(
+    @CurrentUser() user: { userId: string },
+    @Param('rootId') rootId: string,
+    @Body() dto: InviteToGroupDto,
+  ) {
+    return this.sentinel.inviteToGroup(user.userId, rootId, dto);
+  }
+
+  @Post('groups/invitations/:id/accept')
+  acceptGroupInvitation(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.sentinel.respondToGroupInvitation(user.userId, id, true);
+  }
+
+  @Post('groups/invitations/:id/decline')
+  declineGroupInvitation(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.sentinel.respondToGroupInvitation(user.userId, id, false);
+  }
+
+  @Post('groups/:rootId/leave')
+  leaveGroup(
+    @CurrentUser() user: { userId: string },
+    @Param('rootId') rootId: string,
+  ) {
+    return this.sentinel.leaveGroup(user.userId, rootId);
+  }
+
+  // Founder only — closes the whole group, not just the caller's own membership.
+  @Delete('groups/:rootId')
+  deleteGroup(
+    @CurrentUser() user: { userId: string },
+    @Param('rootId') rootId: string,
+  ) {
+    return this.sentinel.deleteGroup(user.userId, rootId);
   }
 
   // ---- Invitations & requests -----------------------------------------------
@@ -163,5 +228,39 @@ export class SentinelController {
   @Get('companions')
   companions(@CurrentUser() user: { userId: string }) {
     return this.sentinel.listCompanions(user.userId);
+  }
+
+  // ---- Death notice (report / confirm / reject) ------------------------------
+
+  @Post('companions/:companionId/death-notice/report')
+  reportDeath(
+    @CurrentUser() user: { userId: string },
+    @Param('companionId') companionId: string,
+  ) {
+    return this.sentinel.reportDeath(user.userId, companionId);
+  }
+
+  @Post('companions/:companionId/death-notice/confirm')
+  confirmDeath(
+    @CurrentUser() user: { userId: string },
+    @Param('companionId') companionId: string,
+  ) {
+    return this.sentinel.confirmDeath(user.userId, companionId);
+  }
+
+  @Post('companions/:companionId/death-notice/reject')
+  rejectDeathReport(
+    @CurrentUser() user: { userId: string },
+    @Param('companionId') companionId: string,
+  ) {
+    return this.sentinel.rejectDeathReport(user.userId, companionId);
+  }
+
+  @Get('companions/:companionId/death-notice')
+  getDeathNoticeAnnouncement(
+    @CurrentUser() user: { userId: string },
+    @Param('companionId') companionId: string,
+  ) {
+    return this.sentinel.getDeathNoticeAnnouncement(user.userId, companionId);
   }
 }

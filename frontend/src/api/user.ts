@@ -18,6 +18,7 @@ export interface Me {
   avatarPath?: string | null;
   hasPassword: boolean;
   hasGoogle: boolean;
+  hasPaid: boolean;
 }
 
 export const fetchMe = () => apiGet<Me>('/user/me');
@@ -58,3 +59,30 @@ export const requestEmailChange = (newEmail: string) =>
 
 export const confirmEmailChange = (token: string) =>
   apiPost<{ message: string }>('/user/confirm-email', { token });
+
+// TEMPORARY dev/test affordance — stands in for a real payment provider.
+export const devSetHasPaid = (hasPaid: boolean) =>
+  apiPost<Me>('/user/me/dev-has-paid', { hasPaid });
+
+// ---- Death notice (prepared while alive) --------------------------------------
+
+export interface DeathNoticeRecipientOption {
+  linkId: string;
+  sentinelLabel: string;
+  notifyOnDeath: boolean;
+  personalMessage: string | null;
+}
+
+export interface DeathNotice {
+  announcementMessage: string;
+  recipients: DeathNoticeRecipientOption[];
+}
+
+export const getMyDeathNotice = () => apiGet<DeathNotice>('/user/death-notice');
+
+export const updateMyDeathNotice = (announcementMessage: string) =>
+  apiPatch<{ announcementMessage: string }>('/user/death-notice', { announcementMessage });
+
+export const setDeathNoticeRecipients = (
+  recipients: { linkId: string; personalMessage?: string }[],
+) => apiPatch<{ recipients: DeathNoticeRecipientOption[] }>('/user/death-notice/recipients', { recipients });

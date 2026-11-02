@@ -25,6 +25,9 @@ import { StepUpGoogleDto } from './dto/step-up-google.dto';
 import { StepUpCodeRequestDto } from './dto/step-up-code-request.dto';
 import { StepUpCodeVerifyDto } from './dto/step-up-code-verify.dto';
 import { ChangeEmailRequestDto } from './dto/change-email-request.dto';
+import { DevSetHasPaidDto } from './dto/dev-set-has-paid.dto';
+import { UpdateDeathNoticeDto } from './dto/update-death-notice.dto';
+import { SetDeathNoticeRecipientsDto } from './dto/set-death-notice-recipients.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -50,7 +53,7 @@ export class UserController {
     return this.userService.updateProfile(user.userId, dto);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('phone/request')
   requestAddPhone(
     @CurrentUser() user: { userId: string },
@@ -59,7 +62,7 @@ export class UserController {
     return this.userService.requestAddPhone(user.userId, dto.phone);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('phone/verify')
   verifyAddPhone(
     @CurrentUser() user: { userId: string },
@@ -68,7 +71,7 @@ export class UserController {
     return this.userService.verifyAddPhone(user.userId, dto.code);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('me/change-password')
   changePassword(
     @CurrentUser() user: { userId: string },
@@ -77,7 +80,7 @@ export class UserController {
     return this.userService.changePassword(user.userId, dto);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('me/step-up/password')
   stepUpPassword(
     @CurrentUser() user: { userId: string },
@@ -86,7 +89,7 @@ export class UserController {
     return this.userService.stepUpPassword(user.userId, dto.password);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('me/step-up/google')
   stepUpGoogle(
     @CurrentUser() user: { userId: string },
@@ -95,7 +98,7 @@ export class UserController {
     return this.userService.stepUpGoogle(user.userId, dto.idToken);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('me/step-up/code/request')
   stepUpCodeRequest(
     @CurrentUser() user: { userId: string },
@@ -104,7 +107,7 @@ export class UserController {
     return this.userService.stepUpCodeRequest(user.userId, dto);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('me/step-up/code/verify')
   stepUpCodeVerify(
     @CurrentUser() user: { userId: string },
@@ -113,13 +116,22 @@ export class UserController {
     return this.userService.stepUpCodeVerify(user.userId, dto.code);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('me/change-email/request')
   requestEmailChange(
     @CurrentUser() user: { userId: string },
     @Body() dto: ChangeEmailRequestDto,
   ) {
     return this.userService.requestEmailChange(user.userId, dto.newEmail);
+  }
+
+  // TEMPORARY dev/test affordance — stands in for a real payment provider.
+  @Post('me/dev-has-paid')
+  devSetHasPaid(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: DevSetHasPaidDto,
+  ) {
+    return this.userService.devSetHasPaid(user.userId, dto);
   }
 
   @Post('me/avatar')
@@ -150,5 +162,28 @@ export class UserController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.userService.setAvatar(user.userId, file.filename);
+  }
+
+  // ---- Death notice (prepared while alive) ----------------------------------
+
+  @Get('death-notice')
+  getMyDeathNotice(@CurrentUser() user: { userId: string }) {
+    return this.userService.getMyDeathNotice(user.userId);
+  }
+
+  @Patch('death-notice')
+  updateMyDeathNotice(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: UpdateDeathNoticeDto,
+  ) {
+    return this.userService.updateMyDeathNotice(user.userId, dto);
+  }
+
+  @Patch('death-notice/recipients')
+  setDeathNoticeRecipients(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: SetDeathNoticeRecipientsDto,
+  ) {
+    return this.userService.setDeathNoticeRecipients(user.userId, dto);
   }
 }
