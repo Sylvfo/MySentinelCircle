@@ -133,6 +133,7 @@ describe('AlertService', () => {
 
   describe('raiseAlert', () => {
     it('raises an alert when the companion raises it for themself', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' }); // assertCompanionNotDeceased
       prisma.alert.findFirst.mockResolvedValueOnce(null); // assertNoActiveAlert
       prisma.user.findUnique.mockResolvedValueOnce({ hasPaid: true }); // assertCanAffordAlert
       prisma.circle.findFirst.mockResolvedValueOnce(circle);
@@ -248,6 +249,7 @@ describe('AlertService', () => {
       }); // assertCanRaise
       prisma.linkSentinels.findMany.mockResolvedValueOnce([linkRow()]); // the 1st circle's own accepted links
       prisma.user.findUnique
+        .mockResolvedValueOnce({ status: 'ACTIVE' }) // assertCompanionNotDeceased
         .mockResolvedValueOnce({ hasPaid: true }) // assertCanAffordAlert
         .mockResolvedValueOnce({ firstName: 'Alice', phone: '+41790000000' }) // companion
         .mockResolvedValueOnce({ firstName: 'Dana' }); // the outer-circle raiser
@@ -272,6 +274,7 @@ describe('AlertService', () => {
     });
 
     it('rejects when the caller has no accepted Sentinel link to the companion at all', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' }); // assertCompanionNotDeceased
       prisma.alert.findFirst.mockResolvedValueOnce(null);
       prisma.user.findUnique.mockResolvedValueOnce({ hasPaid: true }); // assertCanAffordAlert
       prisma.circle.findFirst.mockResolvedValueOnce(circle);
@@ -289,6 +292,7 @@ describe('AlertService', () => {
     });
 
     it('rejects raising when the companion has no 1st circle yet', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' }); // assertCompanionNotDeceased
       prisma.alert.findFirst.mockResolvedValueOnce(null);
       prisma.user.findUnique.mockResolvedValueOnce({ hasPaid: true }); // assertCanAffordAlert
       prisma.circle.findFirst.mockResolvedValueOnce(null);
@@ -305,6 +309,7 @@ describe('AlertService', () => {
     });
 
     it('rejects raising when the 1st circle exists but has no accepted Lead Sentinel', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' }); // assertCompanionNotDeceased
       prisma.alert.findFirst.mockResolvedValueOnce(null);
       prisma.user.findUnique.mockResolvedValueOnce({ hasPaid: true }); // assertCanAffordAlert
       prisma.circle.findFirst.mockResolvedValueOnce(circle);
@@ -322,7 +327,22 @@ describe('AlertService', () => {
       expect(prisma.alert.create).not.toHaveBeenCalled();
     });
 
+    it('rejects raising an alert for a deceased companion', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ status: 'DECEASED' }); // assertCompanionNotDeceased
+
+      await expect(
+        service.raiseAlert('alice-id', {
+          companionId: 'alice-id',
+          alertType: AlertType.BYCOMPANION,
+          reason: 'x',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.alert.findFirst).not.toHaveBeenCalled();
+      expect(prisma.alert.create).not.toHaveBeenCalled();
+    });
+
     it('rejects when the companion already has a non-resolved alert', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' }); // assertCompanionNotDeceased
       prisma.alert.findFirst.mockResolvedValueOnce({ id: 'existing-alert' });
 
       await expect(
@@ -337,6 +357,7 @@ describe('AlertService', () => {
     });
 
     it('allows an unpaid companion under the free lifetime trial limit', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' }); // assertCompanionNotDeceased
       prisma.alert.findFirst.mockResolvedValueOnce(null); // assertNoActiveAlert
       prisma.user.findUnique.mockResolvedValueOnce({ hasPaid: false });
       prisma.alert.count.mockResolvedValueOnce(2); // under FREE_ALERT_TRIAL_LIMIT (3)
@@ -362,6 +383,7 @@ describe('AlertService', () => {
     });
 
     it('rejects raising past the free lifetime trial limit for an unpaid companion', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' }); // assertCompanionNotDeceased
       prisma.alert.findFirst.mockResolvedValueOnce(null);
       prisma.user.findUnique.mockResolvedValueOnce({ hasPaid: false });
       prisma.alert.count.mockResolvedValueOnce(3); // FREE_ALERT_TRIAL_LIMIT reached
@@ -378,6 +400,7 @@ describe('AlertService', () => {
     });
 
     it('allows raising past the trial limit once the companion has paid', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' }); // assertCompanionNotDeceased
       prisma.alert.findFirst.mockResolvedValueOnce(null);
       prisma.user.findUnique.mockResolvedValueOnce({ hasPaid: true });
       prisma.circle.findFirst.mockResolvedValueOnce(circle);

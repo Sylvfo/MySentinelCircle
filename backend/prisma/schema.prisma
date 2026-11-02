@@ -19,6 +19,7 @@ enum UserStatus {
   ACTIVE
   PAUSED
   DELETED
+  DECEASED
 }
 
 enum SentinelType {
@@ -114,6 +115,9 @@ enum NotificationType {
   SENTINEL_INVITATION_RECEIVED
   SENTINEL_REQUEST_RECEIVED
   SENTINEL_LINK_ANSWERED
+  DEATH_NOTICE_REPORTED
+  DEATH_NOTICE_CONFIRMED
+  DEATH_NOTICE_REJECTED  
 }
 
 model User {
@@ -154,6 +158,8 @@ model User {
   passwordResetTokenHash  String?   @unique
   passwordResetExpiresAt  DateTime?
 
+  deceasedAt DateTime?
+  deathAnnouncementMessage String?
 
   myCircles   Circle[]        @relation("MyCirclesAsCompanion")
   myUserSentinels LinkSentinels[] @relation("SentinelCompanion")
@@ -169,11 +175,21 @@ model User {
 
   notifications      Notification[] @relation("NotificationRecipient")
   actorNotifications Notification[] @relation("NotificationActor")
-groupInvitationsReceived SentinelGroupInvitation[] @relation("GroupInvited")
-groupInvitationsSent     SentinelGroupInvitation[] @relation("GroupInviter")
+  groupInvitationsReceived SentinelGroupInvitation[] @relation("GroupInvited")
+  groupInvitationsSent     SentinelGroupInvitation[] @relation("GroupInviter")
 
   conversationMemberships ConversationParticipant[]
   sentMessages            Message[]
+
+    deathReportedAt    DateTime?      // NEW — set when a Lead reports; cleared back to null on reject
+  deathReportedById  String?        // NEW
+  deathReportedBy    User?          @relation("DeathReportedBy", fields: [deathReportedById], references: [id], onDelete: Restrict)  // NEW
+  deathReportsFiled  User[]         @relation("DeathReportedBy")  // NEW — reverse side of the self-relation
+
+  deathConfirmedById    String?     // NEW
+  deathConfirmedBy      User?       @relation("DeathConfirmedBy", fields: [deathConfirmedById], references: [id], onDelete: Restrict)  // NEW
+  deathConfirmationsMade User[]     @relation("DeathConfirmedBy")  // NEW — reverse side
+
 }
 
 model Circle {
@@ -233,7 +249,9 @@ model LinkSentinels {
   linkAsSentinel User   @relation("LinkAsSentinel", fields: [userSentinelId], references: [id], onDelete: Restrict)
   userCompanion      User   @relation("SentinelCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
   circle         Circle @relation(fields: [circleId, userCompanionId], references: [id, userCompanionId], onDelete: Restrict)
-
+  notifyOnDeath        Boolean    @default(false)  // NEW — opted in by the companion as a death-notice recipient
+  deathPersonalMessage String?    @db.Text         
+  deathNotifiedAt      DateTime?                     
   events              LinkSentinelsEvent[]
   alertParticipations AlertParticipant[]
 

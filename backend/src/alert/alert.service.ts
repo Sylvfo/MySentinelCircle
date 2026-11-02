@@ -37,6 +37,7 @@ import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
 import { UpdateAlertStatusDto } from './dto/update-alert-status.dto';
 import { UpdateAlertLabelDto } from './dto/update-alert-label.dto';
+import { assertNotDeceased } from '../user/user-status.util';
 
 const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   BYCOMPANION: 'Appel a l’aide',
@@ -76,6 +77,7 @@ export class AlertService {
   ) {}
 
   async raiseAlert(callerId: string, dto: CreateAlertDto) {
+    await this.assertCompanionNotDeceased(dto.companionId);
     await this.assertNoActiveAlert(dto.companionId);
     await this.assertCanAffordAlert(dto.companionId);
 
@@ -912,6 +914,14 @@ export class AlertService {
   }
 
   // ---- Guards -----------------------------------------------------------
+
+  private async assertCompanionNotDeceased(companionId: string) {
+    const companion = await this.prisma.user.findUnique({
+      where: { id: companionId },
+      select: { status: true },
+    });
+    assertNotDeceased(companion, 'This companion');
+  }
 
   private async assertNoActiveAlert(companionId: string) {
     const existing = await this.prisma.alert.findFirst({

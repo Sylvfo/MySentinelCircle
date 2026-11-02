@@ -31,7 +31,8 @@
     "dashboard": "Dashboard",
     "circles": "Cercles",
     "companions": "Companions",
-    "alerts": "Alertes",
+    "alerts": "Lancer une alerte",
+    "history": "Historique",
     "messages": "Messages",
     "settings": "Paramètres",
     "logout": "Déconnexion"
@@ -92,10 +93,24 @@
   "dashboard": {
     "title": "Dashboard",
     "activeAlerts": "Alertes en cours",
-    "circles": "Cercles",
-    "companions": "Companions",
+    "circles": "Mes cercles",
+    "circlesHint": "{{count}} personnes qui veillent sur toi",
+    "companions": "Mes companions",
+    "companionsHint": "{{count}} personnes sur qui tu veilles",
     "unreadMessages": "Messages non lus",
-    "placeholder": "Les résumés seront branchés une fois les modules Sentinel/Alert/Messaging codés."
+    "open": "Ouvrir",
+    "alerts": "Alertes",
+    "raiseAlert": "Lancer une alerte",
+    "raiseAlertHint": "Déclenche une alerte pour toi ou pour une personne que tu protèges.",
+    "placeholder": "Les résumés seront branchés une fois les modules Sentinel/Alert/Messaging codés.",
+    "runningAlert": {
+      "title": "Alerte en cours",
+      "activeCount": "{{count}} alerte(s) en cours",
+      "about": "À propos :",
+      "whatToDo": "Ce que tu dois faire :",
+      "whatToDoHint": "Consulte les détails et réponds si on te le demande.",
+      "viewDetails": "Voir les détails →"
+    }
   },
   "circles": {
     "title": "Cercles",
@@ -179,11 +194,22 @@
     "requestSent": "Demande envoyée.",
     "circleMoveProposed": "{{who}} vous propose de rejoindre son 1er cercle",
     "acceptCircleMove": "Accepter",
-    "declineCircleMove": "Refuser"
+    "declineCircleMove": "Refuser",
+    "deathNotice": {
+      "deceasedBadge": "Décédé(e)",
+      "viewAnnouncement": "Voir l'annonce",
+      "announcementTitle": "Annonce",
+      "personalMessageLabel": "Pour vous :",
+      "pendingReport": "{{who}} a signalé le décès de cette personne — en attente de confirmation",
+      "confirm": "Confirmer",
+      "reject": "Rejeter (erreur)",
+      "report": "Signaler un décès",
+      "confirmReport": "Signaler le décès de cette personne ? Un second Sentinel devra confirmer avant que les autres soient prévenus."
+    }
   },
   "alerts": {
-    "title": "Alertes",
-    "intro": "Alertes en cours et historique.",
+    "title": "Lancer une alerte",
+    "intro": "Déclenche une nouvelle alerte pour toi ou pour une personne que tu protèges.",
     "empty": "Aucune alerte pour l'instant.",
     "status": {
       "SENT": "Envoyée",
@@ -278,6 +304,16 @@
       }
     }
   },
+  "history": {
+    "title": "Historique",
+    "intro": "Les alertes résolues.",
+    "empty": "Aucune alerte résolue pour l'instant."
+  },
+  "runningAlertPage": {
+    "title": "Alerte en cours",
+    "intro": "Ce qui se passe en ce moment.",
+    "empty": "Aucune alerte en cours."
+  },
   "messages": {
     "title": "Messages",
     "intro": "Discutez avec vos sentinelles, ou avec les personnes que vous protégez.",
@@ -300,7 +336,10 @@
       "SENTINEL_REQUEST_RECEIVED": "{{who}} veut devenir votre sentinelle",
       "SENTINEL_LINK_ACCEPTED": "{{who}} a accepté",
       "SENTINEL_LINK_DECLINED": "{{who}} a refusé",
-      "SENTINEL_GROUP_INVITED": "{{who}} t'a invité·e dans un groupe"
+      "SENTINEL_GROUP_INVITED": "{{who}} t'a invité·e dans un groupe",
+      "DEATH_NOTICE_REPORTED": "Un décès a été signalé — ta confirmation est nécessaire",
+      "DEATH_NOTICE_CONFIRMED": "Un décès a été annoncé",
+      "DEATH_NOTICE_REJECTED": "Ton signalement de décès a été rejeté comme erreur"
     }
   },
   "settings": {
@@ -346,6 +385,14 @@
       "title": "Dev / tests",
       "hasPaid": "Compte payant (hasPaid)",
       "hasPaidHint": "Temporaire — remplace un vrai moyen de paiement tant qu'aucun n'est branché."
+    },
+    "deathNotice": {
+      "title": "En cas de décès",
+      "intro": "Rédigé par avance : l'annonce envoyée aux sentinelles que tu choisis ci-dessous, une fois un décès confirmé.",
+      "announcementLabel": "Message d'annonce",
+      "recipientsTitle": "Qui prévenir",
+      "noRecipients": "Tu n'as pas encore de sentinelle.",
+      "personalMessagePlaceholder": "Message personnel optionnel pour cette personne"
     }
   }
 }

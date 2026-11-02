@@ -75,6 +75,21 @@ export interface Invitation {
   circle: { id: string; label: string; userCompanion: PersonRef };
 }
 
+// Pending report awaiting a second confirmation — canConfirmOrReject is
+// false for the reporter themselves (they can't confirm/reject their own
+// report, see SentinelService.assertCanSecondConfirm).
+export interface DeathNoticePending {
+  reportedAt: string;
+  reportedByLabel: string;
+  canConfirmOrReject: boolean;
+}
+
+export interface CompanionDeathNotice {
+  isDeceased: boolean;
+  pending: DeathNoticePending | null;
+  canReport: boolean;
+}
+
 export interface Companion {
   linkId: string;
   sentinelType: SentinelType;
@@ -82,6 +97,7 @@ export interface Companion {
   circle: { id: string; label: string; isPrimary: boolean };
   proposedCircle: { id: string; label: string } | null;
   companion: PersonRef;
+  deathNotice: CompanionDeathNotice;
 }
 
 // ---- Circles (companion side) -----------------------------------------------
@@ -150,6 +166,25 @@ export const requestToBeSentinel = (targetPhone: string) =>
   apiPost<Membership>('/sentinel/requests', { targetPhone });
 
 export const listCompanions = () => apiGet<Companion[]>('/sentinel/companions');
+
+// ---- Death notice (report / confirm / reject by a qualifying Sentinel) ------
+
+export const reportDeath = (companionId: string) =>
+  apiPost<{ reported: true }>(`/sentinel/companions/${companionId}/death-notice/report`, {});
+
+export const confirmDeath = (companionId: string) =>
+  apiPost<{ confirmed: true }>(`/sentinel/companions/${companionId}/death-notice/confirm`, {});
+
+export const rejectDeathReport = (companionId: string) =>
+  apiPost<{ rejected: true }>(`/sentinel/companions/${companionId}/death-notice/reject`, {});
+
+export interface DeathNoticeAnnouncement {
+  announcementMessage: string;
+  personalMessage: string | null;
+}
+
+export const getDeathNoticeAnnouncement = (companionId: string) =>
+  apiGet<DeathNoticeAnnouncement>(`/sentinel/companions/${companionId}/death-notice`);
 
 // ---- Groups (mutual mesh, invite-by-connection only) -------------------------
 

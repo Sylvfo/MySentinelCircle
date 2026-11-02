@@ -22,6 +22,7 @@ import {
 } from '../api/alert';
 import { listCompanions, type Companion } from '../api/sentinel';
 import { listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
+import { Tile } from '../components/Tile';
 
 // BYCOMPANION is reserved for "Me" raising for themself (RaiseForSelfPanel) —
 // it wouldn't make sense coming from a Sentinel raising on someone else's behalf.
@@ -60,6 +61,9 @@ export function AlertsPage() {
 
   const myActiveAlert = alerts.find((a) => a.userCompanionId === user?.id && a.alertStatus !== 'RESOLVED');
 
+  // This page is for launching a new alert only — any alert already in
+  // progress lives on its own /running-alert page instead (reached from the
+  // Dashboard's "Running Alert" card, which only shows up while one exists).
   return (
     <div>
       <h1>{t('alerts.title')}</h1>
@@ -67,17 +71,6 @@ export function AlertsPage() {
       {error && <p className="form-error">{error}</p>}
 
       <RaiseForSelfPanel activeAlert={myActiveAlert} onChange={reload} />
-
-      {alerts.length === 0 ? (
-        <div className="empty-state">{t('alerts.empty')}</div>
-      ) : (
-        <section className="panel">
-          {alerts.map((a) => (
-            <AlertRow key={a.id} alert={a} onChange={reload} />
-          ))}
-        </section>
-      )}
-
       <RaiseForCompanionForm onRaised={reload} />
     </div>
   );
@@ -97,12 +90,12 @@ function RaiseForSelfPanel({
 
   if (activeAlert) {
     return (
-      <section className="panel alert-active">
+      <Tile className="alert-active">
         <p>{t('alerts.activeAlertNotice')}</p>
         <button className="ghost" onClick={() => closeAlert(activeAlert.id).then(onChange)}>
           {t('alerts.close')}
         </button>
-      </section>
+      </Tile>
     );
   }
 
@@ -121,12 +114,12 @@ function RaiseForSelfPanel({
   };
 
   return (
-    <section className="panel">
+    <Tile>
       <button className="alert-btn" disabled={submitting || !user} onClick={raise}>
         {t('alerts.raiseForSelf')}
       </button>
       {error && <p className="form-error">{error}</p>}
-    </section>
+    </Tile>
   );
 }
 
@@ -171,15 +164,14 @@ function RaiseForCompanionForm({ onRaised }: { onRaised: () => Promise<void> }) 
 
   if (companions.length === 0) {
     return (
-      <section className="panel">
-        <h2>{t('alerts.raiseForCompanion')}</h2>
+      <Tile title={t('alerts.raiseForCompanion')}>
         <div className="empty-state">{t('alerts.noCompanions')}</div>
-      </section>
+      </Tile>
     );
   }
 
   return (
-    <form className="panel inline-form" onSubmit={submit}>
+    <form className="tile inline-form" onSubmit={submit}>
       <h2>{t('alerts.raiseForCompanion')}</h2>
       <p style={{ color: 'var(--text-muted)' }}>{t('alerts.raiseForCompanionIntro')}</p>
       <div className="row wrap">
@@ -190,13 +182,18 @@ function RaiseForCompanionForm({ onRaised }: { onRaised: () => Promise<void> }) 
             </option>
           ))}
         </select>
-        <select value={alertType} onChange={(e) => setAlertType(e.target.value as AlertType)}>
-          {COMPANION_ALERT_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {t(`alerts.type.${type}`)}
-            </option>
-          ))}
-        </select>
+      </div>
+      <div className="alert-type-grid">
+        {COMPANION_ALERT_TYPES.map((type) => (
+          <button
+            type="button"
+            key={type}
+            className={`alert-type-card${alertType === type ? ' selected' : ''}`}
+            onClick={() => setAlertType(type)}
+          >
+            {t(`alerts.type.${type}`)}
+          </button>
+        ))}
       </div>
       <div className="row">
         <input
@@ -214,7 +211,7 @@ function RaiseForCompanionForm({ onRaised }: { onRaised: () => Promise<void> }) 
   );
 }
 
-function AlertRow({ alert, onChange }: { alert: AlertSummary; onChange: () => Promise<void> }) {
+export function AlertRow({ alert, onChange }: { alert: AlertSummary; onChange: () => Promise<void> }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
@@ -734,7 +731,7 @@ function StatusNoteField({
 function RespondButtons({ alertId, onChange }: { alertId: string; onChange: () => Promise<void> }) {
   const { t } = useTranslation();
   return (
-    <section className="panel">
+    <Tile>
       <p>{t('alerts.detail.respond.prompt')}</p>
       <div className="row">
         <button onClick={() => respondToAlert(alertId, true).then(onChange)}>{t('alerts.detail.respond.yes')}</button>
@@ -742,7 +739,7 @@ function RespondButtons({ alertId, onChange }: { alertId: string; onChange: () =
           {t('alerts.detail.respond.no')}
         </button>
       </div>
-    </section>
+    </Tile>
   );
 }
 

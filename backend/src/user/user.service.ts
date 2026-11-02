@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   UnauthorizedException,
@@ -10,7 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes, randomInt, createHash } from 'crypto';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
-import { UserType, UserStatus } from '@prisma/client';
+import { LinkStatus, UserType, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OTP_SENDER } from '../auth/otp/otp-sender.interface';
 import type { OtpSender } from '../auth/otp/otp-sender.interface';
@@ -20,6 +21,8 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { StepUpCodeRequestDto } from './dto/step-up-code-request.dto';
 import { DevSetHasPaidDto } from './dto/dev-set-has-paid.dto';
+import { UpdateDeathNoticeDto } from './dto/update-death-notice.dto';
+import { SetDeathNoticeRecipientsDto } from './dto/set-death-notice-recipients.dto';
 
 const OTP_TTL_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
@@ -427,5 +430,79 @@ export class UserService {
       select: PROFILE_SELECT,
     });
     return toProfileDto(updated);
+  }
+
+  // --- Death notice (prepared while alive) --------------------------------
+  // The announcement + who's opted in, read straight off User/LinkSentinels
+  // — no separate table (see CLAUDE.md/plan.txt on this feature's design).
+  // Report/confirm/reject live in SentinelService instead: eligibility there
+  // is entirely about Sentinel/circle membership, not self-management.
+
+  async getMyDeathNotice(userId: string) {
+    const [user, links] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { deathAnnouncementMessage: true },
+      }),
+      this.prisma.linkSentinels.findMany({
+        where: { userCompanionId: userId, status: LinkStatus.ACCEPTED },
+        include: {
+          linkAsSentinel: { select: { firstName: true, phone: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+    return {
+      announcementMessage: user?.deathAnnouncementMessage ?? '',
+      recipients: links.map((l) => ({
+        linkId: l.id,
+        sentinelLabel:
+          l.linkAsSentinel.firstName ?? l.linkAsSentinel.phone ?? 'Sentinel',
+        notifyOnDeath: l.notifyOnDeath,
+        personalMessage: l.deathPersonalMessage,
+      })),
+    };
+  }
+
+  async updateMyDeathNotice(userId: string, dto: UpdateDeathNoticeDto) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { deathAnnouncementMessage: dto.announcementMessage },
+    });
+    return { announcementMessage: dto.announcementMessage };
+  }
+
+  // Full replacement, same semantics as the rest of this feature's data —
+  // any of the caller's own LinkSentinels rows left out of `dto.recipients`
+  // is cleared back to not-notified.
+  async setDeathNoticeRecipients(
+    userId: string,
+    dto: SetDeathNoticeRecipientsDto,
+  ) {
+    const linkIds = dto.recipients.map((r) => r.linkId);
+    if (linkIds.length > 0) {
+      const owned = await this.prisma.linkSentinels.count({
+        where: { id: { in: linkIds }, userCompanionId: userId },
+      });
+      if (owned !== new Set(linkIds).size) {
+        throw new ForbiddenException('One of these Sentinels is not yours');
+      }
+    }
+    await this.prisma.$transaction([
+      this.prisma.linkSentinels.updateMany({
+        where: { userCompanionId: userId, id: { notIn: linkIds } },
+        data: { notifyOnDeath: false, deathPersonalMessage: null },
+      }),
+      ...dto.recipients.map((r) =>
+        this.prisma.linkSentinels.update({
+          where: { id: r.linkId },
+          data: {
+            notifyOnDeath: true,
+            deathPersonalMessage: r.personalMessage ?? null,
+          },
+        }),
+      ),
+    ]);
+    return this.getMyDeathNotice(userId);
   }
 }

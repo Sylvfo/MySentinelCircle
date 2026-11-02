@@ -229,4 +229,38 @@ export class SentinelController {
   companions(@CurrentUser() user: { userId: string }) {
     return this.sentinel.listCompanions(user.userId);
   }
+
+  // ---- Death notice (report / confirm / reject) ------------------------------
+
+  @Post('companions/:companionId/death-notice/report')
+  reportDeath(
+    @CurrentUser() user: { userId: string },
+    @Param('companionId') companionId: string,
+  ) {
+    return this.sentinel.reportDeath(user.userId, companionId);
+  }
+
+  @Post('companions/:companionId/death-notice/confirm')
+  confirmDeath(
+    @CurrentUser() user: { userId: string },
+    @Param('companionId') companionId: string,
+  ) {
+    return this.sentinel.confirmDeath(user.userId, companionId);
+  }
+
+  @Post('companions/:companionId/death-notice/reject')
+  rejectDeathReport(
+    @CurrentUser() user: { userId: string },
+    @Param('companionId') companionId: string,
+  ) {
+    return this.sentinel.rejectDeathReport(user.userId, companionId);
+  }
+
+  @Get('companions/:companionId/death-notice')
+  getDeathNoticeAnnouncement(
+    @CurrentUser() user: { userId: string },
+    @Param('companionId') companionId: string,
+  ) {
+    return this.sentinel.getDeathNoticeAnnouncement(user.userId, companionId);
+  }
 }

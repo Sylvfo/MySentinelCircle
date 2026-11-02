@@ -12,7 +12,12 @@ describe('UserService', () => {
   let service: UserService;
   let prisma: {
     user: { findUnique: jest.Mock; update: jest.Mock };
-    linkSentinels: { updateMany: jest.Mock };
+    linkSentinels: {
+      findMany: jest.Mock;
+      count: jest.Mock;
+      update: jest.Mock;
+      updateMany: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
   let otpSender: { send: jest.Mock };
@@ -21,7 +26,12 @@ describe('UserService', () => {
   beforeEach(async () => {
     prisma = {
       user: { findUnique: jest.fn(), update: jest.fn() },
-      linkSentinels: { updateMany: jest.fn() },
+      linkSentinels: {
+        findMany: jest.fn(),
+        count: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+      },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     otpSender = { send: jest.fn() };
@@ -688,6 +698,88 @@ describe('UserService', () => {
       expect(result).toEqual(
         expect.objectContaining({ id: 'my-id', hasPaid: true }),
       );
+    });
+  });
+
+  describe('getMyDeathNotice', () => {
+    it('returns the announcement and the accepted Sentinels with their opt-in state', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        deathAnnouncementMessage: 'Au revoir a tous.',
+      });
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        {
+          id: 'link-1',
+          notifyOnDeath: true,
+          deathPersonalMessage: 'Tu vas me manquer',
+          linkAsSentinel: { firstName: 'Bob', phone: '+41791111111' },
+        },
+      ]);
+
+      const result = await service.getMyDeathNotice('my-id');
+
+      expect(result).toEqual({
+        announcementMessage: 'Au revoir a tous.',
+        recipients: [
+          {
+            linkId: 'link-1',
+            sentinelLabel: 'Bob',
+            notifyOnDeath: true,
+            personalMessage: 'Tu vas me manquer',
+          },
+        ],
+      });
+    });
+  });
+
+  describe('updateMyDeathNotice', () => {
+    it('updates the announcement message', async () => {
+      prisma.user.update.mockResolvedValueOnce({});
+
+      const result = await service.updateMyDeathNotice('my-id', {
+        announcementMessage: 'Nouveau message',
+      });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'my-id' },
+        data: { deathAnnouncementMessage: 'Nouveau message' },
+      });
+      expect(result).toEqual({ announcementMessage: 'Nouveau message' });
+    });
+  });
+
+  describe('setDeathNoticeRecipients', () => {
+    it('rejects a linkId that is not one of the caller’s own Sentinels', async () => {
+      prisma.linkSentinels.count.mockResolvedValueOnce(0); // not owned
+
+      await expect(
+        service.setDeathNoticeRecipients('my-id', {
+          recipients: [{ linkId: 'not-mine' }],
+        }),
+      ).rejects.toThrow('One of these Sentinels is not yours');
+      expect(prisma.linkSentinels.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('replaces the full recipient set: clears everyone else, sets the submitted ones', async () => {
+      prisma.linkSentinels.count.mockResolvedValueOnce(1); // owns link-1
+      prisma.linkSentinels.updateMany.mockResolvedValueOnce({ count: 2 });
+      prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
+      prisma.user.findUnique.mockResolvedValueOnce({
+        deathAnnouncementMessage: '',
+      }); // getMyDeathNotice's re-read
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([]);
+
+      await service.setDeathNoticeRecipients('my-id', {
+        recipients: [{ linkId: 'link-1', personalMessage: 'Merci pour tout' }],
+      });
+
+      expect(prisma.linkSentinels.updateMany).toHaveBeenCalledWith({
+        where: { userCompanionId: 'my-id', id: { notIn: ['link-1'] } },
+        data: { notifyOnDeath: false, deathPersonalMessage: null },
+      });
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+        where: { id: 'link-1' },
+        data: { notifyOnDeath: true, deathPersonalMessage: 'Merci pour tout' },
+      });
     });
   });
 });

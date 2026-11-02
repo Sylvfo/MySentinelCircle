@@ -131,6 +131,10 @@ describe('MessagingService', () => {
         id: 'part-1',
         conversation: { closedAt: null, alertId: 'alert-1' },
       });
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        { user: { status: 'ACTIVE' } },
+        { user: { status: 'ACTIVE' } },
+      ]); // assertNoDeceasedParticipant
       prisma.message.create.mockResolvedValueOnce({ id: 'msg-1' });
       prisma.conversationParticipant.findMany.mockResolvedValueOnce([
         { userId: 'user-1' },
@@ -180,6 +184,9 @@ describe('MessagingService', () => {
           conversation: { closedAt: null, alertId: null },
         })
         .mockResolvedValueOnce({ userId: 'user-2' }); // the other participant
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        { user: { status: 'ACTIVE' } },
+      ]); // assertNoDeceasedParticipant
       sentinel.canSendDirectMessage.mockResolvedValueOnce(true);
       prisma.message.create.mockResolvedValueOnce({ id: 'msg-1' });
       prisma.conversationParticipant.findMany.mockResolvedValueOnce([
@@ -203,6 +210,9 @@ describe('MessagingService', () => {
           conversation: { closedAt: null, alertId: null },
         })
         .mockResolvedValueOnce({ userId: 'user-2' });
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        { user: { status: 'ACTIVE' } },
+      ]); // assertNoDeceasedParticipant
       sentinel.canSendDirectMessage.mockResolvedValueOnce(false);
 
       await expect(
@@ -225,6 +235,9 @@ describe('MessagingService', () => {
         id: 'part-1',
         conversation: { closedAt: new Date(), alertId: 'alert-1' },
       });
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        { user: { status: 'ACTIVE' } },
+      ]); // assertNoDeceasedParticipant
 
       await expect(
         service.sendMessage('user-1', 'conv-1', { body: 'hello' }),
@@ -239,6 +252,9 @@ describe('MessagingService', () => {
         id: 'part-1',
         conversation: { closedAt: null, alertId: 'alert-1' },
       });
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        { user: { status: 'ACTIVE' } },
+      ]); // assertNoDeceasedParticipant
       prisma.message.create.mockResolvedValueOnce({
         id: 'msg-1',
         type: 'IMAGE',
@@ -276,10 +292,29 @@ describe('MessagingService', () => {
         id: 'part-1',
         conversation: { closedAt: new Date(), alertId: 'alert-1' },
       });
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        { user: { status: 'ACTIVE' } },
+      ]); // assertNoDeceasedParticipant
 
       await expect(
         service.sendImageMessage('user-1', 'conv-1', 'abc123.jpg'),
       ).rejects.toThrow(ConflictException);
+      expect(prisma.message.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects sending once any active participant is deceased', async () => {
+      prisma.conversationParticipant.findFirst.mockResolvedValueOnce({
+        id: 'part-1',
+        conversation: { closedAt: null, alertId: 'alert-1' },
+      });
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        { user: { status: 'ACTIVE' } },
+        { user: { status: 'DECEASED' } },
+      ]);
+
+      await expect(
+        service.sendImageMessage('user-1', 'conv-1', 'abc123.jpg'),
+      ).rejects.toThrow(ForbiddenException);
       expect(prisma.message.create).not.toHaveBeenCalled();
     });
   });

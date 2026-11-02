@@ -16,6 +16,7 @@ import {
   Prisma,
   SentinelType,
   User,
+  UserStatus,
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -27,6 +28,7 @@ import {
   circleMoveAnsweredSms,
   circleMoveProposedSms,
   circleMovedSms,
+  deathNoticeAnnouncementSms,
   invitationAnsweredSms,
   parseSmsReply,
   requestAnsweredSms,
@@ -37,6 +39,7 @@ import {
   sentinelLeftSms,
   sentinelRequestSms,
 } from '../sms/messages';
+import { assertNotDeceased } from '../user/user-status.util';
 import { CreateCircleDto } from './dto/create-circle.dto';
 import { UpdateCircleDto } from './dto/update-circle.dto';
 import { InviteSentinelDto } from './dto/invite-sentinel.dto';
@@ -586,6 +589,7 @@ export class SentinelService {
   ) {
     const inviter = await this.getUser(userId);
     this.assertCompleteAccount(inviter);
+    assertNotDeceased(inviter, 'Your account');
     const circle = await this.ensureAssignableCircle(userId, circleId);
     const phone = dto.phone.trim();
 
@@ -632,6 +636,7 @@ export class SentinelService {
     });
     if (!target)
       throw new NotFoundException('No account with this phone number');
+    assertNotDeceased(target, 'This companion');
     if (target.id === requesterId) {
       throw new BadRequestException(
         'You cannot request to be your own Sentinel',
@@ -717,6 +722,7 @@ export class SentinelService {
       include: LINK_WITH_PARTIES,
     });
     if (!link) throw new NotFoundException('Membership not found');
+    assertNotDeceased(link.userCompanion, 'This companion');
     if (link.status !== LinkStatus.PENDING) {
       throw new ConflictException('This invitation has already been answered');
     }
@@ -869,6 +875,266 @@ export class SentinelService {
     return this.leaveLink(link, false);
   }
 
+  // ---- Death notice (report / confirm / reject) ------------------------------
+  //
+  // A permanent state, deliberately outside the Alert model — Alert is a
+  // resolvable, time-boxed emergency, a death never "resolves." No new
+  // tables either: the report/confirm flow and announcement text are flat
+  // fields on User (like Alert's own launchedAt/closedAt), and recipient
+  // opt-in + personal message are flat fields on LinkSentinels (alongside
+  // canSendPhone/canMessageMe) — a literal "memorial circle" doesn't work
+  // since a Sentinel/Companion pair has only one LinkSentinels row ever.
+
+  // Who could serve as the SECOND confirmer for `circleId`'s pending report,
+  // excluding the original reporter: every other Lead, or — only when that
+  // circle currently has exactly one Lead at all — any other accepted
+  // Sentinel of it. Shared by the fan-out on report and the eligibility
+  // check on confirm/reject.
+  private async getEligibleConfirmerIds(
+    circleId: string,
+    reportedById: string,
+  ): Promise<string[]> {
+    const leads = await this.prisma.linkSentinels.findMany({
+      where: {
+        circleId,
+        status: LinkStatus.ACCEPTED,
+        leadSlot: { not: null },
+      },
+      select: { userSentinelId: true },
+    });
+    const otherLeadIds = leads
+      .map((l) => l.userSentinelId)
+      .filter((id) => id !== reportedById);
+    if (leads.length > 1) return otherLeadIds;
+
+    const others = await this.prisma.linkSentinels.findMany({
+      where: {
+        circleId,
+        status: LinkStatus.ACCEPTED,
+        userSentinelId: { not: reportedById },
+      },
+      select: { userSentinelId: true },
+    });
+    return others.map((l) => l.userSentinelId);
+  }
+
+  private async assertCanSecondConfirm(
+    circleId: string,
+    callerId: string,
+    reportedById: string,
+  ) {
+    if (callerId === reportedById) {
+      throw new ForbiddenException(
+        'The reporter cannot confirm or reject their own report',
+      );
+    }
+    const eligible = await this.getEligibleConfirmerIds(circleId, reportedById);
+    if (!eligible.includes(callerId)) {
+      throw new ForbiddenException(
+        'Not authorized to confirm or reject this death report',
+      );
+    }
+  }
+
+  // The companion's active 1st circle, or null — death-notice report/
+  // confirm/reject all key off it, same as raiseAlert's own Lead check.
+  private async findFirstCircle(companionId: string) {
+    return this.prisma.circle.findFirst({
+      where: {
+        userCompanionId: companionId,
+        circleType: CircleType.FIRST,
+        status: CircleStatus.ACTIVE,
+      },
+    });
+  }
+
+  async reportDeath(callerId: string, companionId: string) {
+    const companion = await this.getUser(companionId);
+    if (companion.status === UserStatus.DECEASED) {
+      throw new ConflictException('This companion is already deceased');
+    }
+    if (companion.deathReportedAt) {
+      throw new ConflictException(
+        'A death report is already pending for this companion',
+      );
+    }
+
+    const circle = await this.findFirstCircle(companionId);
+    const callerLink = circle
+      ? await this.prisma.linkSentinels.findFirst({
+          where: {
+            circleId: circle.id,
+            userSentinelId: callerId,
+            status: LinkStatus.ACCEPTED,
+            leadSlot: { not: null },
+          },
+        })
+      : null;
+    if (!circle || !callerLink) {
+      throw new ForbiddenException(
+        'Only a Lead Sentinel of this companion’s 1st circle can report a death',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: companionId },
+      data: { deathReportedAt: new Date(), deathReportedById: callerId },
+    });
+
+    const reporter = await this.getUser(callerId);
+    const confirmerIds = await this.getEligibleConfirmerIds(
+      circle.id,
+      callerId,
+    );
+    for (const confirmerId of confirmerIds) {
+      await this.notifications.create({
+        userId: confirmerId,
+        type: NotificationType.DEATH_NOTICE_REPORTED,
+        actorUserId: callerId,
+        actorLabel: this.label(reporter),
+        targetId: companionId,
+      });
+    }
+    return { reported: true };
+  }
+
+  async confirmDeath(callerId: string, companionId: string) {
+    const companion = await this.getUser(companionId);
+    if (!companion.deathReportedAt || !companion.deathReportedById) {
+      throw new ConflictException('No pending death report for this companion');
+    }
+    const circle = await this.findFirstCircle(companionId);
+    if (!circle) throw new NotFoundException('1st circle not found');
+    await this.assertCanSecondConfirm(
+      circle.id,
+      callerId,
+      companion.deathReportedById,
+    );
+
+    await this.prisma.user.update({
+      where: { id: companionId },
+      data: {
+        status: UserStatus.DECEASED,
+        deceasedAt: new Date(),
+        deathConfirmedById: callerId,
+      },
+    });
+
+    await this.fanOutDeathAnnouncement(companionId);
+    return { confirmed: true };
+  }
+
+  async rejectDeathReport(callerId: string, companionId: string) {
+    const companion = await this.getUser(companionId);
+    if (!companion.deathReportedAt || !companion.deathReportedById) {
+      throw new ConflictException('No pending death report for this companion');
+    }
+    const circle = await this.findFirstCircle(companionId);
+    if (!circle) throw new NotFoundException('1st circle not found');
+    await this.assertCanSecondConfirm(
+      circle.id,
+      callerId,
+      companion.deathReportedById,
+    );
+
+    const { deathReportedById } = companion;
+    await this.prisma.user.update({
+      where: { id: companionId },
+      data: { deathReportedAt: null, deathReportedById: null },
+    });
+
+    await this.notifications.create({
+      userId: deathReportedById,
+      type: NotificationType.DEATH_NOTICE_REJECTED,
+      actorUserId: callerId,
+      targetId: companionId,
+    });
+    return { rejected: true };
+  }
+
+  // Best-effort fan-out to every opted-in, still-accepted recipient — the
+  // only channel some of them have at all (ONLY_SMS Sentinels), so the SMS
+  // carries the full announcement inline. Mirrors AlertService's
+  // notifyParticipants (Promise.allSettled, don't block on delivery).
+  private async fanOutDeathAnnouncement(companionId: string) {
+    const [companion, recipients] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: companionId },
+        select: {
+          firstName: true,
+          phone: true,
+          deathAnnouncementMessage: true,
+        },
+      }),
+      this.prisma.linkSentinels.findMany({
+        where: {
+          userCompanionId: companionId,
+          status: LinkStatus.ACCEPTED,
+          notifyOnDeath: true,
+        },
+        include: {
+          linkAsSentinel: { select: { id: true, phone: true } },
+        },
+      }),
+    ]);
+    if (recipients.length === 0) return;
+
+    const companionLabel = companion?.firstName ?? 'Un proche';
+    const announcement = companion?.deathAnnouncementMessage ?? '';
+
+    await Promise.allSettled(
+      recipients
+        .filter((r) => r.linkAsSentinel.phone)
+        .map((r) =>
+          this.sms.send(
+            r.linkAsSentinel.phone as string,
+            deathNoticeAnnouncementSms(
+              companionLabel,
+              announcement,
+              r.deathPersonalMessage,
+            ),
+          ),
+        ),
+    );
+    for (const r of recipients) {
+      await this.notifications.create({
+        userId: r.linkAsSentinel.id,
+        type: NotificationType.DEATH_NOTICE_CONFIRMED,
+        targetId: companionId,
+      });
+    }
+    await this.prisma.linkSentinels.updateMany({
+      where: { id: { in: recipients.map((r) => r.id) } },
+      data: { deathNotifiedAt: new Date() },
+    });
+  }
+
+  // Recipient-facing read: only someone this companion actually notified
+  // (opted-in link, fan-out already happened) can see the announcement.
+  async getDeathNoticeAnnouncement(callerId: string, companionId: string) {
+    const link = await this.prisma.linkSentinels.findFirst({
+      where: {
+        userSentinelId: callerId,
+        userCompanionId: companionId,
+        notifyOnDeath: true,
+        deathNotifiedAt: { not: null },
+      },
+    });
+    if (!link) {
+      throw new ForbiddenException(
+        'You were not notified of this announcement',
+      );
+    }
+    const companion = await this.prisma.user.findUnique({
+      where: { id: companionId },
+      select: { deathAnnouncementMessage: true },
+    });
+    return {
+      announcementMessage: companion?.deathAnnouncementMessage ?? '',
+      personalMessage: link.deathPersonalMessage,
+    };
+  }
+
   // ---- Companions (reverse view: people I watch over) -----------------------
 
   async listCompanions(userId: string) {
@@ -883,7 +1149,16 @@ export class SentinelService {
             id: true,
             label: true,
             circleType: true,
-            userCompanion: { select: { id: true, email: true, phone: true } },
+            userCompanion: {
+              select: {
+                id: true,
+                email: true,
+                phone: true,
+                status: true,
+                deathReportedAt: true,
+                deathReportedById: true,
+              },
+            },
           },
         },
       },
@@ -904,21 +1179,97 @@ export class SentinelService {
       : [];
     const proposedById = new Map(proposedCircles.map((c) => [c.id, c]));
 
-    return links.map((l) => ({
-      linkId: l.id,
-      sentinelType: l.sentinelType,
-      leadSlot: l.leadSlot,
-      circle: {
-        id: l.circle.id,
-        label: l.circle.label,
-        isPrimary: l.circle.circleType === CircleType.FIRST,
-        isReserve: l.circle.circleType === CircleType.RESERVED,
-      },
-      proposedCircle: l.proposedCircleId
-        ? (proposedById.get(l.proposedCircleId) ?? null)
-        : null,
-      companion: l.circle.userCompanion,
-    }));
+    // Death-notice eligibility only applies to 1st-circle links with a
+    // pending report. A Sentinel/Companion pair has at most one
+    // LinkSentinels row ever, so `l` already carries this caller's only
+    // possible leadSlot for this companion — no separate lookup needed for
+    // "is the caller a Lead here." The single-Lead fallback (any other
+    // accepted Sentinel may confirm) does need each circle's current Lead
+    // count, batched in one query.
+    const pendingFirstCircleIds = links
+      .filter(
+        (l) =>
+          l.circle.circleType === CircleType.FIRST &&
+          l.circle.userCompanion.deathReportedAt,
+      )
+      .map((l) => l.circle.id);
+    const leadCounts = pendingFirstCircleIds.length
+      ? await this.prisma.linkSentinels.groupBy({
+          by: ['circleId'],
+          where: {
+            circleId: { in: pendingFirstCircleIds },
+            status: LinkStatus.ACCEPTED,
+            leadSlot: { not: null },
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const leadCountByCircle = new Map(
+      leadCounts.map((c) => [c.circleId, c._count._all]),
+    );
+    const reporterIds = [
+      ...new Set(
+        links
+          .map((l) => l.circle.userCompanion.deathReportedById)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const reporters = reporterIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: reporterIds } },
+          select: { id: true, firstName: true, phone: true },
+        })
+      : [];
+    const reporterById = new Map(reporters.map((r) => [r.id, r]));
+
+    return links.map((l) => {
+      const companion = l.circle.userCompanion;
+      const isPrimary = l.circle.circleType === CircleType.FIRST;
+      const isDeceased = companion.status === UserStatus.DECEASED;
+      const reportedById = companion.deathReportedById;
+      const pending =
+        isPrimary && companion.deathReportedAt && reportedById
+          ? {
+              reportedAt: companion.deathReportedAt,
+              reportedByLabel: reporterById.get(reportedById)
+                ? this.label(reporterById.get(reportedById)!)
+                : 'Sentinel',
+              canConfirmOrReject:
+                userId !== reportedById &&
+                (l.leadSlot !== null ||
+                  leadCountByCircle.get(l.circle.id) === 1),
+            }
+          : null;
+
+      return {
+        linkId: l.id,
+        sentinelType: l.sentinelType,
+        leadSlot: l.leadSlot,
+        circle: {
+          id: l.circle.id,
+          label: l.circle.label,
+          isPrimary,
+          isReserve: l.circle.circleType === CircleType.RESERVED,
+        },
+        proposedCircle: l.proposedCircleId
+          ? (proposedById.get(l.proposedCircleId) ?? null)
+          : null,
+        companion: {
+          id: companion.id,
+          email: companion.email,
+          phone: companion.phone,
+        },
+        deathNotice: {
+          isDeceased,
+          pending,
+          canReport:
+            isPrimary &&
+            l.leadSlot !== null &&
+            !isDeceased &&
+            !companion.deathReportedAt,
+        },
+      };
+    });
   }
 
   // ---- Membership management (companion side) --------------------------------

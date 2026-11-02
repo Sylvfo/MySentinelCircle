@@ -28,6 +28,9 @@ import {
   type Membership,
   type MessagingMode,
 } from '../api/sentinel';
+import { Tile } from '../components/Tile';
+import { CircleRing } from '../components/CircleRing';
+import { PRIMARY_AVATAR_COLOR, circlePalette } from '../theme';
 
 // Soft guidance only — nothing stops a circle from growing past this, it
 // just starts showing a "that's a lot" hint on the invite form. Group
@@ -50,6 +53,8 @@ export function CirclesPage() {
   const [groupContacts, setGroupContacts] = useState<GroupContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedCircleId, setExpandedCircleId] = useState<string | null>(null);
+  const toggleExpand = (id: string) => setExpandedCircleId((cur) => (cur === id ? null : id));
 
   const reload = async () => {
     setError(null);
@@ -93,8 +98,21 @@ export function CirclesPage() {
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
 
+  // The 1st circle always stays pinned at the top (per plan.txt, there's
+  // exactly one); everything else — excluding the system reserve circle,
+  // which isn't a "real" circle to visualize — sits below it in a loose,
+  // staggered row. Clicking either opens the same full member list/actions
+  // panel already built (CircleCard), just below the overview.
+  const primaryCircle = circles.find((c) => c.circleType === 'FIRST');
+  const otherCircles = circles.filter((c) => c.circleType !== 'FIRST' && c.circleType !== 'RESERVED');
+  const expandedCircle = circles.find((c) => c.id === expandedCircleId) ?? null;
+  const expandedColorIndex = expandedCircle
+    ? Math.max(0, otherCircles.findIndex((c) => c.id === expandedCircle.id))
+    : 0;
+  const liveMembersOf = (c: Circle) => c.userSentinels.filter((m) => m.status === 'ACCEPTED' || m.status === 'PENDING');
+
   return (
-    <div>
+    <div className="circles-page-bg">
       <h1>{t('circles.title')}</h1>
       <p style={{ color: 'var(--text-muted)' }}>{t('circles.intro')}</p>
       {error && <p className="form-error">{error}</p>}
@@ -105,9 +123,50 @@ export function CirclesPage() {
       {circles.length === 0 ? (
         <div className="empty-state">{t('circles.empty')}</div>
       ) : (
-        circles.map((circle) => (
-          <CircleCard key={circle.id} circle={circle} circles={circles} onChange={reload} onError={setError} />
-        ))
+        <>
+          <div className="circles-overview">
+            {primaryCircle && (
+              <div className="circles-primary-row">
+                <CircleRing
+                  label={primaryCircle.label}
+                  members={liveMembersOf(primaryCircle)}
+                  isPrimary
+                  colorIndex={0}
+                  size={220}
+                  expanded={expandedCircleId === primaryCircle.id}
+                  onToggle={() => toggleExpand(primaryCircle.id)}
+                />
+              </div>
+            )}
+            {otherCircles.length > 0 && (
+              <div className="circles-other-row">
+                {otherCircles.map((c, i) => (
+                  <div key={c.id}>
+                    <CircleRing
+                      label={c.label}
+                      members={liveMembersOf(c)}
+                      isPrimary={false}
+                      colorIndex={i}
+                      size={170}
+                      expanded={expandedCircleId === c.id}
+                      onToggle={() => toggleExpand(c.id)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {expandedCircle && (
+            <CircleCard
+              circle={expandedCircle}
+              circles={circles}
+              colorIndex={expandedColorIndex}
+              onChange={reload}
+              onError={setError}
+            />
+          )}
+        </>
       )}
 
       <h2>{t('groups.title')}</h2>
@@ -119,9 +178,11 @@ export function CirclesPage() {
       {groups.length === 0 ? (
         <div className="empty-state">{t('groups.empty')}</div>
       ) : (
-        groups.map((g) => (
-          <GroupCard key={g.rootId} group={g} contacts={groupContacts} onChange={reload} onError={setError} />
-        ))
+        <div className="tile-grid">
+          {groups.map((g) => (
+            <GroupCard key={g.rootId} group={g} contacts={groupContacts} onChange={reload} onError={setError} />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -147,8 +208,7 @@ function RequestsInbox({
   const circleFor = (requestId: string) => choice[requestId] ?? assignableCircles[0]?.id ?? '';
 
   return (
-    <section className="panel">
-      <h2>{t('circles.requests')}</h2>
+    <Tile title={t('circles.requests')}>
       {requests.map((r) => (
         <div key={r.id} className="row">
           <span>{t('circles.requestFrom', { who: r.linkAsSentinel.firstName })}</span>
@@ -175,7 +235,7 @@ function RequestsInbox({
           </span>
         </div>
       ))}
-    </section>
+    </Tile>
   );
 }
 
@@ -214,11 +274,13 @@ function CreateCircleForm({ onCreated, onError }: { onCreated: () => void; onErr
 function CircleCard({
   circle,
   circles,
+  colorIndex,
   onChange,
   onError,
 }: {
   circle: Circle;
   circles: Circle[];
+  colorIndex: number;
   onChange: () => void;
   onError: (m: string) => void;
 }) {
@@ -256,26 +318,36 @@ function CircleCard({
   };
 
   return (
-    <section className="panel">
-      <div className="row">
+    <Tile
+      title={
         <h2>
+          <span
+            style={{
+              display: 'inline-block',
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: isPrimary ? PRIMARY_AVATAR_COLOR : circlePalette(colorIndex).color,
+              marginRight: '0.5rem',
+            }}
+          />
           {circle.label}{' '}
           {isPrimary && <span className="badge status-accepted">{t('circles.firstCircle')}</span>}
         </h2>
-        <span className="row-actions">
-          {!isPrimary && (
+      }
+      actions={
+        !isPrimary && (
+          <>
             <button className="ghost" onClick={toggleCircleCanMessage}>
               {circleCanMessage ? t('circles.blockMessaging') : t('circles.allowMessaging')}
             </button>
-          )}
-          {!isPrimary && (
             <button className="ghost" onClick={del}>
               {t('common.delete')}
             </button>
-          )}
-        </span>
-      </div>
-
+          </>
+        )
+      }
+    >
       <h3>{t('circles.members')}</h3>
       {liveMembers.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>{t('circles.noMembers')}</p>
@@ -296,7 +368,7 @@ function CircleCard({
         <p className="form-hint">{t('circles.largeCircleWarning', { count: liveMembers.length })}</p>
       )}
       <InviteForm circleId={circle.id} isPrimary={isPrimary} onChange={onChange} onError={onError} />
-    </section>
+    </Tile>
   );
 }
 
@@ -561,8 +633,7 @@ function GroupInvitationsInbox({
   if (invitations.length === 0) return null;
 
   return (
-    <section className="panel">
-      <h2>{t('groups.invitations')}</h2>
+    <Tile title={t('groups.invitations')}>
       {invitations.map((inv) => (
         <div key={inv.id} className="row">
           <span>
@@ -578,7 +649,7 @@ function GroupInvitationsInbox({
           </span>
         </div>
       ))}
-    </section>
+    </Tile>
   );
 }
 
@@ -671,10 +742,10 @@ function GroupCard({
   };
 
   return (
-    <section className="panel">
-      <div className="row">
-        <h2>{group.label}</h2>
-        {group.isFounder ? (
+    <Tile
+      title={group.label}
+      actions={
+        group.isFounder ? (
           <button className="ghost" onClick={remove}>
             {t('groups.delete')}
           </button>
@@ -682,9 +753,9 @@ function GroupCard({
           <button className="ghost" onClick={leave}>
             {t('groups.leave')}
           </button>
-        )}
-      </div>
-
+        )
+      }
+    >
       {group.members.map((m) => (
         <div key={m.id} className="row member-row">
           <span>{m.firstName}</span>
@@ -716,6 +787,6 @@ function GroupCard({
       </form>
       {invited && <p className="form-hint">{t('groups.invitedSent', { who: invited })}</p>}
       <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('groups.eligibilityHint')}</p>
-    </section>
+    </Tile>
   );
 }

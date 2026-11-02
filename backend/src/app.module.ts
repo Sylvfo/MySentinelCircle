@@ -20,7 +20,10 @@ import { MessagingModule } from './messaging/messaging.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 20 }]),
+    // NestJS Throttler tracks by IP by default — several demo accounts used
+    // from the same browser/network share this one budget, so it needs
+    // headroom well above what a single user would ever need.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     ScheduleModule.forRoot(),
     PrismaModule,
     SmsModule,

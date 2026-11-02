@@ -156,6 +156,23 @@ export function alertReplyAckSms(): string {
   return `Merci, votre reponse a bien ete prise en compte sur ${APP}.`;
 }
 
+// Sent to every opted-in recipient once a death is confirmed (second Lead/
+// Sentinel confirmation) — the only channel some recipients have at all
+// (ONLY_SMS Sentinels), so it must carry the full text inline, not just a
+// stub pointing back to the app.
+export function deathNoticeAnnouncementSms(
+  companionLabel: string,
+  announcementMessage: string,
+  personalMessage?: string | null,
+): string {
+  const parts = [
+    `${APP} - ${companionLabel} est decede(e).`,
+    announcementMessage,
+  ];
+  if (personalMessage) parts.push(`Pour vous : ${personalMessage}`);
+  return parts.filter(Boolean).join(' ');
+}
+
 export type SmsReplyIntent = 'accept' | 'decline' | 'unknown';
 
 export function parseSmsReply(body: string): SmsReplyIntent {

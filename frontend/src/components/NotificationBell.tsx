@@ -11,6 +11,8 @@ function destinationFor(item: NotificationItem): string {
   if (item.type.startsWith('ALERT_')) return '/alerts';
   if (item.type === 'NEW_MESSAGE') return '/messages';
   if (item.type === 'SENTINEL_GROUP_INVITED') return '/circles';
+  // DEATH_NOTICE_* falls through to the default below — /companions is
+  // also where report/confirm/reject and the announcement itself live.
   return '/companions';
 }
 

@@ -31,7 +31,8 @@
     "dashboard": "Dashboard",
     "circles": "Circles",
     "companions": "Companions",
-    "alerts": "Alerts",
+    "alerts": "Raise Alert",
+    "history": "History",
     "messages": "Messages",
     "settings": "Settings",
     "logout": "Log out"
@@ -92,10 +93,24 @@
   "dashboard": {
     "title": "Dashboard",
     "activeAlerts": "Active alerts",
-    "circles": "Circles",
-    "companions": "Companions",
+    "circles": "My Circles",
+    "circlesHint": "{{count}} people watching over you",
+    "companions": "My Companions",
+    "companionsHint": "{{count}} people you watch over",
     "unreadMessages": "Unread messages",
-    "placeholder": "Summaries will be wired up once the Sentinel/Alert/Messaging modules are built."
+    "open": "Open",
+    "alerts": "Alerts",
+    "raiseAlert": "Raise Alert",
+    "raiseAlertHint": "Raise an alert for yourself or someone you protect.",
+    "placeholder": "Summaries will be wired up once the Sentinel/Alert/Messaging modules are built.",
+    "runningAlert": {
+      "title": "Running Alert",
+      "activeCount": "{{count}} active alert(s)",
+      "about": "About:",
+      "whatToDo": "What you have to do:",
+      "whatToDoHint": "Check the details and respond if you're asked to.",
+      "viewDetails": "View details →"
+    }
   },
   "circles": {
     "title": "Circles",
@@ -179,11 +194,22 @@
     "requestSent": "Request sent.",
     "circleMoveProposed": "{{who}} is proposing you join their 1st circle",
     "acceptCircleMove": "Accept",
-    "declineCircleMove": "Decline"
+    "declineCircleMove": "Decline",
+    "deathNotice": {
+      "deceasedBadge": "Deceased",
+      "viewAnnouncement": "View announcement",
+      "announcementTitle": "Announcement",
+      "personalMessageLabel": "For you:",
+      "pendingReport": "{{who}} reported this person's death — awaiting confirmation",
+      "confirm": "Confirm",
+      "reject": "Reject (mistake)",
+      "report": "Report a death",
+      "confirmReport": "Report this person's death? A second Sentinel will need to confirm before anyone else is told."
+    }
   },
   "alerts": {
-    "title": "Alerts",
-    "intro": "Active alerts and history.",
+    "title": "Raise Alert",
+    "intro": "Launch a new alert for yourself or someone you protect.",
     "empty": "No alert yet.",
     "status": {
       "SENT": "Sent",
@@ -278,6 +304,16 @@
       }
     }
   },
+  "history": {
+    "title": "History",
+    "intro": "Resolved alerts.",
+    "empty": "No resolved alert yet."
+  },
+  "runningAlertPage": {
+    "title": "Running Alert",
+    "intro": "What's happening right now.",
+    "empty": "No alert in progress."
+  },
   "messages": {
     "title": "Messages",
     "intro": "Chat with your Sentinels, or with the people you protect.",
@@ -300,7 +336,10 @@
       "SENTINEL_REQUEST_RECEIVED": "{{who}} wants to become your Sentinel",
       "SENTINEL_LINK_ACCEPTED": "{{who}} accepted",
       "SENTINEL_LINK_DECLINED": "{{who}} declined",
-      "SENTINEL_GROUP_INVITED": "{{who}} invited you to a group"
+      "SENTINEL_GROUP_INVITED": "{{who}} invited you to a group",
+      "DEATH_NOTICE_REPORTED": "A death was reported — your confirmation is needed",
+      "DEATH_NOTICE_CONFIRMED": "A death has been announced",
+      "DEATH_NOTICE_REJECTED": "Your death report was rejected as a mistake"
     }
   },
   "settings": {
@@ -346,6 +385,14 @@
       "title": "Dev / testing",
       "hasPaid": "Paid account (hasPaid)",
       "hasPaidHint": "Temporary — stands in for a real payment provider until one is wired in."
+    },
+    "deathNotice": {
+      "title": "In case of death",
+      "intro": "Written in advance: the announcement sent to the Sentinels you choose below, once a death is confirmed.",
+      "announcementLabel": "Announcement message",
+      "recipientsTitle": "Who to notify",
+      "noRecipients": "You have no Sentinel yet.",
+      "personalMessagePlaceholder": "Optional personal message for this person"
     }
   }
 }

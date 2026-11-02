@@ -41,8 +41,9 @@ describe('SentinelService', () => {
       update: jest.Mock;
       updateMany: jest.Mock;
       count: jest.Mock;
+      groupBy: jest.Mock;
     };
-    user: { findUnique: jest.Mock; create: jest.Mock };
+    user: { findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
     sentinelGroupInvitation: {
       findUnique: jest.Mock;
       findMany: jest.Mock;
@@ -71,8 +72,14 @@ describe('SentinelService', () => {
         update: jest.fn(),
         updateMany: jest.fn(),
         count: jest.fn(),
+        groupBy: jest.fn(),
       },
-      user: { findUnique: jest.fn(), create: jest.fn() },
+      user: {
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
       sentinelGroupInvitation: {
         findUnique: jest.fn(),
         findMany: jest.fn(),
@@ -268,6 +275,22 @@ describe('SentinelService', () => {
         targetId: 'link-1',
       });
     });
+
+    it('rejects when the inviter’s own account is deceased', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'me',
+        userType: UserType.ACCOUNT,
+        status: 'DECEASED',
+      }); // getUser(inviter)
+
+      await expect(
+        service.inviteSentinel('me', 'first-1', {
+          phone: '+33612345678',
+          name: 'Ada',
+        } as any),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.circle.findUnique).not.toHaveBeenCalled();
+    });
   });
 
   describe('requestToBeSentinel', () => {
@@ -312,6 +335,21 @@ describe('SentinelService', () => {
         targetId: 'link-1',
       });
     });
+
+    it('rejects when the target companion is deceased', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'target-1',
+        phone: '+33612345678',
+        status: 'DECEASED',
+      }); // target lookup by phone
+
+      await expect(
+        service.requestToBeSentinel('me', {
+          targetPhone: '+33612345678',
+        } as any),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.circle.findFirst).not.toHaveBeenCalled();
+    });
   });
 
   describe('respondToMembership', () => {
@@ -336,6 +374,21 @@ describe('SentinelService', () => {
       await expect(
         service.respondToMembership('companion-1', 'link-1', true),
       ).rejects.toThrow(BadRequestException);
+      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects responding when the companion is deceased', async () => {
+      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+        ...pendingSentinelRequest,
+        userCompanion: {
+          ...pendingSentinelRequest.userCompanion,
+          status: 'DECEASED',
+        },
+      });
+
+      await expect(
+        service.respondToMembership('companion-1', 'link-1', true),
+      ).rejects.toThrow(ForbiddenException);
       expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
     });
 
@@ -1648,6 +1701,320 @@ describe('SentinelService', () => {
       const result = await service.handleInboundSms('+33611111111', 'NON');
 
       expect(result).toEqual({ matched: false, reason: 'no_actionable_link' });
+    });
+  });
+
+  describe('reportDeath', () => {
+    it('reports a death when called by an accepted Lead of the 1st circle, notifying the other eligible confirmers', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'companion-1',
+          status: 'ACTIVE',
+          deathReportedAt: null,
+        }) // getUser(companion)
+        .mockResolvedValueOnce({ id: 'lead-1', firstName: 'Lea', phone: '+41791111111' }); // getUser(reporter)
+      prisma.circle.findFirst.mockResolvedValueOnce({
+        id: 'first-1',
+        circleType: CircleType.FIRST,
+      });
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'caller-link' }); // caller is an accepted Lead there
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        { userSentinelId: 'lead-1' },
+        { userSentinelId: 'lead-2' },
+      ]); // getEligibleConfirmerIds: 2 Leads
+
+      const result = await service.reportDeath('lead-1', 'companion-1');
+
+      expect(result).toEqual({ reported: true });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'companion-1' },
+        data: { deathReportedAt: expect.any(Date), deathReportedById: 'lead-1' },
+      });
+      // Only the other Lead is notified, never the reporter themself.
+      expect(notifications.create).toHaveBeenCalledTimes(1);
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'lead-2',
+        type: NotificationType.DEATH_NOTICE_REPORTED,
+        actorUserId: 'lead-1',
+        actorLabel: 'Lea',
+        targetId: 'companion-1',
+      });
+    });
+
+    it('rejects when the caller is not an accepted Lead of the companion’s 1st circle', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'companion-1',
+        status: 'ACTIVE',
+        deathReportedAt: null,
+      });
+      prisma.circle.findFirst.mockResolvedValueOnce({
+        id: 'first-1',
+        circleType: CircleType.FIRST,
+      });
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(null); // not a Lead there
+
+      await expect(
+        service.reportDeath('stranger', 'companion-1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects when a death report is already pending for this companion', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'companion-1',
+        status: 'ACTIVE',
+        deathReportedAt: new Date(),
+      });
+
+      await expect(
+        service.reportDeath('lead-1', 'companion-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.circle.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the companion is already deceased', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'companion-1',
+        status: 'DECEASED',
+        deathReportedAt: null,
+      });
+
+      await expect(
+        service.reportDeath('lead-1', 'companion-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('confirmDeath', () => {
+    it('marks the companion deceased and fans out the announcement, reading only opted-in accepted links', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'companion-1',
+          deathReportedAt: new Date(),
+          deathReportedById: 'lead-1',
+        }) // getUser(companion)
+        .mockResolvedValueOnce({
+          firstName: 'Alice',
+          phone: '+41790000000',
+          deathAnnouncementMessage: 'Au revoir a tous.',
+        }); // fanOutDeathAnnouncement: companion label + message
+      prisma.circle.findFirst.mockResolvedValueOnce({ id: 'first-1' });
+      prisma.linkSentinels.findMany
+        .mockResolvedValueOnce([
+          { userSentinelId: 'lead-1' },
+          { userSentinelId: 'lead-2' },
+        ]) // getEligibleConfirmerIds: 2 Leads
+        .mockResolvedValueOnce([
+          {
+            id: 'link-r1',
+            deathPersonalMessage: 'Tu vas nous manquer',
+            linkAsSentinel: { id: 'sentinel-r1', phone: '+41791111111' },
+          },
+        ]); // fan-out: opted-in ACCEPTED recipients
+
+      const result = await service.confirmDeath('lead-2', 'companion-1');
+
+      expect(result).toEqual({ confirmed: true });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'companion-1' },
+        data: {
+          status: 'DECEASED',
+          deceasedAt: expect.any(Date),
+          deathConfirmedById: 'lead-2',
+        },
+      });
+      // The fan-out query itself excludes removed/declined/blocked links and
+      // anyone not opted in — a service-layer filter, not a DB constraint.
+      expect(prisma.linkSentinels.findMany).toHaveBeenLastCalledWith({
+        where: {
+          userCompanionId: 'companion-1',
+          status: LinkStatus.ACCEPTED,
+          notifyOnDeath: true,
+        },
+        include: { linkAsSentinel: { select: { id: true, phone: true } } },
+      });
+      expect(sms.send).toHaveBeenCalledWith(
+        '+41791111111',
+        expect.stringContaining('Alice'),
+      );
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'sentinel-r1',
+        type: NotificationType.DEATH_NOTICE_CONFIRMED,
+        targetId: 'companion-1',
+      });
+      expect(prisma.linkSentinels.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['link-r1'] } },
+        data: { deathNotifiedAt: expect.any(Date) },
+      });
+    });
+
+    it('allows any other accepted Sentinel to confirm when the 1st circle has only one Lead', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'companion-1',
+          deathReportedAt: new Date(),
+          deathReportedById: 'lead-1',
+        })
+        .mockResolvedValueOnce({
+          firstName: 'Alice',
+          phone: null,
+          deathAnnouncementMessage: '',
+        });
+      prisma.circle.findFirst.mockResolvedValueOnce({ id: 'first-1' });
+      prisma.linkSentinels.findMany
+        .mockResolvedValueOnce([{ userSentinelId: 'lead-1' }]) // only one Lead -> fallback
+        .mockResolvedValueOnce([{ userSentinelId: 'sentinel-2' }]) // fallback: other accepted Sentinels
+        .mockResolvedValueOnce([]); // fan-out: nobody opted in
+
+      const result = await service.confirmDeath('sentinel-2', 'companion-1');
+
+      expect(result).toEqual({ confirmed: true });
+      expect(sms.send).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the caller is the original reporter', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'companion-1',
+        deathReportedAt: new Date(),
+        deathReportedById: 'lead-1',
+      });
+      prisma.circle.findFirst.mockResolvedValueOnce({ id: 'first-1' });
+
+      await expect(
+        service.confirmDeath('lead-1', 'companion-1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects when there is no pending death report for this companion', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'companion-1',
+        deathReportedAt: null,
+        deathReportedById: null,
+      });
+
+      await expect(
+        service.confirmDeath('lead-2', 'companion-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.circle.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rejectDeathReport', () => {
+    it('clears the pending report and notifies the original reporter', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'companion-1',
+        deathReportedAt: new Date(),
+        deathReportedById: 'lead-1',
+      });
+      prisma.circle.findFirst.mockResolvedValueOnce({ id: 'first-1' });
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        { userSentinelId: 'lead-1' },
+        { userSentinelId: 'lead-2' },
+      ]);
+
+      const result = await service.rejectDeathReport('lead-2', 'companion-1');
+
+      expect(result).toEqual({ rejected: true });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'companion-1' },
+        data: { deathReportedAt: null, deathReportedById: null },
+      });
+      expect(notifications.create).toHaveBeenCalledWith({
+        userId: 'lead-1',
+        type: NotificationType.DEATH_NOTICE_REJECTED,
+        actorUserId: 'lead-2',
+        targetId: 'companion-1',
+      });
+    });
+  });
+
+  describe('listCompanions — death notice', () => {
+    it('flags canReport for an accepted Lead of the 1st circle with no pending report', async () => {
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        {
+          id: 'link-1',
+          sentinelType: SentinelType.FIRSTCIRCLE,
+          leadSlot: LeadSlot.LEAD_1,
+          proposedCircleId: null,
+          circle: {
+            id: 'first-1',
+            label: '1er cercle',
+            circleType: CircleType.FIRST,
+            userCompanion: {
+              id: 'companion-1',
+              email: null,
+              phone: '+41790000000',
+              status: 'ACTIVE',
+              deathReportedAt: null,
+              deathReportedById: null,
+            },
+          },
+        },
+      ]);
+
+      const result = await service.listCompanions('lead-1');
+
+      expect(result).toEqual([
+        {
+          linkId: 'link-1',
+          sentinelType: SentinelType.FIRSTCIRCLE,
+          leadSlot: LeadSlot.LEAD_1,
+          circle: {
+            id: 'first-1',
+            label: '1er cercle',
+            isPrimary: true,
+            isReserve: false,
+          },
+          proposedCircle: null,
+          companion: { id: 'companion-1', email: null, phone: '+41790000000' },
+          deathNotice: { isDeceased: false, pending: null, canReport: true },
+        },
+      ]);
+      expect(prisma.linkSentinels.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('flags canConfirmOrReject via the single-Lead fallback when a report is pending', async () => {
+      const reportedAt = new Date('2026-01-01T00:00:00.000Z');
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        {
+          id: 'link-2',
+          sentinelType: SentinelType.SENTINEL,
+          leadSlot: null,
+          proposedCircleId: null,
+          circle: {
+            id: 'first-1',
+            label: '1er cercle',
+            circleType: CircleType.FIRST,
+            userCompanion: {
+              id: 'companion-1',
+              email: null,
+              phone: '+41790000000',
+              status: 'ACTIVE',
+              deathReportedAt: reportedAt,
+              deathReportedById: 'lead-1',
+            },
+          },
+        },
+      ]);
+      prisma.linkSentinels.groupBy.mockResolvedValueOnce([
+        { circleId: 'first-1', _count: { _all: 1 } },
+      ]);
+      prisma.user.findMany.mockResolvedValueOnce([
+        { id: 'lead-1', firstName: 'Lea', phone: '+41791111111' },
+      ]);
+
+      const result = await service.listCompanions('sentinel-2');
+
+      expect(result[0].deathNotice).toEqual({
+        isDeceased: false,
+        pending: {
+          reportedAt,
+          reportedByLabel: 'Lea',
+          canConfirmOrReject: true,
+        },
+        canReport: false, // not a Lead here (leadSlot is null)
+      });
     });
   });
 });
