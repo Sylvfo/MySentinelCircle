@@ -16,7 +16,7 @@ Read `.claude/lastupdate.md` for what was done last session and what's left.
 
 ## 3. Resume or pick next
 
-If a feature was left paused (see the "Left to do" section of `lastupdate.md`), resume it. Otherwise, pick the next issue from `FEATURES.md` / `gh issue list`, respecting the `state:*` progression (see `FEATURE_STATES.md`).
+If a feature was left paused (see the "Left to do" section of `lastupdate.md`), resume it. Otherwise, pick the next issue from `documentation/FEATURES.md` / `gh issue list`, respecting the `state:*` progression (see `FEATURE_STATES.md`).
 
 ## 4. Work
 

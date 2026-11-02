@@ -1,70 +1,93 @@
 # Last update
 
-**Date**: 2026-10-29 11:53
+**Date**: 2026-11-02 10:04
 **Branch**: `alerts_size_and_order_circles`
 
 ## Done this session
 
-- **Security & code quality review** (SonarCloud, connected mid-session — token in root `.env`,
-  gitignored, project key `Sylvfo_MySentinelCircle`, queryable directly via its API). Fixed: OTP
-  codes generated with `Math.random()` instead of `crypto.randomInt`; 16 floating promises missing
-  `void`; a hardcoded CI database password; missing `--ignore-scripts`/`--no-install` hardening;
-  11 `.sort()` calls without a comparator; `Modal.tsx` rebuilt as a native `<dialog>`; a log-injection
-  gap in `nosmsnow/server.js`. Also fixed a real bug found along the way: `MessagesPage`'s
-  `message:new` listener was refetching the whole contact roster on every message anywhere, tripping
-  the rate limit. **`npm audit`**: triaged and fixed the real ones — backend 21 → 13 vulnerabilities
-  (the remaining 13 are dev-tooling-only or need a major bump), frontend 2 → **0** (`multer` needed
-  an `overrides` entry in `package.json` since `@nestjs/platform-express` pins its own copy).
-  **Found but deliberately left unfixed**: the inbound SMS webhook trusts the caller-supplied phone
-  number with no signature verification — documented in `plan.txt` under "DEV-ONLY STUBS", to fix
-  before a real SMS provider is wired in. **Deliberately left as-is** (Sylvie's call): the 3 locked
-  Dockerfiles' remaining 5 Sonar findings (root user, recursive `COPY`) — not worth the risk/
-  complexity for dev-only containers. Committed/merged via PR #43 (→`main`), #44/#45 (→`dev`).
+- **Death notice feature** — announcing a user's death to their Sentinels, framed at length with
+  Sylvie first (how to avoid both false positives and silently-unnotified friends). Settled on:
+  double confirmation (a Lead Sentinel reports, a second Lead — or, if the 1st circle has only one
+  Lead, any other accepted Sentinel of it — confirms before anything broadcasts; reporter ≠
+  confirmer); the companion prepares the announcement text and picks which of their existing
+  Sentinels get notified (with an optional personal message each) while still alive; zero new
+  tables — Sylvie pushed back on an earlier 2-table design, so the report/confirm flow and
+  announcement live as flat fields on `User` (mirroring how `Alert` itself stores
+  `launchedAt`/`closedAt`), and recipient opt-in/personal-message live as flat fields on
+  `LinkSentinels`. A literal "memorial circle" was considered and rejected: `LinkSentinels` allows
+  only one relationship ever per pair, so a Sentinel can't also join a memorial-only circle.
+  `UserStatus.DECEASED` freezes the account afterward (existing data stays readable; `raiseAlert`,
+  `inviteSentinel`/`requestToBeSentinel`/`respondToMembership`, and new messages are all now gated
+  via a shared `assertNotDeceased` helper). New `user.controller.ts`/`service.ts` endpoints
+  (`GET`/`PATCH /user/death-notice`, `PATCH /user/death-notice/recipients`) for the living-prep
+  side, new `sentinel.controller.ts`/`service.ts` endpoints (`.../death-notice/report|confirm|
+  reject`, plus a recipient-facing `GET`) for the report/confirm side — no new module, reusing
+  existing ones to avoid an nginx change. Fan-out reuses the `AlertService.notifyParticipants`
+  pattern (SMS + persisted notification, best-effort). **Known gap, deliberately deferred**:
+  `updateMembership`/`removeMembership`/`blockMembership`/`leaveMembershipAsSentinel`/
+  `respondToCircleMove` aren't gated against a deceased companion yet. **Committed** (`93ca0a5`,
+  together with the visual redesign below — Sylvie committed both as one, using the message drafted
+  for her this session).
 
-- **Outer-circle alert escalation, batched to 2 at a time** — resolves `plan.txt`'s former "how many
-  people to alert simultaneously" open point (now updated there too). Manual call order per
-  Sentinel (stable random fallback if unset), max 2 contacted per `requestCircle` call, the 1st
-  circle can request more at any time with no enforced wait, and a one-time reminder notification
-  after 4h of silence — never an automatic contact. The 1st circle itself still notifies everyone at
-  once, unchanged. `AlertService.pickNextCircleBatch` / `@Cron remindStaleCircleBatches` (new
-  `@nestjs/schedule` dep — needed `transformIgnorePatterns` in both Jest configs, its build is
-  ESM-only). `callOrder` input on `CirclesPage.tsx`, participant status badges + relabeling button
-  on `AlertsPage.tsx`. Verified live: 2 contacted → next call contacts the last 1 → third call
-  cleanly rejected. **Committed** (`05ce6bd`, includes the npm audit fixes too).
+- **Full visual redesign**, prompted by an imminent presentation (same session, after the feature
+  work above) — logo (`frontend/src/assets/logo.png`) + Inria Sans + a new teal/blue/gold palette
+  (`frontend/src/theme.ts`); a reusable `Tile` component (`components/Tile.tsx`) migrated into
+  Alerts/Circles/Companions; an alert-mode gradient background (`.mode-alert`) and alert-type
+  selection restyled as cards. **My Circles rebuilt**: new `CircleRing` component
+  (`components/CircleRing.tsx`) — thick colored rings with avatar silhouettes positioned around the
+  rim (gold = Lead, grey = not yet accepted, else the circle's own color; message-capability shown
+  as a green-check/red-cross bubble badge), 1st circle pinned at top in a distinct gold family,
+  other circles cycling a blue→teal palette with a pale ring + strong avatars. Clicking a ring
+  expands the existing, fully-functional `CircleCard` below it (promote to Lead, move, remove,
+  invite) rather than rebuilding those actions — only the overview is new. Iterated on the ring/
+  avatar look first in a **Claude Design** canvas artifact (colors, avatar shape, badge icons, sizes)
+  before porting to real code, per Sylvie's call to prototype visually rather than guess blind in
+  CSS. **Dashboard rebuilt** in two modes: Normal (3 summary tiles — Raise Alert/My Circles/My
+  Companions, people-counts written inline e.g. "8 people watching over you") and Running Alert
+  (takes over the top whenever an alert concerns the viewer; shows About/What-you-have-to-do + an
+  "N active alert(s)" count; "About" resolves the actual companion's name, not the alert's own
+  label, falling back from `getAlert` to `getMyParticipation` the same way `AlertsPage` already
+  does for an outer-circle Sentinel). **Alerts split into two pages**: `/alerts` ("Raise Alert",
+  launch-only now) and `/running-alert` ("Running Alert", in-progress only, reached only from the
+  Dashboard's conditional card) — new `pages/RunningAlertPage.tsx`, reuses the now-exported
+  `AlertRow` from `AlertsPage.tsx`. New **History page** (`pages/HistoryPage.tsx`, route
+  `/history`) for resolved alerts, which no longer show on `/alerts`. New mobile-only
+  **`BottomNav`** (`components/BottomNav.tsx`: Settings/History/Messages/Notifications/Home as real
+  icon buttons, not one flattened image — Sylvie's own icon sketches ported to inline SVG) shown
+  ≤640px, replacing the old horizontal mobile nav-links row. **Nav decluttered**: logo always links
+  to `/dashboard` (so the redundant "Dashboard" nav link was removed); language switcher and logout
+  moved into Settings (logout at the very bottom); username right-aligned (needed a mobile-specific
+  `margin-left: auto` fix — the desktop `space-between` fix alone didn't carry over to the mobile
+  horizontal bar); logo + wordmark enlarged, nav widened 220→250px to fit. **Two real bugs found via
+  live testing**: `.tile-header` didn't wrap, so a long title + actions overflowed visually past a
+  Tile's own border into neighboring tiles (fixed with `flex-wrap` + `overflow: hidden`); and
+  `CircleRing`'s `<button>` picked up the global `.app-content button` dark-teal
+  background/`border-radius`, showing as dark corners around each ring and throwing off avatar
+  alignment (fixed with a higher-specificity override, `.app-content button.circle-ring`). Also
+  **bumped API rate limits** (global Throttler 20→100/min; several auth/OTP/password endpoints
+  5→20/min) — NestJS Throttler tracks by IP by default, so Sylvie's 4 test accounts in one browser
+  were sharing one budget and tripping it. **Committed** (`93ca0a5`, same commit as the death notice
+  feature above).
 
-- **Lead Sentinel: claim active leadership of an alert** — replaces `plan.txt`'s old timed/
-  succession-order handoff idea with something simpler Sylvie proposed: every Lead is already
-  notified when an alert is raised (unchanged); whoever claims it first is driving, and any other
-  Lead can take it over at any time, no timers. Reused the schema's already-dead `AlertParticipant.
-  leadAssignedAt` field instead of adding a column — repurposed as "when this Lead last claimed
-  leadership." New `POST /alert/:id/claim-lead`; "current lead" is derived on read (latest
-  `leadAssignedAt` among `isLead` participants), not stored separately. `AlertsPage.tsx` shows who's
-  currently leading + a "take the lead" button for eligible Leads. Verified live (claim + reject
-  non-Lead). **Uncommitted.**
+- Drafted a commit message + PR description for all of the above (per the usual "text only, don't
+  run git" preference) — Sylvie then committed it herself, verbatim, as `93ca0a5` on
+  `alerts_size_and_order_circles`. Also gave feedback on Sylvie's GitHub project blurb (tagline/
+  stack/skills wording) — chat-only, nothing to carry forward.
 
-- **Group circles** (e.g. a choir — mutual mesh, invite-only-if-already-connected). Framed at length
-  with Sylvie, including a real back-and-forth on the data model (she pushed back on 2 new tables;
-  found a genuine constraint — `LinkSentinels` allows only one relationship ever per pair — that
-  means 1 new table is unavoidable for the pending invite, but the "group" itself needed no table at
-  all: the founder's own `Circle` *is* the group, `CircleType.GROUP` + a nullable self-relation
-  `groupRootId`). New model `SentinelGroupInvitation`. Joining meshes the new member with every
-  existing member (skipping pairs already connected from outside the group); leaving undoes only the
-  relationships the group itself created. **Two real bugs found and fixed via live testing**: (1)
-  the first proposed schema was missing a back-relation field, which made `prisma migrate dev` fail
-  silently with no migration ever created — several rounds of Sylvie saying "done" before this was
-  caught; (2) rejoining a group after leaving 500'd (`Circle`'s `@@unique([userCompanionId,
-  groupRootId])` collided with the old closed circle) — fixed by reactivating the previous circle/
-  relationships instead of blindly creating new ones, now covered by a regression test. Originally
-  built as its own `/groups` page, then **folded into `CirclesPage.tsx`** per Sylvie's request and
-  relabeled "Group Circles" / "Cercles de groupe" — no more separate nav entry. **Uncommitted.**
-
-Backend: 217/217 tests passing, build/lint clean. Frontend: build/lint clean.
+Backend: 250/250 tests passing, build/lint clean. Frontend: build/lint clean (re-verified after
+every change this session).
 
 ## Left to do / not yet addressed
 
-- **`MessagingMode.GROUP`** (the chat-mode enum value, unrelated to the new Group Circles feature —
-  worth a disambiguating rename if it causes confusion later) — still behaves identically to
-  `INDIVIDUAL`, deliberately not exposed as a distinct UI option until it means something different.
+- **Death notice**: the 5 membership-management actions noted above aren't gated against a deceased
+  companion yet (`updateMembership`/`removeMembership`/`blockMembership`/
+  `leaveMembershipAsSentinel`/`respondToCircleMove`).
+- **Dashboard's "Raise Alert" tile content** — Sylvie asked for something like "a note about myself
+  and the three alert types we set up" in it; unclear enough that a short generic hint line was
+  used instead and flagged to her. Still waiting on clarification.
+- **`MessagingMode.GROUP`** (the chat-mode enum value, unrelated to Group Circles) — still behaves
+  identically to `INDIVIDUAL`, deliberately not exposed as a distinct UI option until it means
+  something different.
 - **Browser smoke test of tranches C/D/E frontend** (step-up panel, change-email flow,
   change-phone flow) — still not done, unrelated to recent sessions' work.
 - **The 0–10 availability-reply scale** (recruiting into an active search, vs. a plain yes/no
@@ -72,25 +95,28 @@ Backend: 217/217 tests passing, build/lint clean. Frontend: build/lint clean.
 - **Self-service account deletion/closure** (GitHub issue #29) — still open, nothing started.
 - `claimOrCreateByPhone` race condition — accepted gap, documented in `plan.txt`, not fixed.
 - Real SMS/email provider — still console-only stubs (NoSMSNow is a dev-only proxy). The inbound
-  webhook also needs signature verification before this happens (see above).
+  webhook also needs signature verification before this happens.
 - `organization` backend module — still an empty skeleton; blocks the Organization↔1st-circle
   chat too.
 - `MessageType.SYSTEM` — still unused (`IMAGE` is live, `SYSTEM` isn't).
 - `npm audit`: backend's remaining 13 (dev-tooling-only, or need a major version bump) not
   addressed — judged not worth it; revisit only if one of those tools' exposure changes.
 
-## Git — uncommitted at the time of this pause
+## Git — state at the time of this pause
 
-On `alerts_size_and_order_circles` — the Lead-claim feature and the Group Circles feature, both
-implemented and verified live but not committed:
-`backend/prisma/schema.prisma`, two new migration folders (`20261029092757_add_alert_lead_claimed_
-notification_type`, `20261029102626_add_group_circles`), `backend/src/alert/alert.controller.ts` +
-`alert.service.ts` + its spec, `backend/src/sentinel/sentinel.controller.ts` + `sentinel.service.ts`
-+ its spec, two new DTOs (`create-group.dto.ts`, `invite-to-group.dto.ts`), `frontend/src/api/
-alert.ts` + `notification.ts` + `sentinel.ts`, `frontend/src/components/NotificationBell.tsx`,
-`frontend/src/i18n/locales/{en,fr}.json`, `frontend/src/pages/AlertsPage.tsx` + `CirclesPage.tsx`.
+Everything from this session (death notice feature + full visual redesign) is **committed** on
+`alerts_size_and_order_circles` as a single commit, `93ca0a5` — Sylvie committed it herself, using
+the message drafted for her this session, on top of `424980b`.
 
-`main`/`dev` are up to date with the security-review work (PRs #43/#44/#45). The outer-circle-
-batching commit (`05ce6bd`) is on this branch but this branch itself has no PR open yet.
+**Not yet pushed**: `alerts_size_and_order_circles` is one commit ahead of
+`origin/alerts_size_and_order_circles` (`93ca0a5`). No PR open for this branch yet.
 
-Not committed/pushed — ask Sylvie before doing either.
+Sylvie has since moved on: checked out `dev` (fast-forwarded to origin), then `code_quality_check`
+— that's the branch actually checked out right now, so a fresh session should confirm which branch
+to resume on before touching anything.
+
+`main`/`dev` are otherwise up to date through PR #45; the Lead-claim/Group-circles/paywall work
+(`e7472de`/`c72688c`/`424980b`) and the outer-circle-batching commit (`05ce6bd`) were already merged
+to `alerts_size_and_order_circles` before this session started.
+
+Not pushed — ask Sylvie before pushing or opening a PR.

@@ -40,16 +40,16 @@ make
 ## Documentation
 
 - Database schema: [backend/prisma/DB_schema.md](backend/prisma/DB_schema.md)
-- Stack & infra decisions: [STACK_SCHEMA.md](STACK_SCHEMA.md)
+- Stack & infra decisions: [STACK_SCHEMA.md](documentation/STACK_SCHEMA.md)
 - Full product spec: [plan.txt](plan.txt)
-- Feature list / roadmap: [FEATURES.md](FEATURES.md)
-- Claude permission rules: [PERMISSIONSCLAUDE.md](PERMISSIONSCLAUDE.md)
+- Feature list / roadmap: [FEATURES.md](documentation/FEATURES.md)
+- Claude permission rules: [PERMISSIONSCLAUDE.md](documentation/PERMISSIONSCLAUDE.md)
 
 ## Claude setup
 
 - **`CLAUDE.md`** — general project rules for the agent.
 - **Claude's own notes** — kept on my machine, outside the project, read-only for Claude.
-- **Permissions (hard rules)** — `.claude/settings.json`, `FEATURES.md`.
+- **Permissions (hard rules)** — `.claude/settings.json`, `documentation/FEATURES.md`.
 - **Procedures** — `new-session`, `end-session`, `new-feature`, `debug`.
 
 ## Test
