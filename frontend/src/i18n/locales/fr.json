@@ -43,9 +43,9 @@
     "verifyTitle": "Vérification",
     "firstName": "Prénom",
     "lastName": "Nom",
-    "username": "Nom d'utilisateur",
-    "usernameHint": "Visible par les autres utilisateurs (par exemple comme cible d'invitation). Tu peux le modifier, mais pas le passer.",
-    "phoneHint": "Jamais visible par les autres utilisateurs. Sans lui, tu ne pourras ni avoir ni être un Sentinel — tu pourras l'ajouter plus tard.",
+    "username": "Identifiant",
+    "usernameHint": "Visible par les autres personnes (par exemple comme cible d'invitation). Tu peux le modifier, mais pas le passer.",
+    "phoneHint": "Jamais visible par les autres personnes. Sans lui, tu ne pourras ni avoir de Sentinels ni être Sentinel — tu pourras l'ajouter plus tard.",
     "back": "Retour",
     "email": "Email",
     "password": "Mot de passe",
@@ -134,8 +134,8 @@
     "removeMember": "Retirer",
     "confirmRemoveMember": "Attention, cette sentinelle ne fera plus partie de vos cercles.",
     "move": "Déplacer",
-    "makeLead": "Désigner référent·e",
-    "removeLead": "Retirer référent·e",
+    "makeLead": "Désigner référent.e",
+    "removeLead": "Retirer référent.e",
     "blockMessaging": "Bloquer les messages",
     "allowMessaging": "Autoriser les messages",
     "excludeFromAlertChat": "Exclure du chat d'alerte",
@@ -153,13 +153,13 @@
   },
   "groups": {
     "title": "Cercles de groupe",
-    "intro": "Un cercle partagé entre plusieurs sentinelles (ex. une chorale) — le rejoindre te rend sentinelle de chaque membre, et chaque membre devient ta sentinelle aussi. Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e.",
+    "intro": "Un cercle partagé entre plusieurs sentinelles (ex. une chorale) — le rejoindre te rend sentinelle de chaque membre, et chaque membre devient ta sentinelle aussi. Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté.e.",
     "empty": "Tu ne fais encore partie d'aucun groupe.",
     "newGroup": "Nouveau cercle de groupe",
     "namePlaceholder": "Ex. Chorale",
     "create": "Créer",
     "invitations": "Invitations de groupe",
-    "invitedBy": "{{who}} t'a invité·e dans \"{{group}}\"",
+    "invitedBy": "{{who}} t'a invité.e dans \"{{group}}\"",
     "accept": "Accepter",
     "decline": "Décliner",
     "invite": "Inviter",
@@ -168,8 +168,8 @@
     "delete": "Supprimer le groupe",
     "confirmDelete": "Supprimer ce groupe entièrement ? Tous les membres seront retirés et les relations créées uniquement via ce groupe prendront fin pour tout le monde.",
     "invitedSent": "Invitation envoyée à {{who}}.",
-    "noEligibleContacts": "Personne à inviter pour l'instant — tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e.",
-    "eligibilityHint": "Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e.",
+    "noEligibleContacts": "Personne à inviter pour l'instant — tu ne peux inviter que quelqu'un avec qui tu es déjà connecté.e.",
+    "eligibilityHint": "Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté.e.",
     "largeGroupWarning": "Ce groupe compte déjà {{count}} personnes — c'est beaucoup. Tu peux quand même en ajouter si tu veux."
   },
   "companions": {
@@ -193,7 +193,7 @@
     "acceptCircleMove": "Accepter",
     "declineCircleMove": "Refuser",
     "deathNotice": {
-      "deceasedBadge": "Décédé(e)",
+      "deceasedBadge": "Décédé.e",
       "viewAnnouncement": "Voir l'annonce",
       "announcementTitle": "Annonce",
       "personalMessageLabel": "Pour vous :",
@@ -201,7 +201,7 @@
       "confirm": "Confirmer",
       "reject": "Rejeter (erreur)",
       "report": "Signaler un décès",
-      "confirmReport": "Signaler le décès de cette personne ? Un second Sentinel devra confirmer avant que les autres soient prévenus."
+      "confirmReport": "Signaler le décès de cette personne ? Une deuxième personne devra confirmer avant que les autres soient prévenus."
     }
   },
   "alerts": {
@@ -220,7 +220,7 @@
     "confirmRaise": "Déclencher une alerte ? Votre 1er cercle sera prévenu immédiatement.",
     "defaultReason": "Alerte déclenchée depuis l'application.",
     "activeAlertNotice": "Une alerte est en cours. Votre 1er cercle a été prévenu.",
-    "raiseForCompanion": "Alerter pour un proche",
+    "raiseForCompanion": "Alerter pour une personne proche",
     "raiseForCompanionIntro": "Déclenchez une alerte pour quelqu'un que vous protégez.",
     "companionLabel": "Personne concernée",
     "noCompanions": "Vous ne surveillez personne pour l'instant.",
@@ -246,13 +246,13 @@
         "title": "Chronologie",
         "event": {
           "ALERT_RAISED": "Alerte lancée",
-          "CONTACTED": "Contacté·e",
+          "CONTACTED": "Contacté.e",
           "RESPONDED": "A répondu",
           "LEAD_CLAIMED": "A pris le lead",
           "ALERT_CLOSED": "Alerte clôturée"
         }
       },
-      "lead": "Référent·e",
+      "lead": "Référent.e",
       "currentLead": "Lead actuel : {{name}}",
       "noLeadYet": "Personne n'a encore pris le lead",
       "claimLead": "Prendre le lead",
@@ -264,8 +264,8 @@
       "me": "Moi",
       "response": "Réponse : {{response}}",
       "participantStatus": {
-        "WAITING": "Pas encore contacté·e",
-        "CONTACTED": "Contacté·e, pas de réponse",
+        "WAITING": "Pas encore contacté.e",
+        "CONTACTED": "Contacté.e, pas de réponse",
         "RESPONDED": "A répondu",
         "ACTIVE": "Actif",
         "DECLINED": "Décliné",
@@ -275,16 +275,15 @@
       "requestCircle": {
         "title": "Solliciter un autre cercle",
         "noCircles": "Aucun autre cercle à solliciter.",
-        "questionPlaceholder": "Ex. Est-elle chez vous ?",
         "submit": "Envoyer la demande",
         "submitMore": "Contacter 2 sentinelles de plus"
       },
       "respond": {
         "prompt": "On vous demande de répondre à propos de cette alerte.",
-        "yes": "Oui",
-        "no": "Non"
+        "freePlaceholder": "En quelques mots",
+        "send": "Envoyer"
       },
-      "statusByCompanion": "Statut (compagnon)",
+      "statusByCompanion": "Statut (personne protégée)",
       "statusByFirstCircle": "Statut (1er cercle)",
       "status": {
         "none": "Pas encore de statut.",
@@ -292,13 +291,39 @@
       },
       "labelField": "Nom de l'alerte",
       "labelPlaceholder": "Ex. Recherche de Léa",
-      "requestedBy": "sollicité·e par {{name}}",
+      "requestedBy": "sollicité.e par {{name}}",
       "updatedBy": "— {{name}}",
       "circleChat": {
         "title": "Discuter avec le premier cercle",
         "withSentinel": "Chat avec {{name}}",
         "firstCircleSender": "Premier cercle"
+      },
+      "askQuestion": {
+        "title": "Poser une autre question",
+        "submit": "Envoyer la question"
+      },
+      "repliesSummary": {
+        "title": "Réponses",
+        "noAnswer": "sans réponse",
+        "firstCircle": "1er cercle"
       }
+    },
+    "questions": {
+      "CAN_VISIT": "Pouvez-vous aller le/la voir ?",
+      "LAST_NEWS": "Ses dernières nouvelles ?",
+      "SEEMED_OK": "Semblait-il/elle aller bien ?",
+      "WHERE_SEEN": "Où l'avez-vous vu.e pour la dernière fois ?"
+    },
+    "replies": {
+      "GOING": "J'y vais",
+      "LATER": "Plus tard",
+      "UNAVAILABLE": "Pas dispo",
+      "YES": "Oui",
+      "NO": "Non",
+      "TODAY": "Aujourd'hui",
+      "THIS_WEEK": "Cette semaine",
+      "LONGER": "Avant",
+      "DONT_KNOW": "Je ne sais pas"
     }
   },
   "history": {
@@ -333,10 +358,14 @@
       "SENTINEL_REQUEST_RECEIVED": "{{who}} veut devenir votre sentinelle",
       "SENTINEL_LINK_ACCEPTED": "{{who}} a accepté",
       "SENTINEL_LINK_DECLINED": "{{who}} a refusé",
-      "SENTINEL_GROUP_INVITED": "{{who}} t'a invité·e dans un groupe",
+      "SENTINEL_GROUP_INVITED": "{{who}} t'a invité.e dans un groupe",
       "DEATH_NOTICE_REPORTED": "Un décès a été signalé — ta confirmation est nécessaire",
       "DEATH_NOTICE_CONFIRMED": "Un décès a été annoncé",
-      "DEATH_NOTICE_REJECTED": "Ton signalement de décès a été rejeté comme erreur"
+      "DEATH_NOTICE_REJECTED": "Ton signalement de décès a été rejeté comme erreur",
+      "SENTINEL_LEFT": "{{who}} ne fait plus partie de vos Sentinels",
+      "CIRCLE_MOVE_PROPOSED": "{{who}} vous propose de rejoindre son 1er cercle",
+      "CIRCLE_MOVE_ACCEPTED": "{{who}} a rejoint votre 1er cercle",
+      "CIRCLE_MOVE_DECLINED": "{{who}} a refusé de rejoindre votre 1er cercle"
     }
   },
   "settings": {
@@ -346,7 +375,7 @@
     "editable": "Infos modifiables",
     "phone": "Téléphone",
     "addPhone": "Ajouter ton numéro de téléphone",
-    "isMajor": "Je suis majeur·e",
+    "isMajor": "Je suis majeur.e",
     "publicStatus": "Statut public",
     "allowMessagingByDefault": "Autoriser mes sentinelles à me contacter par défaut",
     "status": "Statut du compte",
@@ -421,8 +450,14 @@
     },
     "missing": {
       "phone": "Ajoute et vérifie ton numéro de téléphone",
-      "lead": "Choisis un Lead Sentinel avec un numéro",
+      "lead": "Choisis ton Lead Sentinel, avec un numéro",
       "sentinel": "Ajoute un autre Sentinel avec un numéro"
     }
+  },
+  "sentinelHome": {
+    "empty": "Aucune alerte en cours pour l'instant.",
+    "createAccount": "Créer un compte",
+    "sendCode": "Recevoir un code",
+    "hasPassword": "J'ai un mot de passe"
   }
 }

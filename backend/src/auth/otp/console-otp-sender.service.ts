@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OtpSender } from './otp-sender.interface';
+import { otpSms } from '../../sms/messages';
 
 // Dev stub — logs the code instead of sending a real SMS, and best-effort
 // forwards to NoSMSNow (nosmsnow/) if NOSMSNOW_URL is set. Swap for a
@@ -24,7 +25,7 @@ export class ConsoleOtpSenderService implements OtpSender {
         body: JSON.stringify({
           channel: 'otp',
           to: phone,
-          body: `Code: ${code}`,
+          body: otpSms(code),
         }),
         signal: AbortSignal.timeout(2000),
       });

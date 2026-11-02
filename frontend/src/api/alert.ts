@@ -3,6 +3,31 @@ import { apiGet, apiPatch, apiPost } from './client';
 export type AlertType = 'BYCOMPANION' | 'LITTLEWORRY' | 'MISSING' | 'INCIDENT' | 'UNKNOWN' | 'EMERGENCY' | 'NOCONTACT';
 export type AlertStatus = 'SENT' | 'LAUNCHED' | 'ACTIVE' | 'CLOSING' | 'RESOLVED';
 
+export const ALERT_QUESTION_KINDS = ['CAN_VISIT', 'LAST_NEWS', 'SEEMED_OK', 'WHERE_SEEN'] as const;
+export type AlertQuestionKind = (typeof ALERT_QUESTION_KINDS)[number];
+
+export const FIRST_CIRCLE_REPLY_CODES = ['GOING', 'LATER', 'UNAVAILABLE'] as const;
+
+// WHERE_SEEN is answered in free text.
+export const QUESTION_REPLY_CODES: Record<AlertQuestionKind, readonly string[]> = {
+  CAN_VISIT: ['YES', 'LATER', 'NO'],
+  LAST_NEWS: ['TODAY', 'THIS_WEEK', 'LONGER'],
+  SEEMED_OK: ['YES', 'NO', 'DONT_KNOW'],
+  WHERE_SEEN: [],
+};
+
+export const KNOWN_REPLY_CODES = new Set<string>([
+  ...FIRST_CIRCLE_REPLY_CODES,
+  ...Object.values(QUESTION_REPLY_CODES).flat(),
+]);
+
+export interface AlertQuestion {
+  id: string;
+  kind: AlertQuestionKind;
+  response: string | null;
+  answeredAt: string | null;
+}
+
 export interface AlertSummary {
   id: string;
   createdAt: string;
@@ -28,6 +53,7 @@ export interface AlertParticipant {
   // never claimed). Whoever has the latest value among isLead participants
   // is the current lead — see claimLead below.
   leadAssignedAt: string | null;
+  contactedAt: string | null;
   circleId: string;
   circleName: string;
   response: string | null;
@@ -37,6 +63,7 @@ export interface AlertParticipant {
   // requestCircle for this outer circle.
   requestedBy: { id: string; firstName: string } | null;
   userSentinels: { linkAsSentinel: { id: string; firstName: string } };
+  questions: AlertQuestion[];
 }
 
 export interface AlertDetail extends AlertSummary {
@@ -83,13 +110,16 @@ export const listAlerts = () => apiGet<AlertSummary[]>('/alert/mine');
 
 export const getAlert = (id: string) => apiGet<AlertDetail>(`/alert/${id}`);
 
-export const requestCircle = (id: string, data: { circleId: string; question: string }) =>
+export const requestCircle = (id: string, data: { circleId: string; questionKind: AlertQuestionKind }) =>
   apiPost<AlertDetail>(`/alert/${id}/request-circle`, data);
+
+export const askQuestion = (id: string, data: { questionKind: AlertQuestionKind; participantIds: string[] }) =>
+  apiPost<AlertDetail>(`/alert/${id}/questions`, data);
 
 // Returns the updated participant, not the full alert detail — the caller
 // may be an outer-circle Sentinel, who can't view the full alert.
-export const respondToAlert = (id: string, accepted: boolean) =>
-  apiPost<AlertParticipant>(`/alert/${id}/respond`, { accepted });
+export const respondToAlert = (id: string, reply: string, questionId?: string) =>
+  apiPost<AlertParticipant>(`/alert/${id}/respond`, { reply, questionId });
 
 export interface MyParticipation {
   id: string;
@@ -100,6 +130,7 @@ export interface MyParticipation {
   // Whether this link is authorized to chat with the 1st circle during an
   // alert (NONE = not authorized, the default).
   firstCircleMessagingModeAtAlert: 'NONE' | 'INDIVIDUAL' | 'GROUP' | null;
+  questions: AlertQuestion[];
   alert: {
     id: string;
     alertStatus: AlertStatus;

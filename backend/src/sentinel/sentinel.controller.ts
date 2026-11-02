@@ -261,6 +261,11 @@ export class SentinelController {
     return this.sentinel.rejectDeathReport(user.userId, companionId);
   }
 
+  @Get('death-notices/mine')
+  listMyDeathNotices(@CurrentUser() user: { userId: string }) {
+    return this.sentinel.listMyDeathNotices(user.userId);
+  }
+
   @Get('companions/:companionId/death-notice')
   getDeathNoticeAnnouncement(
     @CurrentUser() user: { userId: string },

@@ -19,12 +19,10 @@ import {
 import { SentinelService } from './sentinel.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
-import { AlertService } from '../alert/alert.service';
 import { NotificationService } from '../notification/notification.service';
 
 describe('SentinelService', () => {
   let service: SentinelService;
-  let alert: { tryHandleInboundSms: jest.Mock };
   let prisma: {
     circle: {
       findFirst: jest.Mock;
@@ -98,7 +96,6 @@ describe('SentinelService', () => {
       ),
     };
     sms = { send: jest.fn() };
-    alert = { tryHandleInboundSms: jest.fn().mockResolvedValue(null) };
     notifications = { create: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -106,7 +103,6 @@ describe('SentinelService', () => {
         SentinelService,
         { provide: PrismaService, useValue: prisma },
         { provide: SMS_SENDER, useValue: sms },
-        { provide: AlertService, useValue: alert },
         { provide: NotificationService, useValue: notifications },
       ],
     }).compile();
@@ -143,6 +139,28 @@ describe('SentinelService', () => {
   });
 
   describe('inviteSentinel', () => {
+    it('refuses an SMS-only person in the 1st circle, Lead or not', async () => {
+      for (const requestedAsLead of [false, true]) {
+        prisma.user.findUnique
+          .mockResolvedValueOnce({ id: 'me', userType: UserType.ACCOUNT }) // getUser(inviter)
+          .mockResolvedValueOnce({ id: 'stub', userType: UserType.ONLY_SMS }); // target by phone
+        prisma.circle.findUnique.mockResolvedValueOnce({
+          id: 'first-1',
+          userCompanionId: 'me',
+          circleType: CircleType.FIRST,
+          status: CircleStatus.ACTIVE,
+        });
+
+        await expect(
+          service.inviteSentinel('me', 'first-1', {
+            phone: '+33612345678',
+            name: 'Ada',
+            requestedAsLead,
+          } as any),
+        ).rejects.toThrow('A 1st-circle Sentinel must already have an account');
+      }
+    });
+
     it('rejects inviting directly into the reserve circle', async () => {
       prisma.user.findUnique.mockResolvedValueOnce({
         id: 'me',
@@ -299,6 +317,20 @@ describe('SentinelService', () => {
   });
 
   describe('requestToBeSentinel', () => {
+    it('treats an SMS-only target like an unknown number', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'stub',
+        userType: UserType.ONLY_SMS,
+      });
+
+      await expect(
+        service.requestToBeSentinel('me', {
+          targetPhone: '+33612345678',
+        } as any),
+      ).rejects.toThrow('No account with this phone number');
+      expect(prisma.circle.findFirst).not.toHaveBeenCalled();
+    });
+
     it('rejects an UNCOMPLETE requester (no phone yet)', async () => {
       prisma.user.findUnique
         .mockResolvedValueOnce({ id: 'target-1' }) // target lookup by phone
@@ -1064,7 +1096,7 @@ describe('SentinelService', () => {
   });
 
   describe('updateMembership', () => {
-    it('moves an accepted link into the reserve circle immediately and notifies the Sentinel', async () => {
+    it('moves an accepted link into the reserve circle immediately, without a message', async () => {
       prisma.linkSentinels.findUnique.mockResolvedValueOnce({
         id: 'link-1',
         status: LinkStatus.ACCEPTED,
@@ -1110,10 +1142,7 @@ describe('SentinelService', () => {
           leadSlot: null,
         },
       });
-      expect(sms.send).toHaveBeenCalledWith(
-        '+33611111111',
-        expect.stringContaining('Sentinelles en réserve'),
-      );
+      expect(sms.send).not.toHaveBeenCalled();
     });
 
     it('blocks moving a Lead away when it would strand the 1st circle', async () => {
@@ -1220,9 +1249,11 @@ describe('SentinelService', () => {
         where: { id: 'link-1' },
         data: { proposedCircleId: 'first-1' },
       });
-      expect(sms.send).toHaveBeenCalledWith(
-        '+33611111111',
-        expect.stringContaining('OUI'),
+      expect(sms.send).not.toHaveBeenCalled();
+      expect(notifications.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationType.CIRCLE_MOVE_PROPOSED,
+        }),
       );
       expect(result).toEqual({ id: 'link-1', proposedCircleId: 'first-1' });
       expect(prisma.linkSentinels.count).not.toHaveBeenCalled(); // no Lead-slot logic touched
@@ -1630,82 +1661,101 @@ describe('SentinelService', () => {
     });
   });
 
-  describe('handleInboundSms — circle move proposal', () => {
-    it('resolves a pending circle-move proposal via OUI/NON', async () => {
-      prisma.linkSentinels.findFirst
-        .mockResolvedValueOnce(null) // no fresh PENDING invite/request for this phone
-        .mockResolvedValueOnce({
-          id: 'link-1',
-          proposedCircleId: 'first-1',
-          circle: { id: 'work-1', circleType: CircleType.BASIC },
-          linkAsSentinel: { phone: '+33611111111', firstName: 'Ada' },
-          userCompanion: { phone: '+33622222222', firstName: 'Me' },
-        }); // the move proposal lookup
-      prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
-
-      const result = await service.handleInboundSms('+33611111111', 'OUI');
-
-      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
-        where: { id: 'link-1' },
-        data: { circleId: 'first-1', proposedCircleId: null, leadSlot: null },
-      });
-      expect(result).toEqual({
-        matched: true,
-        action: 'circle_move_accepted',
-      });
-    });
-
-    it('lets a genuine fresh PENDING invite/request win over an existing move proposal', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce({
-        id: 'other-link',
-        status: LinkStatus.PENDING,
-        initiatedBy: LinkInitiator.COMPANION,
-        circle: { id: 'first-1', circleType: CircleType.FIRST },
-        linkAsSentinel: { phone: '+33611111111', firstName: 'Ada' },
-        userCompanion: { phone: '+33622222222', firstName: 'Me' },
-      });
+  describe('answerInvitation', () => {
+    it('applies the answer and confirms by SMS', async () => {
       prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'other-link' });
 
-      const result = await service.handleInboundSms('+33611111111', 'OUI');
+      await service.answerInvitation(
+        {
+          id: 'other-link',
+          initiatedBy: LinkInitiator.COMPANION,
+          linkAsSentinel: { phone: '+33611111111', firstName: 'Ada' },
+          userCompanion: { phone: '+33622222222', firstName: 'Me' },
+        } as never,
+        true,
+      );
 
-      expect(result).toEqual({ matched: true, action: 'accepted' });
-      // The move-proposal lookup must never run once the fresh PENDING link matched.
-      expect(prisma.linkSentinels.findFirst).toHaveBeenCalledTimes(1);
+      expect(prisma.linkSentinels.update).toHaveBeenCalledTimes(1);
+      expect(sms.send).toHaveBeenCalledTimes(1);
+      expect(sms.send.mock.calls[0][0]).toBe('+33611111111');
     });
   });
 
-  describe('handleInboundSms — alert escalation fallback', () => {
-    it('defers to AlertService when a live alert ask matches, before the STOP/leave fallback', async () => {
-      prisma.linkSentinels.findFirst
-        .mockResolvedValueOnce(null) // no fresh PENDING invite/request
-        .mockResolvedValueOnce(null); // no circle-move proposal
-      alert.tryHandleInboundSms.mockResolvedValueOnce({
-        matched: true,
-        action: 'alert_declined',
-      });
+  describe('listMyDeathNotices', () => {
+    it('only reads notices actually sent to the caller', async () => {
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        {
+          deathPersonalMessage: 'Merci',
+          userCompanion: {
+            firstName: 'Marc',
+            lastName: 'Dupont',
+            deathAnnouncementMessage: 'Annonce',
+          },
+        },
+      ]);
 
-      const result = await service.handleInboundSms('+33611111111', 'NON');
-
-      expect(alert.tryHandleInboundSms).toHaveBeenCalledWith(
-        '+33611111111',
-        'NON',
+      await expect(service.listMyDeathNotices('sentinel-1')).resolves.toEqual([
+        {
+          companionName: 'Marc Dupont',
+          announcementMessage: 'Annonce',
+          personalMessage: 'Merci',
+        },
+      ]);
+      expect(prisma.linkSentinels.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userSentinelId: 'sentinel-1',
+            notifyOnDeath: true,
+            deathNotifiedAt: { not: null },
+          },
+        }),
       );
-      expect(result).toEqual({ matched: true, action: 'alert_declined' });
-      // The STOP/leave fallback's own lookup must never run once the alert matched —
-      // otherwise a "NON" meant for an alert ask would get misread as "remove me".
-      expect(prisma.linkSentinels.findFirst).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('leaveLinkBySms', () => {
+    const lastLead = {
+      id: 'link-1',
+      circleId: 'first-1',
+      leadSlot: LeadSlot.LEAD_1,
+      circle: { circleType: CircleType.FIRST },
+      linkAsSentinel: { phone: '+33611111111', firstName: 'Lea' },
+      userCompanion: { phone: '+33622222222', firstName: 'Marc' },
+    };
+
+    it('keeps a last Lead in place, and tells both people why', async () => {
+      prisma.linkSentinels.count
+        .mockResolvedValueOnce(2) // other active members
+        .mockResolvedValueOnce(0); // other Leads
+
+      await expect(service.leaveLinkBySms(lastLead as never)).resolves.toBe(
+        false,
+      );
+
+      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+      expect(sms.send).toHaveBeenCalledWith(
+        '+33611111111',
+        expect.stringContaining('renvoyez STOP'),
+      );
+      expect(sms.send).toHaveBeenCalledWith(
+        '+33622222222',
+        expect.stringContaining('Designez-en un autre'),
+      );
     });
 
-    it('falls through to the STOP/leave fallback when no alert ask is pending', async () => {
-      prisma.linkSentinels.findFirst
-        .mockResolvedValueOnce(null) // no fresh PENDING invite/request
-        .mockResolvedValueOnce(null) // no circle-move proposal
-        .mockResolvedValueOnce(null); // STOP/leave: no active link either
-      alert.tryHandleInboundSms.mockResolvedValueOnce(null);
+    it('warns "Me" when a last Lead alone in the circle leaves', async () => {
+      prisma.linkSentinels.count.mockResolvedValue(0);
+      prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
 
-      const result = await service.handleInboundSms('+33611111111', 'NON');
+      await expect(service.leaveLinkBySms(lastLead as never)).resolves.toBe(
+        true,
+      );
 
-      expect(result).toEqual({ matched: false, reason: 'no_actionable_link' });
+      expect(prisma.linkSentinels.update).toHaveBeenCalled();
+      expect(sms.send).toHaveBeenCalledWith(
+        '+33622222222',
+        expect.stringContaining('plus de Lead Sentinel'),
+      );
     });
   });
 
@@ -1847,9 +1897,10 @@ describe('SentinelService', () => {
         },
         include: { linkAsSentinel: { select: { id: true, phone: true } } },
       });
+      // Neither the name nor the announcement: they wait behind the login.
       expect(sms.send).toHaveBeenCalledWith(
         '+41791111111',
-        expect.stringContaining('Alice'),
+        expect.not.stringContaining('Alice'),
       );
       expect(notifications.create).toHaveBeenCalledWith({
         userId: 'sentinel-r1',

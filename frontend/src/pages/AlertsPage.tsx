@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, API_URL } from '../api/client';
 import {
+  ALERT_QUESTION_KINDS,
+  askQuestion,
   claimLead,
   closeAlert,
   getAlert,
@@ -11,17 +13,20 @@ import {
   raiseAlert,
   requestCircle,
   requestCircleChat,
-  respondToAlert,
   updateAlertLabel,
   updateAlertStatus,
   type AlertDetail,
   type AlertParticipant,
+  type AlertQuestionKind,
   type AlertSummary,
   type AlertType,
   type MyParticipation,
 } from '../api/alert';
 import { listCompanions, type Companion } from '../api/sentinel';
 import { listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
+import { AlertRepliesSummary } from '../components/AlertRepliesSummary';
+import { AlertReplyPanel } from '../components/AlertReplyPanel';
+import { replyLabel } from '../components/replyLabel';
 import { Tile } from '../components/Tile';
 
 // BYCOMPANION is reserved for "Me" raising for themself (RaiseForSelfPanel) —
@@ -320,7 +325,7 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
   if (!detail) {
     if (myParticipation) {
       const canRespondLight =
-        myParticipation.status === 'CONTACTED' && myParticipation.alert.alertStatus !== 'RESOLVED';
+        myParticipation.status !== 'WAITING' && myParticipation.alert.alertStatus !== 'RESOLVED';
       const canChat =
         !!myParticipation.firstCircleMessagingModeAtAlert &&
         myParticipation.firstCircleMessagingModeAtAlert !== 'NONE' &&
@@ -333,9 +338,12 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
           <StatusNoteField label={t('alerts.detail.statusByFirstCircle')} value={myParticipation.alert.statusByFirstCircle} />
           <p style={{ color: 'var(--text-muted)' }}>
             {myParticipation.circleName}
-            {myParticipation.response && ` · ${t('alerts.detail.response', { response: myParticipation.response })}`}
+            {myParticipation.response &&
+              ` · ${t('alerts.detail.response', { response: replyLabel(t, myParticipation.response) })}`}
           </p>
-          {canRespondLight && <RespondButtons alertId={alertId} onChange={loadDetail} />}
+          {canRespondLight && (
+            <AlertReplyPanel alertId={alertId} questions={myParticipation.questions} onChange={loadDetail} />
+          )}
           {canChat && <CircleChatSection alertId={alertId} />}
           {error && <p className="form-error">{error}</p>}
         </div>
@@ -355,7 +363,8 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
   const isFirstCircleSentinel = !isCompanion && myParticipant?.circleId === detail.firstCircleId;
   const isAlertManager = isCompanion || isFirstCircleSentinel;
   const canRequestCircle = isAlertManager && detail.alertStatus !== 'RESOLVED';
-  const canRespond = myParticipant?.status === 'CONTACTED' && detail.alertStatus !== 'RESOLVED';
+  const canRespond =
+    !!myParticipant && myParticipant.status !== 'WAITING' && detail.alertStatus !== 'RESOLVED';
 
   // No "current lead" stored separately — whichever Lead has the latest
   // leadAssignedAt is the one currently driving the alert. Any Lead can
@@ -431,11 +440,16 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
               <span style={{ color: 'var(--text-muted)' }}> · {t('alerts.detail.requestedBy', { name: p.requestedBy.firstName })}</span>
             )}
             {p.response && (
-              <span style={{ color: 'var(--text-muted)' }}> · {t('alerts.detail.response', { response: p.response })}</span>
+              <span style={{ color: 'var(--text-muted)' }}>
+                {' '}
+                · {t('alerts.detail.response', { response: replyLabel(t, p.response) })}
+              </span>
             )}
           </li>
         ))}
       </ul>
+
+      <AlertRepliesSummary participants={detail.participants} firstCircleId={detail.firstCircleId} />
 
       {detail.timeline.length > 0 && (
         <>
@@ -445,7 +459,7 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
               <li key={i}>
                 <span className="badge">{t(`alerts.detail.timeline.event.${e.type}`)}</span>
                 <strong>{e.actorLabel}</strong>
-                {e.detail && <span> — {e.detail}</span>}
+                {e.detail && <span> — {e.type === 'RESPONDED' ? replyLabel(t, e.detail) : e.detail}</span>}
                 <span style={{ color: 'var(--text-muted)' }}> · {new Date(e.at).toLocaleString()}</span>
               </li>
             ))}
@@ -453,7 +467,22 @@ function AlertDetailPanel({ alertId }: { alertId: string }) {
         </>
       )}
 
-      {canRespond && <RespondButtons alertId={alertId} onChange={loadDetail} />}
+      {canRespond && (
+        <AlertReplyPanel
+          alertId={alertId}
+          firstCircleResponse={myParticipant.circleId === detail.firstCircleId ? myParticipant.response : undefined}
+          questions={myParticipant.questions}
+          onChange={loadDetail}
+        />
+      )}
+
+      {canRequestCircle && (
+        <AskQuestionForm
+          alertId={alertId}
+          participants={detail.participants.filter((p) => p.contactedAt && p.circleId !== detail.firstCircleId)}
+          onChange={loadDetail}
+        />
+      )}
 
       {canRequestCircle && (
         <RequestCircleForm
@@ -728,18 +757,76 @@ function StatusNoteField({
   );
 }
 
-function RespondButtons({ alertId, onChange }: { alertId: string; onChange: () => Promise<void> }) {
+function QuestionSelect({
+  value,
+  onChange,
+}: {
+  value: AlertQuestionKind;
+  onChange: (kind: AlertQuestionKind) => void;
+}) {
   const { t } = useTranslation();
   return (
-    <Tile>
-      <p>{t('alerts.detail.respond.prompt')}</p>
-      <div className="row">
-        <button onClick={() => respondToAlert(alertId, true).then(onChange)}>{t('alerts.detail.respond.yes')}</button>
-        <button className="ghost" onClick={() => respondToAlert(alertId, false).then(onChange)}>
-          {t('alerts.detail.respond.no')}
-        </button>
-      </div>
-    </Tile>
+    <select value={value} onChange={(e) => onChange(e.target.value as AlertQuestionKind)}>
+      {ALERT_QUESTION_KINDS.map((kind) => (
+        <option key={kind} value={kind}>
+          {t(`alerts.questions.${kind}`)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// A further question to outer-circle Sentinels already contacted on this alert.
+function AskQuestionForm({
+  alertId,
+  participants,
+  onChange,
+}: {
+  alertId: string;
+  participants: AlertParticipant[];
+  onChange: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [questionKind, setQuestionKind] = useState<AlertQuestionKind>('SEEMED_OK');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (participants.length === 0) return null;
+
+  const toggle = (id: string) =>
+    setSelectedIds((ids) => (ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id]));
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await askQuestion(alertId, { questionKind, participantIds: selectedIds });
+      setSelectedIds([]);
+      await onChange();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form className="panel inline-form" onSubmit={submit}>
+      <h3>{t('alerts.detail.askQuestion.title')}</h3>
+      <QuestionSelect value={questionKind} onChange={setQuestionKind} />
+      {participants.map((p) => (
+        <label key={p.id}>
+          <input type="checkbox" checked={selectedIds.includes(p.id)} onChange={() => toggle(p.id)} />{' '}
+          {p.userSentinels.linkAsSentinel.firstName}
+        </label>
+      ))}
+      <button type="submit" disabled={submitting || selectedIds.length === 0}>
+        {t('alerts.detail.askQuestion.submit')}
+      </button>
+      {error && <p className="form-error">{error}</p>}
+    </form>
   );
 }
 
@@ -756,7 +843,7 @@ function RequestCircleForm({
 }) {
   const { t } = useTranslation();
   const [circleId, setCircleId] = useState(circles[0]?.id ?? '');
-  const [question, setQuestion] = useState('');
+  const [questionKind, setQuestionKind] = useState<AlertQuestionKind>('CAN_VISIT');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -780,8 +867,7 @@ function RequestCircleForm({
     setSubmitting(true);
     setError(null);
     try {
-      await requestCircle(alertId, { circleId, question: question.trim() });
-      setQuestion('');
+      await requestCircle(alertId, { circleId, questionKind });
       await onChange();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -801,13 +887,8 @@ function RequestCircleForm({
             </option>
           ))}
         </select>
-        <input
-          required
-          placeholder={t('alerts.detail.requestCircle.questionPlaceholder')}
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-        />
-        <button type="submit" disabled={submitting || !circleId || !question.trim()}>
+        <QuestionSelect value={questionKind} onChange={setQuestionKind} />
+        <button type="submit" disabled={submitting || !circleId}>
           {t(
             isRepeatRequest
               ? 'alerts.detail.requestCircle.submitMore'

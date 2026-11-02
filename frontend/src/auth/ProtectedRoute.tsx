@@ -6,7 +6,7 @@ export function ProtectedRoute() {
 
   if (loading) return <p className="page-loading">Chargement…</p>;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user?.userType === 'ONLY_SMS') return <Navigate to="/welcome" replace />;
+  if (user?.userType === 'ONLY_SMS') return <Navigate to="/a" replace />;
 
   return <Outlet />;
 }

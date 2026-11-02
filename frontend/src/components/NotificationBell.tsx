@@ -11,17 +11,21 @@ function destinationFor(item: NotificationItem): string {
   if (item.type.startsWith('ALERT_')) return '/alerts';
   if (item.type === 'NEW_MESSAGE') return '/messages';
   if (item.type === 'SENTINEL_GROUP_INVITED') return '/circles';
+  if (item.type === 'SENTINEL_LEFT' || item.type === 'CIRCLE_MOVE_ANSWERED') return '/circles';
   // DEATH_NOTICE_* falls through to the default below — /companions is
   // also where report/confirm/reject and the announcement itself live.
   return '/companions';
 }
 
-// SENTINEL_LINK_ANSWERED carries its outcome in `accepted`, not in a
-// separate type — split it into two translation keys here so the i18n
+// SENTINEL_LINK_ANSWERED and CIRCLE_MOVE_ANSWERED carry their outcome in
+// `accepted`, not in a separate type — split it into two translation keys here so the i18n
 // file can stay flat.
 function translationKey(item: NotificationItem): string {
   if (item.type === 'SENTINEL_LINK_ANSWERED') {
     return item.accepted ? 'SENTINEL_LINK_ACCEPTED' : 'SENTINEL_LINK_DECLINED';
+  }
+  if (item.type === 'CIRCLE_MOVE_ANSWERED') {
+    return item.accepted ? 'CIRCLE_MOVE_ACCEPTED' : 'CIRCLE_MOVE_DECLINED';
   }
   return item.type;
 }
