@@ -43,7 +43,12 @@ describe('SentinelService', () => {
       count: jest.Mock;
       groupBy: jest.Mock;
     };
-    user: { findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
+    user: {
+      findUnique: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
     sentinelGroupInvitation: {
       findUnique: jest.Mock;
       findMany: jest.Mock;
@@ -1712,12 +1717,18 @@ describe('SentinelService', () => {
           status: 'ACTIVE',
           deathReportedAt: null,
         }) // getUser(companion)
-        .mockResolvedValueOnce({ id: 'lead-1', firstName: 'Lea', phone: '+41791111111' }); // getUser(reporter)
+        .mockResolvedValueOnce({
+          id: 'lead-1',
+          firstName: 'Lea',
+          phone: '+41791111111',
+        }); // getUser(reporter)
       prisma.circle.findFirst.mockResolvedValueOnce({
         id: 'first-1',
         circleType: CircleType.FIRST,
       });
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'caller-link' }); // caller is an accepted Lead there
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({
+        id: 'caller-link',
+      }); // caller is an accepted Lead there
       prisma.linkSentinels.findMany.mockResolvedValueOnce([
         { userSentinelId: 'lead-1' },
         { userSentinelId: 'lead-2' },
@@ -1728,7 +1739,10 @@ describe('SentinelService', () => {
       expect(result).toEqual({ reported: true });
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'companion-1' },
-        data: { deathReportedAt: expect.any(Date), deathReportedById: 'lead-1' },
+        data: {
+          deathReportedAt: expect.any(Date),
+          deathReportedById: 'lead-1',
+        },
       });
       // Only the other Lead is notified, never the reporter themself.
       expect(notifications.create).toHaveBeenCalledTimes(1);

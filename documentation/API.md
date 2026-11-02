@@ -30,7 +30,6 @@ No global guard — each route is public except `/auth/me`. Every route below ex
 | POST | `/auth/password-reset/request` | — | Request a password-reset email link. Always returns the same generic message, whether or not the account exists — never leaks account existence. |
 | POST | `/auth/password-reset/confirm` | — | Confirm a password reset with the token from the email link; sets the new password. |
 | POST | `/auth/link/google` | JWT | Attach a Google identity to the caller's own already-authenticated account (proof-of-ownership via JWT, not an unauthenticated "link by email match" route). |
-| POST | `/auth/dev-login` | — | **Dev-only** — log in with just a phone number, no password/OTP. `AuthService.devLoginByPhone` refuses with 403 whenever `NODE_ENV === 'production'`, regardless of how the route is reached. For fast account-switching during development only. |
 
 Note: `GET /auth/me` doesn't exist on `AuthController` — the current-user profile route lives on `user` as `GET /user/me` below.
 

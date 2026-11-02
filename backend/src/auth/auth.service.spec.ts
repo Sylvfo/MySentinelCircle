@@ -11,6 +11,7 @@ import { UserType } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DEFAULT_CIRCLES } from '../sentinel/default-circles';
 import { OTP_SENDER } from './otp/otp-sender.interface';
 import { EMAIL_SENDER } from '../email/email-sender.interface';
 
@@ -26,8 +27,10 @@ describe('AuthService', () => {
   let jwt: { sign: jest.Mock };
   let otpSender: { send: jest.Mock };
   let emailSender: { send: jest.Mock };
+  let config: { get: jest.Mock };
 
   beforeEach(async () => {
+    config = { get: jest.fn() };
     prisma = {
       user: {
         findUnique: jest.fn(),
@@ -44,7 +47,7 @@ describe('AuthService', () => {
         AuthService,
         { provide: PrismaService, useValue: prisma },
         { provide: JwtService, useValue: jwt },
-        { provide: ConfigService, useValue: { get: jest.fn() } },
+        { provide: ConfigService, useValue: config },
         { provide: OTP_SENDER, useValue: otpSender },
         { provide: EMAIL_SENDER, useValue: emailSender },
       ],
@@ -53,67 +56,140 @@ describe('AuthService', () => {
     service = module.get<AuthService>(AuthService);
   });
 
-  describe('claimOrCreateByPhone (via signupPhone)', () => {
-    it('creates a new user when no row exists for the phone', async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
-      prisma.user.create.mockResolvedValue({
-        id: 'new-id',
-        phone: '+33600000000',
-      });
+  describe('requestOtp', () => {
+    const phone = '+41790000000';
 
-      const result = await service.signupPhone({
-        firstName: 'Ada',
-        phone: '+33600000000',
-      });
+    it('clears a pending phone so a login code cannot validate that number', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-id' });
+      prisma.user.update.mockResolvedValue({ id: 'user-id' });
+
+      await service.requestOtp({ phone });
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ pendingPhone: null }),
+        }),
+      );
+    });
+
+    it('creates a stub for an unknown number and answers the same way', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({ id: 'new-id' });
+
+      const result = await service.requestOtp({ phone });
 
       expect(prisma.user.create).toHaveBeenCalledWith({
-        data: {
-          phone: '+33600000000',
-          userType: UserType.ACCOUNT,
-          firstName: 'Ada',
-        },
+        data: { phone, firstName: '', userType: UserType.ONLY_SMS },
       });
+      expect(otpSender.send).toHaveBeenCalledWith(phone, expect.any(String));
       expect(result).toEqual({ userId: 'new-id' });
     });
 
-    it('claims and upgrades an existing ONLY_SMS sentinel-stub row, keeping its id', async () => {
-      const stub = {
-        id: 'stub-id',
-        phone: '+33600000000',
-        userType: UserType.ONLY_SMS,
-      };
-      prisma.user.findUnique.mockResolvedValue(stub);
-      prisma.user.update.mockResolvedValue({
-        ...stub,
-        userType: UserType.ACCOUNT,
-        firstName: 'Ada',
+    it('sends no new code inside the cooldown', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-id',
+        otpExpiresAt: new Date(Date.now() + 10 * 60_000 - 30_000),
       });
 
-      const result = await service.signupPhone({
-        firstName: 'Ada',
-        phone: '+33600000000',
+      await expect(service.requestOtp({ phone })).resolves.toEqual({
+        userId: 'user-id',
       });
-
-      expect(prisma.user.create).not.toHaveBeenCalled();
-      expect(prisma.user.update).toHaveBeenCalledWith({
-        where: { id: 'stub-id' },
-        data: { userType: UserType.ACCOUNT, firstName: 'Ada' },
-      });
-      expect(result).toEqual({ userId: 'stub-id' });
+      expect(otpSender.send).not.toHaveBeenCalled();
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
-    it('rejects a phone already claimed by a real account', async () => {
+    it('sends a new code once the cooldown is over', async () => {
       prisma.user.findUnique.mockResolvedValue({
-        id: 'existing-id',
-        phone: '+33600000000',
-        userType: UserType.ACCOUNT,
+        id: 'user-id',
+        otpExpiresAt: new Date(Date.now() + 10 * 60_000 - 61_000),
       });
+      prisma.user.update.mockResolvedValue({ id: 'user-id' });
+
+      await service.requestOtp({ phone });
+
+      expect(otpSender.send).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('loginPhone', () => {
+    const phone = '+41790000000';
+    const account = async (extra = {}) => ({
+      id: 'id',
+      phone,
+      phoneVerifiedAt: new Date(),
+      passwordHash: await bcrypt.hash('password123', 10),
+      loginAttempts: 0,
+      loginLockedUntil: null,
+      ...extra,
+    });
+
+    it('logs in with the right password', async () => {
+      prisma.user.findUnique.mockResolvedValue(await account());
 
       await expect(
-        service.signupPhone({ firstName: 'Ada', phone: '+33600000000' }),
-      ).rejects.toThrow(ConflictException);
-      expect(prisma.user.create).not.toHaveBeenCalled();
+        service.loginPhone({ phone, password: 'password123' }),
+      ).resolves.toEqual({ accessToken: 'signed-jwt' });
+    });
+
+    it.each([
+      ['an unknown number', null],
+      ['an account without a password', { id: 'id', passwordHash: null }],
+    ])('answers the same way for %s', async (_label, user) => {
+      prisma.user.findUnique.mockResolvedValue(user);
+
+      await expect(
+        service.loginPhone({ phone, password: 'password123' }),
+      ).rejects.toThrow('Invalid credentials');
       expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('counts a wrong password', async () => {
+      prisma.user.findUnique.mockResolvedValue(await account());
+
+      await expect(
+        service.loginPhone({ phone, password: 'wrong-password' }),
+      ).rejects.toThrow('Invalid credentials');
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'id' },
+        data: { loginAttempts: { increment: 1 } },
+      });
+    });
+
+    it('locks the account on the fifth failure', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        await account({ loginAttempts: 4 }),
+      );
+
+      await expect(
+        service.loginPhone({ phone, password: 'wrong-password' }),
+      ).rejects.toThrow('Invalid credentials');
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'id' },
+        data: { loginAttempts: 0, loginLockedUntil: expect.any(Date) },
+      });
+    });
+
+    it('refuses even the right password while locked', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        await account({ loginLockedUntil: new Date(Date.now() + 60_000) }),
+      );
+
+      await expect(
+        service.loginPhone({ phone, password: 'password123' }),
+      ).rejects.toThrow('Invalid credentials');
+    });
+
+    it('resets the counter after a success', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        await account({ loginAttempts: 2 }),
+      );
+
+      await service.loginPhone({ phone, password: 'password123' });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'id' },
+        data: { loginAttempts: 0, loginLockedUntil: null },
+      });
     });
   });
 
@@ -135,7 +211,6 @@ describe('AuthService', () => {
           firstName: 'Ada',
           userName: 'ada123',
           idToken: 'fake-token',
-          phone: '+33600000000',
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
@@ -157,7 +232,6 @@ describe('AuthService', () => {
           firstName: 'Ada',
           userName: 'ada123',
           idToken: 'fake-token',
-          phone: '+33600000000',
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
@@ -182,6 +256,7 @@ describe('AuthService', () => {
           data: expect.objectContaining({
             googleId: 'google-123',
             userType: UserType.UNCOMPLETE,
+            myCircles: { create: DEFAULT_CIRCLES },
           }),
         }),
       );
@@ -203,7 +278,6 @@ describe('AuthService', () => {
           userName: 'ada123',
           email: 'ada@example.com',
           password: 'password123',
-          phone: '+33600000000',
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
@@ -222,42 +296,9 @@ describe('AuthService', () => {
           userName: 'ada123',
           email: 'ada@example.com',
           password: 'password123',
-          phone: '+33600000000',
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
-    });
-
-    it('creates the account and sends an OTP on success, with a phone', async () => {
-      prisma.user.findUnique.mockResolvedValueOnce(null); // email check
-      prisma.user.findUnique.mockResolvedValueOnce(null); // username check
-      prisma.user.findUnique.mockResolvedValueOnce(null); // claimOrCreateByPhone check
-      prisma.user.create.mockResolvedValue({
-        id: 'new-id',
-        phone: '+33600000000',
-      });
-
-      const result = await service.signupEmail({
-        firstName: 'Ada',
-        userName: 'ada123',
-        email: 'ada@example.com',
-        password: 'password123',
-        phone: '+33600000000',
-      });
-
-      expect(prisma.user.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            email: 'ada@example.com',
-            userType: UserType.ACCOUNT,
-          }),
-        }),
-      );
-      expect(otpSender.send).toHaveBeenCalledWith(
-        '+33600000000',
-        expect.any(String),
-      );
-      expect(result).toEqual({ userId: 'new-id' });
     });
 
     it('creates an UNCOMPLETE account and returns an access token on success, without a phone', async () => {
@@ -275,6 +316,7 @@ describe('AuthService', () => {
       expect(prisma.user.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
+            myCircles: { create: DEFAULT_CIRCLES },
             email: 'ada@example.com',
             userType: UserType.UNCOMPLETE,
           }),
@@ -499,9 +541,25 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
+    it('rejects a code meant for a pending number', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        phone: '+33600000000',
+        pendingPhone: '+33600000001',
+        otpCodeHash: 'hash',
+        otpExpiresAt: new Date(Date.now() + 60_000),
+        otpAttempts: 0,
+      });
+
+      await expect(
+        service.verifyOtp({ userId: 'id', code: '123456' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
     it('rejects after too many attempts', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'id',
+        phone: '+33600000000',
         otpCodeHash: 'hash',
         otpExpiresAt: new Date(Date.now() + 60_000),
         otpAttempts: 5,
@@ -515,6 +573,7 @@ describe('AuthService', () => {
     it('rejects an expired code', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'id',
+        phone: '+33600000000',
         otpCodeHash: 'hash',
         otpExpiresAt: new Date(Date.now() - 60_000),
         otpAttempts: 0,
@@ -529,6 +588,7 @@ describe('AuthService', () => {
       const otpCodeHash = await bcrypt.hash('123456', 10);
       prisma.user.findUnique.mockResolvedValue({
         id: 'id',
+        phone: '+33600000000',
         otpCodeHash,
         otpExpiresAt: new Date(Date.now() + 60_000),
         otpAttempts: 0,
@@ -547,6 +607,7 @@ describe('AuthService', () => {
       const otpCodeHash = await bcrypt.hash('123456', 10);
       prisma.user.findUnique.mockResolvedValue({
         id: 'id',
+        phone: '+33600000000',
         otpCodeHash,
         otpExpiresAt: new Date(Date.now() + 60_000),
         otpAttempts: 0,
@@ -562,6 +623,9 @@ describe('AuthService', () => {
           otpExpiresAt: null,
           otpAttempts: 0,
           phoneVerifiedAt: expect.any(Date),
+          stepUpVerifiedAt: expect.any(Date),
+          loginAttempts: 0,
+          loginLockedUntil: null,
         },
       });
       expect(result).toEqual({ accessToken: 'signed-jwt' });
@@ -572,6 +636,7 @@ describe('AuthService', () => {
       const alreadyVerifiedAt = new Date('2026-01-01T00:00:00.000Z');
       prisma.user.findUnique.mockResolvedValue({
         id: 'id',
+        phone: '+33600000000',
         otpCodeHash,
         otpExpiresAt: new Date(Date.now() + 60_000),
         otpAttempts: 0,
@@ -587,6 +652,9 @@ describe('AuthService', () => {
           otpExpiresAt: null,
           otpAttempts: 0,
           phoneVerifiedAt: alreadyVerifiedAt,
+          stepUpVerifiedAt: expect.any(Date),
+          loginAttempts: 0,
+          loginLockedUntil: null,
         },
       });
     });
@@ -637,23 +705,16 @@ describe('AuthService', () => {
       });
     });
 
-    it('does nothing for an account without a passwordHash (Google/phone-only)', async () => {
+    it('also sends a reset email to an account without a password', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'id',
         email: 'ada@example.com',
         passwordHash: null,
       });
 
-      const result = await service.requestPasswordReset({
-        email: 'ada@example.com',
-      });
+      await service.requestPasswordReset({ email: 'ada@example.com' });
 
-      expect(prisma.user.update).not.toHaveBeenCalled();
-      expect(emailSender.send).not.toHaveBeenCalled();
-      expect(result).toEqual({
-        message:
-          'If an account exists for this email, a reset link has been sent.',
-      });
+      expect(emailSender.send).toHaveBeenCalledTimes(1);
     });
   });
 

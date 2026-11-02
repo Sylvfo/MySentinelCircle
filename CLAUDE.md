@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Updated: 2026-10-26
+Updated: 2026-11-02
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MySentinelCircle: a mutual safety-net app. Each user ("Me") builds tiered circles of trusted people ("Sentinels") who watch over them; alerts escalate outward through circles if the closest one can't resolve them. Full product spec is in `plan.txt` at the repo root — read it before working on any feature that touches circles, sentinel roles, or the alert lifecycle, since the DB schema encodes that spec's rules.
 
-Monorepo: `backend/` (NestJS + Prisma + MariaDB, containerized) and `frontend/` (React + Vite + i18next). Full stack decisions (hosting, real-time, rate limiting, infra) are in `STACK_SCHEMA.md` at the repo root — read it before working on deployment, WebSocket, or infra-related changes.
+Monorepo: `backend/` (NestJS + Prisma + MariaDB, containerized) and `frontend/` (React + Vite + i18next). Full stack decisions (hosting, real-time, rate limiting, infra) are in `documentation/STACK_SCHEMA.md` — read it before working on deployment, WebSocket, or infra-related changes.
 
 ## Commands
 
@@ -59,7 +59,7 @@ Destructive Prisma commands (`prisma migrate reset`, or anything that would drop
 
 ## Working on infra files (`docker-compose.yml`, `nginx/`, Dockerfiles)
 
-These are locked with `deny` in `.claude/settings.json`, not just convention — see `PERMISSIONSCLAUDE.md` for the full list and the procedure to follow when a change is genuinely needed.
+These are locked with `deny` in `.claude/settings.json`, not just convention — see `documentation/PERMISSIONSCLAUDE.md` for the full list and the procedure to follow when a change is genuinely needed.
 
 ## Linkds
 

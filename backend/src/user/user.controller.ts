@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Patch,
   Post,
@@ -16,7 +17,10 @@ import { extname } from 'path';
 import { mkdirSync } from 'fs';
 import type { Express } from 'express';
 import { UserService, AVATAR_DIR } from './user.service';
+import { AccountDeletionService } from './account-deletion.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { CompleteProfileDto } from './dto/complete-profile.dto';
+import { SetPasswordDto } from './dto/set-password.dto';
 import { AddPhoneDto } from './dto/add-phone.dto';
 import { VerifyAddPhoneDto } from './dto/verify-add-phone.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -38,7 +42,10 @@ const AVATAR_MIME_TYPES = /^image\/(jpeg|png|webp)$/;
 @UseGuards(JwtAuthGuard)
 @Controller('user')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly accountDeletion: AccountDeletionService,
+  ) {}
 
   @Get('me')
   me(@CurrentUser() user: { userId: string }) {
@@ -51,6 +58,20 @@ export class UserController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.userService.updateProfile(user.userId, dto);
+  }
+
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Delete('me')
+  deleteAccount(@CurrentUser() user: { userId: string }) {
+    return this.accountDeletion.deleteAccount(user.userId);
+  }
+
+  @Post('me/complete-profile')
+  completeProfile(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: CompleteProfileDto,
+  ) {
+    return this.userService.completeProfile(user.userId, dto);
   }
 
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
@@ -69,6 +90,15 @@ export class UserController {
     @Body() dto: VerifyAddPhoneDto,
   ) {
     return this.userService.verifyAddPhone(user.userId, dto.code);
+  }
+
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('me/set-password')
+  setPassword(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: SetPasswordDto,
+  ) {
+    return this.userService.setPassword(user.userId, dto.newPassword);
   }
 
   @Throttle({ default: { limit: 20, ttl: 60_000 } })

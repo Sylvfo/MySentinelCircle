@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ApiError } from '../api/client';
 import {
   changePassword,
+  deleteAccount,
   devSetHasPaid,
   fetchMe,
   getMyDeathNotice,
@@ -148,17 +149,21 @@ export function SettingsPage() {
 
       <DeathNoticePanel onError={setError} />
 
-      <section className="panel">
-        <h2>{t('settings.dev.title')}</h2>
-        <p className="form-hint">{t('settings.dev.hasPaidHint')}</p>
-        <EditableToggle
-          label={t('settings.dev.hasPaid')}
-          value={me.hasPaid}
-          onSave={(v) => devSetHasPaid(v)}
-          onSaved={reload}
-          onError={setError}
-        />
-      </section>
+      {import.meta.env.DEV && (
+        <section className="panel">
+          <h2>{t('settings.dev.title')}</h2>
+          <p className="form-hint">{t('settings.dev.hasPaidHint')}</p>
+          <EditableToggle
+            label={t('settings.dev.hasPaid')}
+            value={me.hasPaid}
+            onSave={(v) => devSetHasPaid(v)}
+            onSaved={reload}
+            onError={setError}
+          />
+        </section>
+      )}
+
+      <DeleteAccountPanel me={me} onDeleted={logout} onError={setError} />
 
       <section className="panel">
         <button type="button" className="ghost" onClick={logout}>
@@ -623,6 +628,58 @@ function ChangePhoneFlow({
   }
 
   return <AddPhonePanel onChange={onChange} onError={onError} />;
+}
+
+function DeleteAccountPanel({
+  me,
+  onDeleted,
+  onError,
+}: {
+  me: Me;
+  onDeleted: () => void;
+  onError: (m: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [step, setStep] = useState<'idle' | 'verify' | 'confirm'>('idle');
+  const [typed, setTyped] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const word = t('settings.delete.word');
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await deleteAccount();
+      onDeleted();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="panel">
+      <h2>{t('settings.delete.title')}</h2>
+      <p className="form-hint">{t('settings.delete.warning')}</p>
+      {step === 'idle' && (
+        <button type="button" onClick={() => setStep('verify')}>
+          {t('settings.delete.start')}
+        </button>
+      )}
+      {step === 'verify' && <StepUpPanel me={me} onVerified={() => setStep('confirm')} onError={onError} />}
+      {step === 'confirm' && (
+        <form onSubmit={submit}>
+          <label>
+            {t('settings.delete.confirm', { word })}
+            <input required value={typed} onChange={(e) => setTyped(e.target.value)} />
+          </label>
+          <button type="submit" disabled={submitting || typed.trim() !== word}>
+            {t('settings.delete.submit')}
+          </button>
+        </form>
+      )}
+    </section>
+  );
 }
 
 function ChangePasswordForm({ onDone, onError }: { onDone: () => void; onError: (m: string) => void }) {

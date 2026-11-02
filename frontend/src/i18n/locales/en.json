@@ -54,8 +54,6 @@
     "requestCode": "Get a code",
     "continue": "Continue",
     "validate": "Confirm",
-    "switchToPhone": "Log in by phone (OTP)",
-    "switchToPassword": "Log in with email + password",
     "forgotPassword": "Forgot password?",
     "forgotTitle": "Reset your password",
     "forgotSent": "If an account exists for this email, a reset link has been sent.",
@@ -74,7 +72,6 @@
     "haveAccount": "Already have an account?",
     "signIn": "Log in",
     "otpLabel": "6-digit code",
-    "otpSentSignup": "A code has been sent to {{phone}}.",
     "otpSent": "Code sent to {{phone}}.",
     "resend": "Resend code",
     "resent": "New code sent.",
@@ -84,11 +81,11 @@
       "signup": "Error while creating the account",
       "invalidCode": "Invalid code"
     },
-    "devLogin": {
-      "divider": "Quick login (dev)",
-      "placeholder": "Phone number",
-      "submit": "Quick login"
-    }
+    "justLooking": "Just looking around",
+    "backToPhone": "Back to phone login",
+    "firstTimeOrForgot": "First time or forgot your password? Get a code",
+    "newPasswordTitle": "Choose a password",
+    "keepPassword": "Keep my current password"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -393,6 +390,39 @@
       "recipientsTitle": "Who to notify",
       "noRecipients": "You have no Sentinel yet.",
       "personalMessagePlaceholder": "Optional personal message for this person"
+    },
+    "delete": {
+      "title": "Delete my account",
+      "warning": "Your name, phone number, email, photo and circles disappear, and you stop being anyone's Sentinel. Your messages and alert history stay visible to others, signed \"Compte supprimé\". This is immediate and final.",
+      "start": "Delete my account",
+      "word": "DELETE",
+      "confirm": "To confirm, type {{word}}",
+      "submit": "Delete permanently"
+    }
+  },
+  "welcome": {
+    "title": "Welcome",
+    "alreadySentinel": "You're already a Sentinel: your links are kept.",
+    "emailTitle": "Recovery email",
+    "emailHint": "Optional. It lets you recover your account if you lose your phone.",
+    "emailSubmit": "Add this email",
+    "emailSent": "A confirmation link was sent to {{email}}.",
+    "later": "Later"
+  },
+  "securityScore": {
+    "title": "Strength of my safety net",
+    "levels": {
+      "notReady": "Not ready yet",
+      "minimum": "Minimum reached",
+      "fair": "Fair",
+      "good": "Good",
+      "great": "Very good",
+      "excellent": "Excellent"
+    },
+    "missing": {
+      "phone": "Add and verify your phone number",
+      "lead": "Choose a Lead Sentinel with a phone number",
+      "sentinel": "Add another Sentinel with a phone number"
     }
   }
 }

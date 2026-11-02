@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost, apiPostForm } from './client';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPostForm } from './client';
 
 export interface Me {
   id: string;
@@ -53,6 +53,14 @@ export const stepUpCodeRequest = (channel: 'phone' | 'email') =>
 
 export const stepUpCodeVerify = (code: string) =>
   apiPost<{ message: string }>('/user/me/step-up/code/verify', { code });
+
+export const completeProfile = (firstName: string, password: string, lastName?: string) =>
+  apiPost<Me>('/user/me/complete-profile', { firstName, password, lastName });
+
+export const deleteAccount = () => apiDelete<{ message: string }>('/user/me');
+
+export const setPassword = (newPassword: string) =>
+  apiPost<{ message: string }>('/user/me/set-password', { newPassword });
 
 export const requestEmailChange = (newEmail: string) =>
   apiPost<{ message: string }>('/user/me/change-email/request', { newEmail });

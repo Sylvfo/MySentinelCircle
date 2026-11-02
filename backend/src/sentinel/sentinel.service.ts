@@ -40,6 +40,7 @@ import {
   sentinelRequestSms,
 } from '../sms/messages';
 import { assertNotDeceased } from '../user/user-status.util';
+import { computeSecurityScore } from './security-score';
 import { CreateCircleDto } from './dto/create-circle.dto';
 import { UpdateCircleDto } from './dto/update-circle.dto';
 import { InviteSentinelDto } from './dto/invite-sentinel.dto';
@@ -1443,6 +1444,29 @@ export class SentinelService {
     return link.userCompanion.allowMessagingByDefault;
   }
 
+  // Counts Sentinels who can actually be reached and are currently active:
+  // no pending invitations, no one parked in the reserve circle.
+  async getSecurityScore(userId: string) {
+    const user = await this.getUser(userId);
+    const links = await this.prisma.linkSentinels.findMany({
+      where: {
+        userCompanionId: userId,
+        status: LinkStatus.ACCEPTED,
+        linkAsSentinel: { phone: { not: null } },
+        circle: {
+          status: CircleStatus.ACTIVE,
+          circleType: { not: CircleType.RESERVED },
+        },
+      },
+      select: { leadSlot: true },
+    });
+    return computeSecurityScore({
+      hasVerifiedPhone: Boolean(user.phone && user.phoneVerifiedAt),
+      hasLeadWithPhone: links.some((link) => link.leadSlot !== null),
+      sentinelsWithPhone: links.length,
+    });
+  }
+
   // ---- Internals ------------------------------------------------------------
 
   // Finds or creates a Sentinel-by-phone. Every party is a User row now (no
@@ -1454,6 +1478,13 @@ export class SentinelService {
     name: string,
   ): Promise<User> {
     const existing = await this.prisma.user.findUnique({ where: { phone } });
+    // A number that only ever started a phone login has no name yet.
+    if (existing?.firstName === '') {
+      return this.prisma.user.update({
+        where: { id: existing.id },
+        data: { firstName: name },
+      });
+    }
     if (existing) return existing;
     return this.prisma.user.create({
       data: { phone, firstName: name, userType: UserType.ONLY_SMS },
@@ -1783,6 +1814,9 @@ export class SentinelService {
       throw new ForbiddenException(
         'Add a phone number to your account before using Sentinels',
       );
+    }
+    if (user.userType === UserType.ONLY_SMS) {
+      throw new ForbiddenException('Complete your profile first');
     }
   }
 

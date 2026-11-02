@@ -6,6 +6,7 @@ import { ApiError } from '../api/client';
 import { getAlert, getMyParticipation, listAlerts, type AlertSummary } from '../api/alert';
 import { listCircles, listCompanions, type Circle, type Companion } from '../api/sentinel';
 import { Tile } from '../components/Tile';
+import { SecurityScoreBar } from '../components/SecurityScoreBar';
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -90,6 +91,9 @@ export function DashboardPage() {
       )}
 
       <div className="tile-grid">
+        <Tile title={t('securityScore.title')} actions={<Link to="/circles">{t('dashboard.open')}</Link>}>
+          <SecurityScoreBar />
+        </Tile>
         <Tile title={t('dashboard.raiseAlert')} actions={<Link to="/alerts">{t('dashboard.open')}</Link>}>
           <p style={{ color: 'var(--text-muted)' }}>{t('dashboard.raiseAlertHint')}</p>
         </Tile>

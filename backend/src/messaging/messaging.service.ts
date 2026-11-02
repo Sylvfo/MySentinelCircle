@@ -232,6 +232,11 @@ export class MessagingService {
         'This conversation includes a deceased participant — no new messages can be sent',
       );
     }
+    if (participants.some((p) => p.user.status === UserStatus.DELETED)) {
+      throw new ForbiddenException(
+        'This conversation includes a deleted account — no new messages can be sent',
+      );
+    }
   }
 
   private async assertActiveParticipant(

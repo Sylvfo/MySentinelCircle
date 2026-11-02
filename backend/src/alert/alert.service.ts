@@ -16,6 +16,8 @@ import {
   LinkStatus,
   MessagingMode,
   NotificationType,
+  UserType,
+  LeadSlot,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
@@ -77,6 +79,12 @@ export class AlertService {
   ) {}
 
   async raiseAlert(callerId: string, dto: CreateAlertDto) {
+    const incompleteCaller = await this.prisma.user.findFirst({
+      where: { id: callerId, userType: UserType.ONLY_SMS },
+    });
+    if (incompleteCaller) {
+      throw new ForbiddenException('Complete your profile first');
+    }
     await this.assertCompanionNotDeceased(dto.companionId);
     await this.assertNoActiveAlert(dto.companionId);
     await this.assertCanAffordAlert(dto.companionId);
@@ -113,8 +121,14 @@ export class AlertService {
 
     const companion = await this.prisma.user.findUnique({
       where: { id: dto.companionId },
-      select: { firstName: true, phone: true },
+      select: { firstName: true, phone: true, phoneVerifiedAt: true },
     });
+    await this.assertAlertCanBeAnswered(
+      callerId,
+      dto.companionId,
+      companion,
+      links,
+    );
 
     const alert = await this.prisma.$transaction(async (tx) => {
       const created = await tx.alert.create({
@@ -973,6 +987,52 @@ export class AlertService {
     if (!link) {
       throw new ForbiddenException(
         'Not authorized to raise an alert for this companion',
+      );
+    }
+  }
+
+  // An alert needs someone reachable to act on it. For yourself: your own
+  // verified phone and a Lead with a phone. For a companion: a Lead with a
+  // phone, or, when you are that Lead, another Sentinel with a phone.
+  private async assertAlertCanBeAnswered(
+    callerId: string,
+    companionId: string,
+    companion: { phone: string | null; phoneVerifiedAt: Date | null } | null,
+    firstCircleLinks: {
+      leadSlot: LeadSlot | null;
+      linkAsSentinel: { id: string; phone: string | null };
+    }[],
+  ) {
+    const leads = firstCircleLinks.filter((link) => link.leadSlot !== null);
+    const hasLeadWithPhone = leads.some((link) => link.linkAsSentinel.phone);
+
+    if (callerId === companionId) {
+      if (!companion?.phone || !companion.phoneVerifiedAt) {
+        throw new ConflictException(
+          'Add and verify your phone number before raising an alert',
+        );
+      }
+    }
+    if (leads.some((link) => link.linkAsSentinel.id === callerId)) {
+      const otherSentinel = await this.prisma.linkSentinels.findFirst({
+        where: {
+          userCompanionId: companionId,
+          userSentinelId: { not: callerId },
+          status: LinkStatus.ACCEPTED,
+          linkAsSentinel: { phone: { not: null } },
+          circle: { circleType: { not: CircleType.RESERVED } },
+        },
+      });
+      if (!otherSentinel) {
+        throw new ConflictException(
+          'This companion needs another Sentinel with a phone number to answer the alert',
+        );
+      }
+      return;
+    }
+    if (!hasLeadWithPhone) {
+      throw new ConflictException(
+        'A Lead Sentinel with a phone number is needed to raise an alert',
       );
     }
   }

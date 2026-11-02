@@ -104,6 +104,15 @@ export interface Companion {
 
 export const listCircles = () => apiGet<Circle[]>('/sentinel/circles');
 
+export interface SecurityScore {
+  score: number;
+  level: 'notReady' | 'minimum' | 'fair' | 'good' | 'great' | 'excellent';
+  ready: boolean;
+  missing: ('phone' | 'lead' | 'sentinel')[];
+}
+
+export const getSecurityScore = () => apiGet<SecurityScore>('/sentinel/security-score');
+
 export const createCircle = (label: string) => apiPost<Circle>('/sentinel/circles', { label });
 
 export const updateCircle = (id: string, data: { label?: string; canMessageMe?: boolean }) =>

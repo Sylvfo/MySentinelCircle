@@ -125,8 +125,8 @@ describe('Alert (e2e)', () => {
   async function signupAccount(firstName: string) {
     const phone = testPhone();
     const signupRes = await request(app.getHttpServer())
-      .post('/auth/signup/phone')
-      .send({ firstName, phone })
+      .post('/auth/otp/request')
+      .send({ phone })
       .expect(201);
     const signupBody = signupRes.body as AuthResponseBody;
     const code = sentOtps[sentOtps.length - 1].code;
@@ -135,6 +135,11 @@ describe('Alert (e2e)', () => {
       .send({ userId: signupBody.userId, code })
       .expect(201);
     const verifyBody = verifyRes.body as AuthResponseBody;
+    await request(app.getHttpServer())
+      .post('/user/me/complete-profile')
+      .set('Authorization', `Bearer ${verifyBody.accessToken}`)
+      .send({ firstName, password: 'password123' })
+      .expect(201);
     return {
       accessToken: verifyBody.accessToken as string,
       userId: signupBody.userId as string,
@@ -227,6 +232,32 @@ describe('Alert (e2e)', () => {
   }
 
   describe('POST /alert (raise)', () => {
+    it('refuses to delete the account of its companion or Lead while it runs', async () => {
+      const companion = await signupAccount('Ada');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+      await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: 'Besoin d’aide',
+        })
+        .expect(201);
+
+      for (const { accessToken } of [companion, sentinels[0]]) {
+        await request(app.getHttpServer())
+          .post('/user/me/step-up/password')
+          .set('Authorization', auth(accessToken))
+          .send({ password: 'password123' })
+          .expect(201);
+        await request(app.getHttpServer())
+          .delete('/user/me')
+          .set('Authorization', auth(accessToken))
+          .expect(409);
+      }
+    });
+
     it('raises an alert for the companion themself, notifies the 1st circle, and opens its conversation', async () => {
       const companion = await signupAccount('Ada');
       const { sentinels } = await buildFirstCircle(companion.accessToken, 2);
@@ -268,7 +299,7 @@ describe('Alert (e2e)', () => {
 
     it('lets an accepted 1st-circle Sentinel raise it on the companion’s behalf, and also notifies the companion', async () => {
       const companion = await signupAccount('Ada');
-      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 2);
       sentSms.length = 0;
 
       await request(app.getHttpServer())
@@ -282,10 +313,27 @@ describe('Alert (e2e)', () => {
         .expect(201);
 
       // The circle + the companion.
-      expect(sentSms).toHaveLength(2);
+      expect(sentSms).toHaveLength(3);
       expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
-        [sentinels[0].phone, companion.phone].sort(byString),
+        [sentinels[0].phone, sentinels[1].phone, companion.phone].sort(
+          byString,
+        ),
       );
+    });
+
+    it('refuses a Lead alone, with nobody else to answer', async () => {
+      const companion = await signupAccount('Ada');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+
+      await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(sentinels[0].accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.NOCONTACT,
+          reason: 'Sans nouvelles depuis 2 jours',
+        })
+        .expect(409);
     });
 
     it('lets an accepted outer-circle Sentinel raise it too — it still notifies the 1st circle', async () => {

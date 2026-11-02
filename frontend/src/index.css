@@ -758,3 +758,42 @@ button, input {
     transform: translateX(-50%);
   }
 }
+
+/* Security score bar: the marker shows the minimum, a third of the way. */
+.security-score-track {
+  position: relative;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: var(--border, #e2e8e6);
+}
+
+.security-score-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #d9a066;
+  transition: width 0.3s ease;
+}
+
+.security-score-fill.is-ready {
+  background: #2fa98c;
+}
+
+.security-score-minimum {
+  position: absolute;
+  top: -0.2rem;
+  bottom: -0.2rem;
+  left: 33%;
+  width: 2px;
+  background: var(--text-muted);
+}
+
+.security-score-label {
+  margin: 0.5rem 0 0;
+}
+
+.security-score-missing {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}

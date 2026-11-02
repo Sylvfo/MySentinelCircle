@@ -1,10 +1,10 @@
 ## Database Schema
 
-Updated: 2026-10-28 15:57
+Updated: 2026-11-02 10:41
 
-> Reflète l'état actuel de `schema.prisma` (branche `sentinels`).
+> Reflète l'état actuel de `schema.prisma`.
 
-Modèles actifs : `User`, `Circle`, `LinkSentinels`, `LinkSentinelsEvent`, `Alert`, `AlertParticipant`, `Conversation`, `ConversationParticipant`, `Message`, `Notification`.
+Modèles actifs : `User`, `Circle`, `LinkSentinels`, `SentinelGroupInvitation`, `LinkSentinelsEvent`, `Alert`, `AlertParticipant`, `Conversation`, `ConversationParticipant`, `Message`, `Notification`.
 Principe central : rien n'est jamais vraiment supprimé — `User`/`Circle`/`LinkSentinels` se ferment ou s'anonymisent, mais restent référençables pour toujours. Pas de tables-copies (`CircleAlert`/`LinkSentinelAlert` n'existent plus), pas de journal d'événements séparé (`AlertEvent` a été remplacé par des timestamps d'étape directement sur `Alert`).
 
 ```mermaid
@@ -20,9 +20,15 @@ erDiagram
   User               ||--o{ Message                  : "sender"
   User               ||--o{ Notification             : "recipient"
   User               ||--o{ Notification             : "actor?"
+  User               ||--o{ User                      : "deathReportedBy? (self)"
+  User               ||--o{ User                      : "deathConfirmedBy? (self)"
+  User               ||--o{ SentinelGroupInvitation    : "invited? (GroupInvited)"
+  User               ||--o{ SentinelGroupInvitation    : "invitedBy? (GroupInviter)"
   Circle             ||--o{ LinkSentinels             : "circle"
   Circle             ||--o{ Alert                     : "firstCircle"
   Circle             ||--o{ AlertParticipant           : "circle (figé)"
+  Circle             ||--o{ Circle                     : "groupRoot? (self, GROUP)"
+  Circle             ||--o{ SentinelGroupInvitation    : "groupInvitations"
   LinkSentinels      ||--o{ LinkSentinelsEvent        : "events"
   LinkSentinels      ||--o{ AlertParticipant          : "alertParticipations"
   Alert              ||--o{ AlertParticipant          : "participants"
@@ -34,10 +40,15 @@ erDiagram
     string id PK
     string firstName
     string phone UK "nullable, anonymisable"
-    enum   status
+    enum   status "ACTIVE/PAUSED/DELETED/DECEASED"
     enum   userType
     string passwordResetTokenHash UK "nullable, SHA-256, TTL 60min"
     boolean allowMessagingByDefault "défaut compagnon pour le canal permanent"
+    datetime deceasedAt "nullable, posé à la 2e confirmation"
+    string deathAnnouncementMessage "nullable, rédigé par Me de son vivant"
+    datetime deathReportedAt "nullable, signalement en attente"
+    string deathReportedById FK "optional, doit être un Lead Sentinel du 1er cercle"
+    string deathConfirmedById FK "optional, doit différer du reporter"
   }
 
   Circle {
@@ -47,6 +58,7 @@ erDiagram
     enum   status
     string companionId FK
     boolean canMessageMe "nullable, hérite du défaut compagnon ; sans effet sur FIRST"
+    string groupRootId FK "nullable, self ; null = ce Circle EST la racine du groupe"
   }
 
   LinkSentinels {
@@ -58,10 +70,23 @@ erDiagram
     enum   status
     enum   sentinelType
     enum   initiatedBy
+    boolean requestedAsLead
     enum   leadSlot
+    int    callOrder "nullable, rang d'appel manuel en cercle extérieur ; null = ordre pseudo-aléatoire stable"
     boolean canMessageOwnCircle
     enum   firstCircleMessagingMode
     boolean canMessageMe "nullable, priorité la plus haute, canal permanent"
+    boolean notifyOnDeath "défaut false, opt-in du compagnon comme destinataire de son annonce de décès"
+    string deathPersonalMessage "nullable, texte libre spécifique à ce destinataire"
+    datetime deathNotifiedAt "nullable"
+  }
+
+  SentinelGroupInvitation {
+    string id PK
+    string groupRootId FK
+    string invitedUserId FK
+    string invitedById FK
+    enum   status "PENDING/ACCEPTED/DECLINED"
   }
 
   LinkSentinelsEvent {
@@ -102,6 +127,7 @@ erDiagram
     string circleName "figé"
     enum   status
     boolean isLead
+    datetime leadAssignedAt "nullable, repurposé : dernier claim actif (AlertService.claimLead), pas juste un freeze de contact"
     string requestedById FK "optional, qui a déclenché ce contact"
     boolean canSendPhoneAtAlert
     boolean canMessageOwnCircleAtAlert
@@ -167,9 +193,14 @@ erDiagram
     string proposedCircleId
     enum   status
     enum   sentinelType
+    boolean requestedAsLead
+    enum   leadSlot
     boolean canMessageOwnCircle
     enum   firstCircleMessagingMode
     boolean canMessageMe
+    boolean notifyOnDeath
+    string deathPersonalMessage
+    datetime deathNotifiedAt
   }
   Circle {
     string id PK
@@ -187,6 +218,7 @@ erDiagram
     string circleName
     enum   status
     boolean isLead
+    datetime leadAssignedAt
     string requestedById FK "optional"
   }
   Alert {
@@ -198,8 +230,10 @@ erDiagram
 - `LinkAsSentinel` : les cercles où ce `User` est enregistré comme sentinelle.
 - `AlertParticipant.requestedById` : qui a déclenché ce contact précis — "Me" qui s'auto-alerte, une autre sentinelle qui lève l'alerte en son nom, ou qui dans le 1er cercle a sollicité ce cercle extérieur via `requestCircle`. Visible uniquement par le compagnon et le 1er cercle (`GET /alert/:id`) — jamais par les autres sentinelles sollicitées, qui ne savent pas qui d'autre a été contacté.
 - `alertParticipations` : l'historique de toutes les alertes où ce `User` a été sollicité — via son `LinkSentinels`, sans copier son identité. `circleId`/`circleName` figent le cercle tel qu'il était à ce moment, car `LinkSentinels.circleId` peut changer après coup.
+- `isLead`/`leadAssignedAt` : n'importe quel Lead Sentinel peut réclamer (`claimLead`, `POST /alert/:id/claim-lead`) le pilotage actif d'une alerte à tout moment, y compris en le reprenant à un autre Lead — pas de fenêtre d'attente, pas d'ordre de succession, pas d'automatisme (choix délibéré de Sylvie, plus simple que l'idée de handoff minuté initialement dans `plan.txt`). Il n'y a pas de "lead actuel" stocké séparément : c'est, parmi les participants `isLead: true`, celui dont `leadAssignedAt` est le plus récent — déduit à la lecture (`getAlert`).
 - `canMessageOwnCircle` (bool, défaut `true`) / `firstCircleMessagingMode` (`NONE`/`INDIVIDUAL`/`GROUP`, défaut `NONE`) : réglages *liés à une alerte* posés par "Me" sur ce lien — respectivement la capacité de cette sentinelle à échanger avec le reste de son propre cercle pendant une alerte, et sa capacité à ouvrir un chat isolé avec le 1er cercle une fois sollicitée (`GET /alert/:id/circle-chat` ; `GROUP` se comporte aujourd'hui comme `INDIVIDUAL`, pas encore différencié). Ne concernent que les sentinelles avec compte — sans objet pour une Sentinel SMS (`userType ONLY_SMS`), qui reste limitée aux réponses prédéfinies. Figés au moment T sur `AlertParticipant.canMessageOwnCircleAtAlert`/`firstCircleMessagingModeAtAlert` quand une alerte démarre ou qu'un cercle est sollicité — modifier le réglage après coup n'affecte jamais une alerte déjà en cours.
 - `LinkSentinels.canMessageMe` : réglage *hors alerte*, distinct des deux ci-dessus — autorise ou bloque le canal permanent Me↔Sentinel (`GET /messaging/direct/:userId`) pour ce lien précis. `null` = hérite de `Circle.canMessageMe`, qui lui-même hérite de `User.allowMessagingByDefault` si `null` — le réglage le plus spécifique l'emporte, résolu à la lecture (`SentinelService.canSendDirectMessage()`), jamais réécrit en masse quand le défaut change (un changement de défaut n'efface jamais une dérogation déjà posée). Toujours autorisé sur le 1er circle, sans dérogation possible.
+- `notifyOnDeath`/`deathPersonalMessage`/`deathNotifiedAt` : ce destinataire-sentinelle a-t-il été choisi par "Me" (de son vivant, `PATCH /user/death-notice/recipients`) pour recevoir l'annonce de décès si elle se confirme un jour, avec un message personnel optionnel en plus du texte générique (`User.deathAnnouncementMessage`). `deathNotifiedAt` se pose au moment du fan-out (`SentinelService.fanOutDeathAnnouncement`), best-effort comme les notifications d'alerte.
 - Ce `User` reçoit aussi des `Notification` comme destinataire (invitation/demande reçue, réponse à l'une d'elles, alerte levée/élargie/répondue/clôturée le concernant) — voir le modèle `Notification` dans le diagramme global ci-dessus et la légende en bas de page.
 
 ## Vue "Companion"
@@ -220,6 +254,11 @@ erDiagram
 
   User {
     string id PK
+    datetime deceasedAt "nullable"
+    string deathAnnouncementMessage "nullable"
+    datetime deathReportedAt "nullable"
+    string deathReportedById FK "optional"
+    string deathConfirmedById FK "optional"
   }
   Circle {
     string id PK
@@ -227,6 +266,7 @@ erDiagram
     enum   circleType
     string companionId FK
     boolean canMessageMe "nullable"
+    string groupRootId FK "nullable, self ; seulement pour circleType GROUP"
   }
   LinkSentinels {
     string id PK
@@ -267,8 +307,10 @@ erDiagram
 - `firstCircle` sur `Alert` pointe directement sur `Circle` (permanent) — plus besoin de snapshot.
 - `Alert.launchedBy`/`closedBy` pointent directement sur `User` — couvre aussi bien le cas où c'est le companion lui-même (`AlertType.BYCOMPANION`) que le cas où c'est une sentinelle.
 - `statusByCompanion`/`statusByFirstCircle` : deux notes de statut libres et indépendantes, pas un champ partagé — le compagnon écrit la première, n'importe quelle sentinelle acceptée du 1er cercle écrit la seconde (`statusUpdatedBy`/`statusUpdatedAt` gardent trace du dernier auteur côté 1er cercle uniquement — côté compagnon, l'auteur est toujours évident). Les deux restent modifiables même après que l'alerte soit `RESOLVED`, contrairement au chat du 1er cercle qui se verrouille à la fermeture de sa `Conversation`. Visibles par tout le monde, y compris les sentinelles de cercles extérieurs sollicitées (via `GET /alert/:id/my-participation`), qui ne voient en revanche jamais la liste des autres participants.
-- `circleType` (`BASIC | FIRST | ORGANISATION | RESERVED`) : `FIRST` et `RESERVED` sont tous deux gérés automatiquement (un seul par companion, créé à la demande, jamais supprimable). `RESERVED` regroupe les liens `LinkSentinels` acceptés mais pas actuellement dans un cercle réel — une sentinelle mise en pause, ou les survivantes d'un cercle supprimé (`deleteCircle` les y déplace au lieu de bloquer la suppression). Une sentinelle n'y atterrit jamais directement à la création (invitation ou demande) — seulement par déplacement manuel ou suppression de cercle.
+- `circleType` (`BASIC | FIRST | ORGANISATION | RESERVED | GROUP`) : `FIRST` et `RESERVED` sont tous deux gérés automatiquement (un seul par companion, créé à la demande, jamais supprimable). `RESERVED` regroupe les liens `LinkSentinels` acceptés mais pas actuellement dans un cercle réel — une sentinelle mise en pause, ou les survivantes d'un cercle supprimé (`deleteCircle` les y déplace au lieu de bloquer la suppression). Une sentinelle n'y atterrit jamais directement à la création (invitation ou demande) — seulement par déplacement manuel ou suppression de cercle.
+- `GROUP` (ex. une chorale) n'a pas de table dédiée : juste `CircleType.GROUP` + l'auto-relation nullable `groupRootId`. Le `Circle` du fondateur a `groupRootId: null` et EST la racine du groupe ; chaque membre a son propre `Circle` (`groupRootId` = celui du fondateur), qui reste stable même si le fondateur part ensuite. Rejoindre crée un maillage complet — chaque nouveau membre devient Sentinel de chaque membre déjà présent, et réciproquement, donc plusieurs `LinkSentinels` posées en une seule acceptation (`respondToGroupInvitation`), pas une seule. `SentinelGroupInvitation` est la seule table ajoutée pour ce besoin : comme rejoindre exige déjà un lien accepté avec l'inviteur, cette paire a déjà sa ligne `LinkSentinels` (unique pour toujours par paire) ailleurs, donc l'invitation en attente ne peut pas en être une deuxième. Quitter ne défait que les relations créées par le groupe lui-même (une relation antérieure, ou vivant dans un autre cercle, reste intacte) ; le fondateur peut à la place supprimer tout le groupe (`deleteGroup`), qui se propage pareil à chaque membre. Fonder exige `User.hasPaid` ; rejoindre le groupe de quelqu'un d'autre reste gratuit.
 - `LinkSentinels.proposedCircleId` : référence transitoire (pas une vraie relation Prisma, comme `AlertParticipant.circleId`/`circleName`) posée par `updateMembership` quand "Me" déplace une sentinelle déjà acceptée vers le 1er cercle — le lien reste actif dans son cercle actuel le temps que la sentinelle réponde (`respondToCircleMove`, ou OUI/NON par SMS). Accepté : `circleId` devient `proposedCircleId`, qui repasse à `null`. Refusé : `proposedCircleId` repasse juste à `null`, rien d'autre ne change. Déplacer vers n'importe quel autre cercle (`BASIC`/`RESERVED`) reste immédiat, sans consentement — juste une notification.
+- Mort annoncée (`UserStatus.DECEASED`) : double confirmation, jamais une seule personne. Un Lead Sentinel du 1er cercle signale (`reportDeath` → `deathReportedAt`/`deathReportedById`) ; un autre Lead — ou, si le 1er cercle n'a qu'un seul Lead, n'importe quelle autre sentinelle acceptée de ce cercle — confirme (`confirmDeath`, reporter ≠ confirmateur) avant que quoi que ce soit ne se diffuse. Confirmer pose `status: DECEASED` + `deceasedAt` + `deathConfirmedById` et déclenche le fan-out (`fanOutDeathAnnouncement`) vers chaque `LinkSentinels.notifyOnDeath` opté-in. Rejeter (`rejectDeathReport`) remet juste `deathReportedAt`/`deathReportedById` à `null`, rien d'autre ne change. `DECEASED` gèle le compte ensuite (`assertNotDeceased`) : plus d'alerte, plus d'invitation/demande de lien, plus de nouveau message — les données existantes restent lisibles. Zéro nouvelle table : tout vit en champs plats sur `User` (report/confirm/announcement) et `LinkSentinels` (opt-in/message perso par destinataire) — une "chorale du souvenir" a été envisagée et rejetée, `LinkSentinels` n'autorisant qu'une seule relation par paire pour toujours.
 - Ce `User` reçoit aussi des `Notification` comme destinataire (alerte levée/élargie/répondue/clôturée le concernant, réponse à une invitation/demande qu'il a lui-même initiée) — voir le modèle `Notification` dans le diagramme global ci-dessus et la légende en bas de page.
 
 ---
@@ -384,6 +426,7 @@ erDiagram
   }
   LinkSentinels {
     string id PK
+    int    callOrder "nullable"
   }
   AlertParticipant {
     string id PK
@@ -393,6 +436,7 @@ erDiagram
     string circleName
     enum   status
     boolean isLead
+    datetime leadAssignedAt "nullable"
     string requestedById FK "optional"
     boolean canSendPhoneAtAlert
     boolean canMessageOwnCircleAtAlert
@@ -414,6 +458,10 @@ erDiagram
 
 `AlertParticipant.linkSentinelsId` est obligatoire — il pointe toujours sur le lien vivant, jamais une copie. Le cas "companion s'auto-alerte" (`AlertType.BYCOMPANION`) n'a pas besoin de `AlertParticipant` : `Alert.launchedBy` pointe directement sur `User`. Une alerte peut porter plusieurs `Conversation` (`Alert.conversations[]`, pas de limite à une seule) : le chat de groupe du 1er cercle (créé à `raise`, un seul par alerte), et une par sentinelle de cercle extérieur ayant ouvert un chat isolé avec le 1er cercle (`GET /alert/:id/circle-chat`, une par demandeur, jamais partagée entre demandeurs). Aucune des deux n'est typée en DB — elles se distinguent uniquement par leurs `ConversationParticipant` (présence ou non d'un participant hors 1er cercle), une question de logique backend, pas de schéma. `Message` n'a pas non plus de garde d'accès dédiée pour le compagnon : `GET /alert/:id` inclut directement `conversations[].messages` (et `conversations[].participants`, pour distinguer les genres côté client) dans sa réponse, donnant au compagnon une lecture complète de l'historique de chaque conversation sans qu'il en soit `ConversationParticipant` (il reste 403 sur les routes `messaging` elles-mêmes).
 
+Solliciter un cercle extérieur (`POST /alert/:id/request-circle`) n'appelle jamais tout le cercle d'un coup : au plus 2 `LinkSentinels` à la fois (`pickNextCircleBatch`), triées par `callOrder` quand "Me" en a fixé un manuellement, sinon par un ordre pseudo-aléatoire stable par alerte (hash déterministe, pas cryptographique — juste reproductible). Le 1er cercle peut en demander 2 de plus à tout moment, sans attente imposée ; la seule automatisation est une notification unique après 4h de silence lui suggérant d'essayer plus de monde — jamais un contact automatique. Le 1er cercle lui-même reste à part : il est toujours notifié en entier, jamais par batch.
+
+`isLead`/`leadAssignedAt` : n'importe quel Lead Sentinel peut réclamer (`claimLead`, `POST /alert/:id/claim-lead`) le pilotage actif à tout moment, y compris en le reprenant à un autre Lead — pas de fenêtre d'attente, pas de succession automatique. Pas de "lead actuel" stocké séparément : c'est, parmi les participants `isLead: true`, celui dont `leadAssignedAt` est le plus récent, déduit à la lecture (`getAlert`).
+
 ---
 
 ## Légende — les différents mécanismes d'historique
@@ -422,8 +470,10 @@ erDiagram
 - **`LinkSentinelsEvent`** : journal append-only de chaque transition de statut — trace minimale de qui est entré/sorti d'un cercle, indépendamment de toute alerte.
 - **`AlertParticipant`** : ce qui s'est passé pour un `LinkSentinels` donné pendant une alerte donnée (contacté, répondu, lead, qui a déclenché ce contact via `requestedById`, réglages de messagerie au moment T via `canSendPhoneAtAlert`/`canMessageOwnCircleAtAlert`/`firstCircleMessagingModeAtAlert`, cercle figé via `circleId`/`circleName`) — remplace l'ancien `LinkSentinelAlert`, sans jamais copier l'identité (nom/téléphone restent uniquement dans `User`).
 - **Étapes de l'alerte** : `Alert.launchedAt`/`activatedAt`/`closingAt`/`closedAt` — un timestamp par étape franchie, directement sur `Alert` (pas de table d'événements séparée ; ne garde que le dernier passage si une étape est revisitée).
-- **Attribution "dernier auteur"** : `Alert.statusUpdatedById`/`statusUpdatedAt` (côté 1er cercle uniquement — `statusByCompanion` n'a pas besoin d'attribution, son auteur est toujours évident), `Alert.labelUpdatedById`/`labelUpdatedAt`, `AlertParticipant.requestedById` — pas un journal d'événements, juste qui a écrit la valeur *actuelle* en dernier. Choix délibéré de Sylvie (plus simple qu'une table `AlertEvent` dédiée) : pas d'historique complet si une valeur est réécrite plusieurs fois, seulement le dernier passage.
+- **Attribution "dernier auteur"** : `Alert.statusUpdatedById`/`statusUpdatedAt` (côté 1er cercle uniquement — `statusByCompanion` n'a pas besoin d'attribution, son auteur est toujours évident), `Alert.labelUpdatedById`/`labelUpdatedAt`, `AlertParticipant.requestedById`, `AlertParticipant.leadAssignedAt` (repurposé : dernier claim actif du lead, pas un freeze de contact) — pas un journal d'événements, juste qui a écrit la valeur *actuelle* en dernier. Choix délibéré de Sylvie (plus simple qu'une table `AlertEvent` dédiée) : pas d'historique complet si une valeur est réécrite plusieurs fois, seulement le dernier passage.
+- **`SentinelGroupInvitation`** : la seule table ajoutée par les cercles `GROUP` — un `LinkSentinels` n'existant qu'une seule fois pour toujours par paire, l'invitation à rejoindre un groupe (qui suppose déjà un lien accepté avec l'inviteur) ne peut pas être une deuxième ligne `LinkSentinels` pour cette même paire. Le groupe lui-même n'est qu'une auto-relation sur `Circle` (`groupRootId`), pas une table — voir la vue "Companion" ci-dessus.
+- **Mort annoncée** : pas un journal non plus — double confirmation posée en champs plats sur `User` (`deathReportedAt`/`deathReportedById` → `deathConfirmedById`/`deceasedAt`, ou retour à `null` si rejetée) et sur `LinkSentinels` (`notifyOnDeath`/`deathPersonalMessage`/`deathNotifiedAt` par destinataire). Zéro nouvelle table, même logique que le reste : un rapport en attente est un état transitoire qu'on écrase (confirmé ou rejeté), pas un événement qu'on empile.
 - **`Conversation` / `ConversationParticipant` / `Message`** : fil générique, réutilisable pour n'importe quel groupe de `User` à n'importe quel moment. `alertId` (optionnel) dit juste si elle est scopée à une alerte ou pas — le "genre" de conversation (1:1 permanent, groupe 1er cercle, sentinelle isolée d'un cercle extérieur) n'est pas stocké : il se déduit des participants, côté backend. `Message.type` (`TEXT`/`IMAGE`/`SYSTEM`) : `TEXT` et `IMAGE` sont tous deux en usage — pour `IMAGE`, `body` contient juste le nom de fichier stocké sous `uploads/messages/` (même principe que `User.avatarPath`), jamais une URL complète. `SYSTEM` reste dans l'enum mais rien ne le pose encore.
 - **`Notification`** : mécanisme à part des précédents — ce n'est pas un journal du système, juste une boîte de réception persistée par destinataire (`userId`), pour que `message:new`/`alert:changed`/`notification:new` (WebSocket, éphémères — rien n'est gardé si le destinataire n'est pas connecté au moment de l'émission) aient un équivalent durable que le frontend peut lister et marquer lu (`readAt`). Volontairement pas de FK typée vers `Alert`/`Conversation`/`LinkSentinels` : `targetId` est une simple colonne texte, son sens dépend de `type` — même choix que pour les autres règles jugées trop fluides pour une contrainte DB (voir `CLAUDE.md`). `actorId`/`actorLabel` suivent le même principe de gel que `AlertParticipant.circleName` : `actorLabel` fige le nom de l'auteur au moment T, pour ne pas dépendre d'un `User` qui pourrait être renommé/anonymisé ensuite. La création est toujours sautée quand `userId === actorId` (personne n'a besoin d'être notifié de sa propre action).
 
-Anonymisation : quand un `User` supprime son compte, `status → DELETED` + ses champs identifiants sont vidés/anonymisés, mais son `id` reste — `Message.senderId`, `AlertParticipant`, `ConversationParticipant` continuent de fonctionner sans casser l'historique.
+Anonymisation : quand un `User` supprime son compte, `status → DELETED` + ses champs identifiants sont vidés/anonymisés, mais son `id` reste — `Message.senderId`, `AlertParticipant`, `ConversationParticipant` continuent de fonctionner sans casser l'historique. `DECEASED` est différent : rien n'est anonymisé, juste gelé (`assertNotDeceased` bloque les nouvelles actions) — les données restantes restent lisibles telles quelles, volontairement, pour celles et ceux qui reçoivent l'annonce.

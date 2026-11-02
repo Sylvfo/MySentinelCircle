@@ -25,7 +25,6 @@ export function SignupPage() {
   const [lastName, setLastName] = useState('');
   const [userName, setUserName] = useState('');
   const [usernameEdited, setUsernameEdited] = useState(false);
-  const [phone, setPhone] = useState('');
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -55,7 +54,7 @@ export function SignupPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const result =
+      const { accessToken } =
         credential.method === 'email'
           ? await signupEmail(
               firstName.trim(),
@@ -63,22 +62,16 @@ export function SignupPage() {
               userName.trim(),
               credential.email,
               credential.password,
-              phone.trim() || undefined,
             )
           : await signupGoogle(
               firstName.trim(),
               lastName.trim() || undefined,
               userName.trim(),
-              phone.trim() || undefined,
               credential.idToken,
             );
 
-      if ('accessToken' in result) {
-        await applyToken(result.accessToken);
-        navigate('/dashboard');
-        return;
-      }
-      navigate('/otp', { state: { userId: result.userId, phone, justSignedUp: true } });
+      await applyToken(accessToken);
+      navigate('/dashboard');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('auth.errors.signup'));
     } finally {
@@ -149,16 +142,6 @@ export function SignupPage() {
             />
           </label>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('auth.usernameHint')}</p>
-          <label>
-            {t('auth.phone')}
-            <input
-              type="tel"
-              placeholder="+33612345678"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </label>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('auth.phoneHint')}</p>
           {error && <p className="form-error">{error}</p>}
           <button type="submit" disabled={submitting}>
             {t('auth.continue')}

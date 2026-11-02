@@ -35,6 +35,11 @@ export class SentinelController {
     return this.sentinel.createCircle(user.userId, dto);
   }
 
+  @Get('security-score')
+  getSecurityScore(@CurrentUser() user: { userId: string }) {
+    return this.sentinel.getSecurityScore(user.userId);
+  }
+
   @Get('circles')
   listCircles(@CurrentUser() user: { userId: string }) {
     return this.sentinel.listCircles(user.userId);

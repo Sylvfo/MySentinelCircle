@@ -10,7 +10,6 @@ datasource db {
 enum UserType {
   ONLY_SMS
   ACCOUNT
-  PAID_ACCOUNT
   ORGANISATION
   UNCOMPLETE
 }
@@ -133,6 +132,9 @@ model User {
   userName     String? @unique
   email        String? @unique
   passwordHash String?
+  loginAttempts    Int       @default(0)
+  loginLockedUntil DateTime?
+
   googleId     String? @unique
   avatarPath String?
   stepUpVerifiedAt        DateTime?
@@ -143,6 +145,7 @@ model User {
 
   phone           String? @unique
   phoneVerifiedAt DateTime?
+  pendingPhone String?
 
   isMajor      Boolean @default(true)
   publicStatus String?
@@ -202,8 +205,6 @@ model Circle {
   circleType CircleType   @default(BASIC)
   status     CircleStatus @default(ACTIVE)
 
-  groupChat    Boolean @default(false)
-  canSendPhone Boolean @default(false)
   canMessageMe Boolean? // null = inherit the companion's default; ignored/always-true for circleType FIRST
 
   userCompanionId String

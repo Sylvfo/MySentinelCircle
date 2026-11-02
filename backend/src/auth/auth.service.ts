@@ -11,26 +11,32 @@ import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes, randomInt, createHash } from 'crypto';
-import { User, UserType } from '@prisma/client';
+import { Prisma, User, UserType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { DEFAULT_CIRCLES } from '../sentinel/default-circles';
 import { OTP_SENDER } from './otp/otp-sender.interface';
 import type { OtpSender } from './otp/otp-sender.interface';
 import { EMAIL_SENDER } from '../email/email-sender.interface';
 import type { EmailSender } from '../email/email-sender.interface';
 import { SignupEmailDto } from './dto/signup-email.dto';
 import { SignupGoogleDto } from './dto/signup-google.dto';
-import { SignupPhoneDto } from './dto/signup-phone.dto';
 import { LoginEmailDto } from './dto/login-email.dto';
+import { LoginPhoneDto } from './dto/login-phone.dto';
 import { LoginGoogleDto } from './dto/login-google.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
-import { DevLoginDto } from './dto/dev-login.dto';
 
 const OTP_TTL_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_MS = 60_000;
 const PASSWORD_RESET_TTL_MINUTES = 60;
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCK_MINUTES = 15;
+// Compared against when an account has no password, so that case takes as
+// long to answer as a wrong password and doesn't reveal who has an account.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('no-password-here', 10);
 
 @Injectable()
 export class AuthService {
@@ -57,22 +63,18 @@ export class AuthService {
     if (usernameTaken) throw new ConflictException('Username already taken');
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = await this.claimOrCreateByPhone(
-      dto.phone,
-      {
+    const user = await this.prisma.user.create({
+      data: {
+        userType: UserType.UNCOMPLETE,
         firstName: dto.firstName,
         lastName: dto.lastName,
         userName: dto.userName,
         email: dto.email,
         passwordHash,
+        myCircles: { create: DEFAULT_CIRCLES },
       },
-      dto.phone ? UserType.ACCOUNT : UserType.UNCOMPLETE,
-    );
-    if (!dto.phone) {
-      return { accessToken: this.issueToken(user.id) };
-    }
-    await this.sendOtp(user.id, dto.phone);
-    return { userId: user.id };
+    });
+    return { accessToken: this.issueToken(user.id) };
   }
 
   async signupGoogle(dto: SignupGoogleDto) {
@@ -92,22 +94,18 @@ export class AuthService {
     }
     if (usernameTaken) throw new ConflictException('Username already taken');
 
-    const user = await this.claimOrCreateByPhone(
-      dto.phone,
-      {
+    const user = await this.prisma.user.create({
+      data: {
+        userType: UserType.UNCOMPLETE,
         firstName: dto.firstName,
         lastName: dto.lastName,
         userName: dto.userName,
         googleId,
         email,
+        myCircles: { create: DEFAULT_CIRCLES },
       },
-      dto.phone ? UserType.ACCOUNT : UserType.UNCOMPLETE,
-    );
-    if (!dto.phone) {
-      return { accessToken: this.issueToken(user.id) };
-    }
-    await this.sendOtp(user.id, dto.phone);
-    return { userId: user.id };
+    });
+    return { accessToken: this.issueToken(user.id) };
   }
 
   // Attaches a Google identity to the already-authenticated caller's own
@@ -130,28 +128,18 @@ export class AuthService {
     return { message: 'Google account linked' };
   }
 
-  async signupPhone(dto: SignupPhoneDto) {
-    const user = await this.claimOrCreateByPhone(
-      dto.phone,
-      { firstName: dto.firstName },
-      UserType.ACCOUNT,
-    );
-    await this.sendOtp(user.id, dto.phone);
-    return { userId: user.id };
-  }
-
   async loginEmail(dto: LoginEmailDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (!user || !user.passwordHash)
-      throw new UnauthorizedException('Invalid credentials');
+    return this.loginWithPassword(user, dto.password);
+  }
 
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
-
-    this.assertPhoneVerified(user);
-    return { accessToken: this.issueToken(user.id) };
+  async loginPhone(dto: LoginPhoneDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { phone: dto.phone },
+    });
+    return this.loginWithPassword(user, dto.password);
   }
 
   async loginGoogle(dto: LoginGoogleDto) {
@@ -164,29 +152,15 @@ export class AuthService {
     return { accessToken: this.issueToken(user.id) };
   }
 
-  // Dev-only shortcut: log in as any account by phone number, no
-  // password/OTP. Never available in production, regardless of how this
-  // route is reached — checked here, not just left to routing/env wiring.
-  async devLoginByPhone(dto: DevLoginDto) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new ForbiddenException('Not available in production');
-    }
-    const user = await this.prisma.user.findUnique({
-      where: { phone: dto.phone },
-    });
-    if (!user) throw new NotFoundException('No account with this phone number');
-    return { accessToken: this.issueToken(user.id) };
-  }
-
-  // Fast-path phone+OTP login for an already-verified user, and OTP resend
-  // for a user mid-signup whose phone isn't verified yet.
+  // The single phone entry point, for signup and login alike: the same
+  // answer whether or not the number is known, so it never reveals who has
+  // an account. A resend inside the cooldown is silently skipped, which caps
+  // SMS cost and keeps otpAttempts from being reset by asking for a new code.
   async requestOtp(dto: RequestOtpDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { phone: dto.phone },
-    });
-    if (!user) throw new NotFoundException('No account with this phone number');
-
-    await this.sendOtp(user.id, dto.phone);
+    const user = await this.findOrCreateByPhone(dto.phone);
+    if (!this.isInResendCooldown(user)) {
+      await this.sendOtp(user.id, dto.phone);
+    }
     return { userId: user.id };
   }
 
@@ -194,7 +168,13 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { id: dto.userId },
     });
-    if (!user || !user.otpCodeHash || !user.otpExpiresAt) {
+    // A code sent for a pending number proves that number, not `phone`.
+    if (
+      !user?.phone ||
+      user.pendingPhone ||
+      !user.otpCodeHash ||
+      !user.otpExpiresAt
+    ) {
       throw new UnauthorizedException('No pending OTP for this account');
     }
     if (user.otpAttempts >= OTP_MAX_ATTEMPTS) {
@@ -220,19 +200,24 @@ export class AuthService {
         otpExpiresAt: null,
         otpAttempts: 0,
         phoneVerifiedAt: user.phoneVerifiedAt ?? new Date(),
+        // Just proved the phone: no second code to add a recovery email
+        // or set a new password.
+        stepUpVerifiedAt: new Date(),
+        loginAttempts: 0,
+        loginLockedUntil: null,
       },
     });
     return { accessToken: this.issueToken(user.id) };
   }
 
-  // Only relevant to accounts with a password (email+password signup) — n/a
-  // for Google-only or phone-only accounts, which have no passwordHash.
-  // Never reveals whether the account exists or has a password at all.
+  // Works for any account with an email, password or not: this is how a
+  // phone account recovers access through its recovery email, by setting a
+  // password. Never reveals whether the account exists.
   async requestPasswordReset(dto: RequestPasswordResetDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (user?.passwordHash) {
+    if (user?.email) {
       const rawToken = randomBytes(32).toString('hex');
       const tokenHash = createHash('sha256').update(rawToken).digest('hex');
       await this.prisma.user.update({
@@ -246,7 +231,7 @@ export class AuthService {
       });
       const link = `${this.config.get('FRONTEND_URL')}/reset-password?token=${rawToken}`;
       await this.emailSender.send(
-        user.email!,
+        user.email,
         'Réinitialisation de mot de passe',
         link,
       );
@@ -280,45 +265,70 @@ export class AuthService {
     return { message: 'Password updated' };
   }
 
-  // A sentinel+companion phone can already exist as a passive "Sentinel
-  // stub" User row (firstName+phone only, userType ONLY_SMS) created by
-  // sentinel.service.ts's findOrCreateUserByPhone. Signing up with that same
-  // phone should CLAIM that row into a real account (same id, so existing
-  // LinkSentinels rows keep resolving) rather than being blocked forever.
-  // A phone already belonging to a real account (userType !== ONLY_SMS) is
-  // rejected as taken.
-  private async claimOrCreateByPhone(
-    phone: string | undefined,
-    credentials: {
-      firstName: string;
-      lastName?: string;
-      userName?: string;
-      email?: string;
-      passwordHash?: string;
-      googleId?: string;
-    },
-    userType: UserType,
-  ): Promise<User> {
-    if (!phone) {
-      // No phone at all (browse-only signup) — nothing to claim/collide
-      // with, just create the account directly as UserType.UNCOMPLETE.
-      return this.prisma.user.create({ data: { userType, ...credentials } });
+  // Same answer for an unknown account, a wrong password and a lock, so a
+  // login attempt never reveals who has an account. A lock only stops
+  // passwords: the SMS code stays available and lifts it.
+  private async loginWithPassword(user: User | null, password: string) {
+    const valid = await bcrypt.compare(
+      password,
+      user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
+    const locked = (user?.loginLockedUntil ?? new Date(0)) > new Date();
+    if (!user?.passwordHash || locked || !valid) {
+      if (user?.passwordHash && !locked) await this.recordLoginFailure(user);
+      throw new UnauthorizedException('Invalid credentials');
     }
 
-    const existing = await this.prisma.user.findUnique({ where: { phone } });
-
-    if (!existing) {
-      return this.prisma.user.create({
-        data: { phone, userType, ...credentials },
+    this.assertPhoneVerified(user);
+    if (user.loginAttempts > 0 || user.loginLockedUntil) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { loginAttempts: 0, loginLockedUntil: null },
       });
     }
-    if (existing.userType !== UserType.ONLY_SMS) {
-      throw new ConflictException('Phone already in use');
-    }
-    return this.prisma.user.update({
-      where: { id: existing.id },
-      data: { userType, ...credentials },
+    return { accessToken: this.issueToken(user.id) };
+  }
+
+  private async recordLoginFailure(user: User) {
+    const lock = user.loginAttempts + 1 >= LOGIN_MAX_ATTEMPTS;
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: lock
+        ? {
+            loginAttempts: 0,
+            loginLockedUntil: new Date(
+              Date.now() + LOGIN_LOCK_MINUTES * 60_000,
+            ),
+          }
+        : { loginAttempts: { increment: 1 } },
     });
+  }
+
+  // Every phone login starts here, so a new number gets its User row now:
+  // an ONLY_SMS stub, the same shape as an invited Sentinel, completed into
+  // an account by POST /user/me/complete-profile once its OTP is verified.
+  private async findOrCreateByPhone(phone: string): Promise<User> {
+    const existing = await this.prisma.user.findUnique({ where: { phone } });
+    if (existing) return existing;
+    try {
+      return await this.prisma.user.create({
+        data: { phone, firstName: '', userType: UserType.ONLY_SMS },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        return this.prisma.user.findUniqueOrThrow({ where: { phone } });
+      }
+      throw err;
+    }
+  }
+
+  private isInResendCooldown(user: { otpExpiresAt: Date | null }) {
+    if (!user.otpExpiresAt) return false;
+    const sentAt = user.otpExpiresAt.getTime() - OTP_TTL_MINUTES * 60_000;
+    return Date.now() - sentAt < OTP_RESEND_COOLDOWN_MS;
   }
 
   private async sendOtp(userId: string, phone: string) {
@@ -330,6 +340,7 @@ export class AuthService {
         otpCodeHash,
         otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
         otpAttempts: 0,
+        pendingPhone: null,
       },
     });
     await this.otpSender.send(phone, code);

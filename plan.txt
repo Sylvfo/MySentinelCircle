@@ -230,6 +230,26 @@ CORE FEATURES (MVP)
      before use in alerts. A phone-only account with no other credential
      has no recovery path today if the phone is lost — open gap, not yet
      designed.
+   - Who can raise an alert. For yourself: your own verified phone and a
+     Lead Sentinel with a phone. For a companion: you must be their accepted
+     Sentinel; a Lead also needs another Sentinel with a phone to answer, a
+     plain Sentinel needs a Lead with a phone. The caller's own Sentinels
+     don't matter.
+   - Strength of the safety net (score bar, Dashboard + My Circles, working
+     name): 11% each for your verified phone, a Lead with a phone, and
+     another Sentinel with a phone, so the minimum sits at 33%. Then it
+     grows with accepted Sentinels with a phone, outside the reserve
+     circle: 10 reach 80%, 20 reach 100%. It's informative only; the rules
+     above are what block an alert.
+   - Account deletion (self-service, Settings): immediate and final, after
+     a fresh identity check. The row is never removed: everything that
+     identifies the person is wiped (status DELETED, firstName "Compte
+     supprimé"), active links are REMOVED, circles CLOSED, groups left or
+     deleted. Messages and alert history stay readable, signed "Compte
+     supprimé". Refused while an alert concerns the person or they lead one;
+     a Lead may leave a companion with no Lead, who is warned by SMS and
+     notification. The phone number is freed, so the person can sign up
+     again from scratch, and a block on the old account doesn't follow them.
    - Known accepted gap in `claimOrCreateByPhone` (auth.service.ts): a
      narrow race between the read and the write if two signups for the
      same phone land concurrently. The create-fresh path is protected by

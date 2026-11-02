@@ -1,0 +1,238 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
+import { CircleType, LinkStatus, UserStatus } from '@prisma/client';
+import { AccountDeletionService } from './account-deletion.service';
+import { UserService } from './user.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { SentinelService } from '../sentinel/sentinel.service';
+import { NotificationService } from '../notification/notification.service';
+import { SMS_SENDER } from '../sms/sms-sender.interface';
+import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
+
+describe('AccountDeletionService', () => {
+  let service: AccountDeletionService;
+  let prisma: {
+    user: { findUnique: jest.Mock; update: jest.Mock };
+    alert: { findFirst: jest.Mock };
+    alertParticipant: { findFirst: jest.Mock };
+    circle: { findMany: jest.Mock; updateMany: jest.Mock };
+    linkSentinels: {
+      findMany: jest.Mock;
+      count: jest.Mock;
+      updateMany: jest.Mock;
+    };
+    notification: { updateMany: jest.Mock };
+    $transaction: jest.Mock;
+  };
+  let users: { assertStepUpFresh: jest.Mock };
+  let sentinel: { leaveGroup: jest.Mock; deleteGroup: jest.Mock };
+  let notifications: { create: jest.Mock };
+  let sms: { send: jest.Mock };
+  let realtime: { disconnectUser: jest.Mock };
+
+  const account = {
+    id: 'me',
+    status: UserStatus.ACTIVE,
+    avatarPath: null,
+  };
+  const leadLink = {
+    id: 'link-1',
+    circleId: 'circle-1',
+    leadSlot: 'A',
+    userCompanionId: 'marc',
+    linkAsSentinel: { firstName: 'Lea', phone: '+41790000001' },
+    userCompanion: { firstName: 'Marc', phone: '+41790000002' },
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue(account),
+        update: jest.fn(),
+      },
+      alert: { findFirst: jest.fn().mockResolvedValue(null) },
+      alertParticipant: { findFirst: jest.fn().mockResolvedValue(null) },
+      circle: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn(),
+      },
+      linkSentinels: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+        updateMany: jest.fn(),
+      },
+      notification: { updateMany: jest.fn() },
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+    };
+    users = { assertStepUpFresh: jest.fn() };
+    sentinel = { leaveGroup: jest.fn(), deleteGroup: jest.fn() };
+    notifications = { create: jest.fn() };
+    sms = { send: jest.fn() };
+    realtime = { disconnectUser: jest.fn() };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AccountDeletionService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: UserService, useValue: users },
+        { provide: SentinelService, useValue: sentinel },
+        { provide: NotificationService, useValue: notifications },
+        { provide: SMS_SENDER, useValue: sms },
+        { provide: REALTIME_NOTIFIER, useValue: realtime },
+      ],
+    }).compile();
+
+    service = module.get(AccountDeletionService);
+  });
+
+  it('requires a fresh step-up', async () => {
+    users.assertStepUpFresh.mockImplementation(() => {
+      throw new UnauthorizedException();
+    });
+
+    await expect(service.deleteAccount('me')).rejects.toThrow(
+      UnauthorizedException,
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses a deceased account', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      ...account,
+      status: UserStatus.DECEASED,
+    });
+
+    await expect(service.deleteAccount('me')).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('refuses while an alert concerns the person', async () => {
+    prisma.alert.findFirst.mockResolvedValue({ id: 'alert' });
+
+    await expect(service.deleteAccount('me')).rejects.toThrow(
+      ConflictException,
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses while the person leads an active alert', async () => {
+    prisma.alertParticipant.findFirst.mockResolvedValue({ id: 'participant' });
+
+    await expect(service.deleteAccount('me')).rejects.toThrow(
+      ConflictException,
+    );
+    expect(prisma.alertParticipant.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        isLead: true,
+        userSentinels: { userSentinelId: 'me' },
+      }),
+    });
+  });
+
+  it('wipes everything that identifies the person, keeping the row', async () => {
+    await service.deleteAccount('me');
+
+    const { data } = prisma.user.update.mock.calls[0][0];
+    expect(data).toMatchObject({
+      status: UserStatus.DELETED,
+      deletedAt: expect.any(Date),
+      firstName: 'Compte supprimé',
+      lastName: null,
+      userName: null,
+      email: null,
+      phone: null,
+      passwordHash: null,
+      googleId: null,
+      avatarPath: null,
+      publicStatus: null,
+      pendingPhone: null,
+      pendingEmail: null,
+      otpCodeHash: null,
+      passwordResetTokenHash: null,
+      deathAnnouncementMessage: null,
+    });
+    expect(realtime.disconnectUser).toHaveBeenCalledWith('me');
+  });
+
+  it('removes active links and leaves blocked ones alone', async () => {
+    await service.deleteAccount('me');
+
+    expect(prisma.linkSentinels.updateMany).toHaveBeenCalledWith({
+      where: {
+        status: { in: [LinkStatus.PENDING, LinkStatus.ACCEPTED] },
+        OR: [{ userSentinelId: 'me' }, { userCompanionId: 'me' }],
+      },
+      data: {
+        status: LinkStatus.REMOVED,
+        leadSlot: null,
+        proposedCircleId: null,
+      },
+    });
+  });
+
+  it('leaves a joined group and deletes a founded one', async () => {
+    prisma.circle.findMany.mockResolvedValue([
+      { id: 'joined', circleType: CircleType.GROUP, groupRootId: 'root' },
+      { id: 'founded', circleType: CircleType.GROUP, groupRootId: null },
+    ]);
+
+    await service.deleteAccount('me');
+
+    expect(sentinel.leaveGroup).toHaveBeenCalledWith('me', 'root');
+    expect(sentinel.deleteGroup).toHaveBeenCalledWith('me', 'founded');
+  });
+
+  it('warns a companion left with no Lead', async () => {
+    prisma.linkSentinels.findMany
+      .mockResolvedValueOnce([leadLink])
+      .mockResolvedValueOnce([]);
+
+    await service.deleteAccount('me');
+
+    expect(sms.send).toHaveBeenCalledWith(
+      '+41790000002',
+      expect.stringContaining('Designez'),
+    );
+    expect(notifications.create).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'marc', accepted: false }),
+    );
+  });
+
+  it('does not warn a companion who keeps another Lead', async () => {
+    prisma.linkSentinels.findMany
+      .mockResolvedValueOnce([leadLink])
+      .mockResolvedValueOnce([]);
+    prisma.linkSentinels.count.mockResolvedValue(1);
+
+    await service.deleteAccount('me');
+
+    expect(sms.send).toHaveBeenCalledTimes(1);
+    expect(notifications.create).not.toHaveBeenCalled();
+  });
+
+  it('tells the Sentinels of the deleted person', async () => {
+    prisma.linkSentinels.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([leadLink]);
+
+    await service.deleteAccount('me');
+
+    expect(sms.send).toHaveBeenCalledWith(
+      '+41790000001',
+      expect.stringContaining('Marc'),
+    );
+  });
+
+  it('still succeeds when a notice fails', async () => {
+    prisma.linkSentinels.findMany
+      .mockResolvedValueOnce([leadLink])
+      .mockResolvedValueOnce([]);
+    sms.send.mockRejectedValue(new Error('provider down'));
+
+    await expect(service.deleteAccount('me')).resolves.toEqual({
+      message: 'Account deleted',
+    });
+  });
+});
