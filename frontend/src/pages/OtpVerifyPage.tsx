@@ -7,6 +7,8 @@ import { ApiError } from '../api/client';
 
 interface LocationState {
   userId: string;
+  // Where to go after the code; set when the login came from a SMS link.
+  next?: string;
   phone: string;
 }
 
@@ -33,7 +35,7 @@ export function OtpVerifyPage() {
     try {
       const { accessToken } = await verifyOtp(state.userId, code);
       await applyToken(accessToken);
-      navigate('/new-password');
+      navigate(state.next ?? '/new-password');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('auth.errors.invalidCode'));
     } finally {

@@ -77,7 +77,7 @@ export interface Invitation {
   sentinelType: SentinelType;
   requestedAsLead: boolean;
   createdAt: string;
-  circle: { id: string; label: string; userCompanion: PersonRef };
+  circle: { id: string; label: string; userCompanion: PersonRef & { firstName: string } };
 }
 
 // Pending report awaiting a second confirmation — canConfirmOrReject is
@@ -198,6 +198,12 @@ export interface DeathNoticeAnnouncement {
   announcementMessage: string;
   personalMessage: string | null;
 }
+
+export interface MyDeathNotice extends DeathNoticeAnnouncement {
+  companionName: string;
+}
+
+export const listMyDeathNotices = () => apiGet<MyDeathNotice[]>('/sentinel/death-notices/mine');
 
 export const getDeathNoticeAnnouncement = (companionId: string) =>
   apiGet<DeathNoticeAnnouncement>(`/sentinel/companions/${companionId}/death-notice`);

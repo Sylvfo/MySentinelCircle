@@ -265,7 +265,38 @@ describe('Sentinel (e2e)', () => {
         .send({})
         .expect(201);
       expect((acceptRes.body as LinkBody).status).toBe(LinkStatus.ACCEPTED);
-      expect(sentSms).toHaveLength(2); // companion notified of the acceptance
+      expect(sentSms).toHaveLength(1); // the companion gets an app notification
+    });
+
+    it('keeps an SMS-only person out of the 1st circle and from being a Companion', async () => {
+      const { accessToken } = await signupAccount('Ada');
+      const requester = await signupAccount('Bea');
+      const phone = testPhone();
+      const circles = await request(app.getHttpServer())
+        .get('/sentinel/circles')
+        .set('Authorization', auth(accessToken))
+        .expect(200);
+      const all = circles.body as CircleBody[];
+      const first = all.find((c) => c.circleType === CircleType.FIRST)!;
+      const outer = all.find((c) => c.circleType === CircleType.BASIC)!;
+
+      // an outer-circle invitation is fine, and leaves an SMS-only row behind
+      await request(app.getHttpServer())
+        .post(`/sentinel/circles/${outer.id}/invite`)
+        .set('Authorization', auth(accessToken))
+        .send({ phone, name: 'Sam' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/sentinel/circles/${first.id}/invite`)
+        .set('Authorization', auth(accessToken))
+        .send({ phone, name: 'Sam', requestedAsLead: true })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post('/sentinel/requests')
+        .set('Authorization', auth(requester.accessToken))
+        .send({ targetPhone: phone })
+        .expect(404);
     });
 
     it('rejects inviting a 1st-circle Sentinel with no account', async () => {
@@ -653,7 +684,7 @@ describe('Sentinel (e2e)', () => {
         .expect(201);
       expect(res.body).toEqual({
         matched: false,
-        reason: 'unrecognized_reply',
+        reason: 'no_actionable_link',
       });
     });
   });

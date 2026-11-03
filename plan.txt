@@ -446,8 +446,7 @@ DATA MODEL (sketch)
 - AlertNotification  : one row per contact notified for a given alert,
                        including the target User themselves (they're
                        always notified directly, not only their circle);
-                       delivery status, availabilityCode (the 0-6/10 SMS
-                       reply scale — see Alert lifecycle), respondedAt.
+                       delivery status, respondedAt.
 - Conversation       : a generic thread, reused for all 3 messaging
                        contexts instead of a separate AlertChat model.
                        Attached via an optional unique conversationId on
@@ -503,6 +502,36 @@ BACKEND MODULES (NestJS, sketch)
                 two contexts enforce different rules (free-form always
                 here vs Sentinel-type-gated and request-based during an
                 alert).
+
+ALERT REPLIES & INBOUND SMS
+
+Replaces the 0-10 availability scale. The texts are the reference page of
+messages; the lists live in backend/src/alert/alert-replies.ts.
+- 1st circle: replies by logging in only (GOING, LATER, UNAVAILABLE). It
+  gets an SMS asking it to log in, and never answers by SMS.
+- Outer circles: the Lead picks one of 4 preset questions, sent to the next
+  batch by request-circle, then to anyone already contacted by
+  POST /alert/:id/questions. Several questions per person are allowed; each
+  is one AlertQuestion row. Limits to decide later: each question costs an SMS.
+    CAN_VISIT   1 Oui, 2 Plus tard, 3 Non
+    LAST_NEWS   1 Aujourd'hui, 2 Cette semaine, 3 Avant
+    SEEMED_OK   1 Oui, 2 Non, 3 Je ne sais pas
+    WHERE_SEEN  free text
+- With one request waiting, an SMS reply answers it. The latest answer wins
+  until the alert closes.
+- With several people waiting (alert questions or invitations), the reply
+  starts with at least 3 letters of the first name: "Gabriel 1", "Gab 1",
+  "Johan OUI". Without a name, nothing is recorded and an SMS explains how to
+  answer. Two identical first names can only be told apart on /a.
+- Every Sentinel message offers both ways: log in, or reply by SMS.
+- Keywords, from any Sentinel at any time: INFO lists the people followed;
+  STOP / QUITTER / ARRETER removes them (STOP 2 picks one among several). A
+  plain NON never removes anyone.
+- A Sentinel without an account logs in with their number and an SMS code,
+  and lands on /a: open alerts with reply buttons and death notices, with no
+  profile or password required.
+- Invitations are answered by SMS. Sentinel requests, circle moves and their
+  answers go through app notifications only.
 
 GROUP CIRCLES
 ------------------

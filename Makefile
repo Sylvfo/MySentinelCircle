@@ -1,4 +1,4 @@
-.PHONY: all setup env install back front dev db-up db-down db-logs db-migrate db-seed db-test-init certs docker-up docker-down nosmsnow
+.PHONY: all setup env install back front dev db-up db-down db-logs db-migrate db-seed db-test-init certs docker-up docker-down nosmsnow nosmsnow-docker
 
 # Default target — `make` alone runs this
 all: dev
@@ -68,4 +68,9 @@ docker-down:
 # Optional, opt-in — terminal stand-in for a real SMS/email provider.
 # Not wired into dev/all; run it in its own terminal when you want it.
 nosmsnow:
-	cd nosmsnow && 
+	cd nosmsnow && npm start
+
+# Same, when the backend runs through docker-up: it is only reachable through
+# nginx, whose local certificate is self-signed.
+nosmsnow-docker:
+	cd nosmsnow && BACKEND_URL=https://localhost:4444 NODE_TLS_REJECT_UNAUTHORIZED=0 npm start

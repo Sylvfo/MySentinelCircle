@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AlertService } from './alert.service';
 import { CreateAlertDto } from './dto/create-alert.dto';
+import { AskQuestionDto } from './dto/ask-question.dto';
 import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
 import { UpdateAlertStatusDto } from './dto/update-alert-status.dto';
@@ -51,6 +52,15 @@ export class AlertController {
     @Body() dto: RequestCircleDto,
   ) {
     return this.alert.requestCircle(user.userId, id, dto);
+  }
+
+  @Post(':id/questions')
+  askQuestion(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: AskQuestionDto,
+  ) {
+    return this.alert.askQuestion(user.userId, id, dto);
   }
 
   @Post(':id/respond')

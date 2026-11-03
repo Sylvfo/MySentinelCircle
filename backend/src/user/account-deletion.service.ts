@@ -24,11 +24,7 @@ import type { RealtimeNotifier } from '../realtime/realtime-notifier.interface';
 import { SentinelService } from '../sentinel/sentinel.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
-import {
-  lastLeadLeftSms,
-  sentinelLeaveConfirmSms,
-  sentinelLeftSms,
-} from '../sms/messages';
+import { lastLeadLeftSms, sentinelLeaveConfirmSms } from '../sms/messages';
 import { AVATAR_DIR, UserService } from './user.service';
 
 export const DELETED_ACCOUNT_LABEL = 'Compte supprimé';
@@ -219,7 +215,14 @@ export class AccountDeletionService {
 
     for (const link of asSentinel) {
       const { firstName } = link.linkAsSentinel;
-      smsTo(link.userCompanion.phone, sentinelLeftSms(firstName));
+      sends.push(
+        this.notifications.create({
+          userId: link.userCompanionId,
+          type: NotificationType.SENTINEL_LEFT,
+          actorLabel: firstName,
+          targetId: link.id,
+        }),
+      );
       if (lastLeadCompanions.has(link.userCompanionId)) {
         smsTo(link.userCompanion.phone, lastLeadLeftSms());
         sends.push(

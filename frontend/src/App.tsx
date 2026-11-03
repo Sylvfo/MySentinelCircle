@@ -10,6 +10,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ConfirmEmailChangePage } from './pages/ConfirmEmailChangePage';
 import { WelcomePage } from './pages/WelcomePage';
 import { NewPasswordPage } from './pages/NewPasswordPage';
+import { SentinelHomePage } from './pages/SentinelHomePage';
 import { DashboardPage } from './pages/DashboardPage';
 import { CirclesPage } from './pages/CirclesPage';
 import { CompanionsPage } from './pages/CompanionsPage';
@@ -31,6 +32,7 @@ function App() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/otp" element={<OtpVerifyPage />} />
         <Route path="/welcome" element={<WelcomePage />} />
+        <Route path="/a" element={<SentinelHomePage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/confirm-email" element={<ConfirmEmailChangePage />} />

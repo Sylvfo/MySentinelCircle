@@ -298,14 +298,13 @@
       "requestCircle": {
         "title": "Ask another circle",
         "noCircles": "No other circle to ask.",
-        "questionPlaceholder": "E.g. Is she at your place?",
         "submit": "Send the request",
         "submitMore": "Contact 2 more Sentinels"
       },
       "respond": {
-        "prompt": "Your help is asked for this alert. Do you agree to follow it?",
-        "yes": "Yes, I'll follow it",
-        "no": "No, not this time"
+        "prompt": "You've been asked to respond about this alert.",
+        "freePlaceholder": "In a few words",
+        "send": "Send"
       },
       "statusByCompanion": "Status (companion)",
       "statusByFirstCircle": "Status (1st circle)",
@@ -343,7 +342,16 @@
         "involved": "The 1st circle asked you for help on this alert."
       },
       "myResponse": "Your answer:",
-      "noResponseYet": "not answered yet"
+      "noResponseYet": "not answered yet",
+      "askQuestion": {
+        "title": "Ask another question",
+        "submit": "Send the question"
+      },
+      "repliesSummary": {
+        "title": "Replies",
+        "noAnswer": "no reply",
+        "firstCircle": "1st circle"
+      }
     },
     "backToTiles": "← Back",
     "seeRunningAlert": "See the running alert",
@@ -385,7 +393,24 @@
       "statusPlaceholder": "E.g. we're calling the people close to them"
     },
     "stopFinalWordLabel": "A final word (optional) — it becomes the status",
-    "stopFinalWordPlaceholder": "E.g. Léa is home safe, thank you all"
+    "stopFinalWordPlaceholder": "E.g. Léa is home safe, thank you all",
+    "questions": {
+      "CAN_VISIT": "Can you go and see them?",
+      "LAST_NEWS": "Latest news from them?",
+      "SEEMED_OK": "Did they seem well?",
+      "WHERE_SEEN": "Where did you last see them?"
+    },
+    "replies": {
+      "GOING": "I'm going",
+      "LATER": "Later",
+      "UNAVAILABLE": "Unavailable",
+      "YES": "Yes",
+      "NO": "No",
+      "TODAY": "Today",
+      "THIS_WEEK": "This week",
+      "LONGER": "Before that",
+      "DONT_KNOW": "I don't know"
+    }
   },
   "history": {
     "title": "History",
@@ -439,7 +464,11 @@
       "SENTINEL_GROUP_INVITED": "{{who}} invited you to a group",
       "DEATH_NOTICE_REPORTED": "A death was reported — your confirmation is needed",
       "DEATH_NOTICE_CONFIRMED": "A death has been announced",
-      "DEATH_NOTICE_REJECTED": "Your death report was rejected as a mistake"
+      "DEATH_NOTICE_REJECTED": "Your death report was rejected as a mistake",
+      "SENTINEL_LEFT": "{{who}} is no longer one of your Sentinels",
+      "CIRCLE_MOVE_PROPOSED": "{{who}} invites you to join their 1st circle",
+      "CIRCLE_MOVE_ACCEPTED": "{{who}} joined your 1st circle",
+      "CIRCLE_MOVE_DECLINED": "{{who}} declined to join your 1st circle"
     }
   },
   "settings": {
@@ -581,5 +610,11 @@
         "The number of requests per minute is limited to slow down automated attacks."
       ]
     }
+  },
+  "sentinelHome": {
+    "empty": "No alert in progress for now.",
+    "createAccount": "Create an account",
+    "sendCode": "Get a code",
+    "hasPassword": "I have a password"
   }
 }
