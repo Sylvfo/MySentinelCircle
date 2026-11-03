@@ -10,6 +10,8 @@ export type MessagingMode = 'NONE' | 'INDIVIDUAL' | 'GROUP';
 export interface SentinelRef {
   id: string;
   firstName: string;
+  // Only listCircles() returns it (the Sentinel panel on a circle's page).
+  lastName?: string | null;
   phone: string;
 }
 
@@ -47,6 +49,9 @@ export interface Circle {
   circleType: CircleType;
   createdAt: string;
   userSentinels: Membership[];
+  // Group circles only: the founder's circle (the group's root) has null,
+  // every other member's circle points at it.
+  groupRootId?: string | null;
   // null = inherit the companion's default; always allowed on the 1st
   // circle, no override possible there.
   canMessageMe: boolean | null;
@@ -96,7 +101,9 @@ export interface Companion {
   leadSlot: LeadSlot | null;
   circle: { id: string; label: string; isPrimary: boolean };
   proposedCircle: { id: string; label: string } | null;
-  companion: PersonRef;
+  companion: PersonRef & { firstName: string; lastName: string | null; userName: string | null };
+  // The other accepted members of their 1st circle — empty unless I'm in it.
+  firstCircleMembers: { id: string; firstName: string | null; lastName: string | null; isLead: boolean }[];
   deathNotice: CompanionDeathNotice;
 }
 

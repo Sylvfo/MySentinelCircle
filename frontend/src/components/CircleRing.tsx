@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { Membership } from '../api/sentinel';
 import {
+  IN_ALERT_AVATAR_COLOR,
   PENDING_AVATAR_COLOR,
   PRIMARY_AVATAR_COLOR,
   PRIMARY_LEAD_COLOR,
@@ -38,46 +39,59 @@ function MessageBadge({ on }: { on: boolean }) {
   );
 }
 
-// Thick colored ring + avatars around the rim — the overview tile for one
-// circle. Click anywhere to expand/collapse the full member list (rendered
-// by the caller, right below). Visual-only: every real action (promote to
-// Lead, move, remove, invite) still lives in that existing expanded view.
+// Thick colored ring + avatars around the rim. With `onOpen` it's a button
+// (My Circles overview: click to open the circle's detail); without, a plain
+// picture (the detail view's big ring). Visual-only: every real action
+// (promote to Lead, move, remove, invite) lives in the detail's CircleCard.
 export function CircleRing({
   label,
   members,
   isPrimary,
   colorIndex,
   size = 180,
-  expanded,
-  onToggle,
+  onOpen,
+  showNames,
+  onSelectMember,
+  selectedMemberId,
+  inAlertUserIds,
+  isGroup,
 }: {
   label: string;
   members: Membership[];
   isPrimary: boolean;
   colorIndex: number;
   size?: number;
-  expanded: boolean;
-  onToggle: () => void;
+  onOpen?: () => void;
+  // Detail view: each Sentinel's first name under their avatar.
+  showNames?: boolean;
+  // Detail view: avatars become buttons opening that Sentinel's actions.
+  onSelectMember?: (m: Membership) => void;
+  selectedMemberId?: string | null;
+  // Sentinels currently the subject of an alert: their avatar turns red.
+  inAlertUserIds?: Set<string>;
+  // Group circles get a second, inner line, to tell them apart at a glance.
+  isGroup?: boolean;
 }) {
   const { t } = useTranslation();
   const palette = isPrimary ? { color: PRIMARY_AVATAR_COLOR, ring: PRIMARY_RING_COLOR } : circlePalette(colorIndex);
-  const RING_BORDER_WIDTH = 8;
+  const RING_BORDER_WIDTH = 5;
   // Exactly the ring stroke's centerline, so an avatar's center sits right
   // on the ring, not floating inside or outside it.
   const r = size / 2 - RING_BORDER_WIDTH / 2;
   const cx = size / 2;
   const avatarSize = Math.round(size * 0.22);
 
+  const Root = onOpen ? 'button' : 'div';
+
   return (
-    <button
-      type="button"
-      className={`circle-ring${expanded ? ' expanded' : ''}`}
+    <Root
+      {...(onOpen ? { type: 'button' as const, onClick: onOpen } : {})}
+      className="circle-ring"
       style={{ width: size, height: size }}
-      onClick={onToggle}
-      aria-expanded={expanded}
       aria-label={label}
     >
       <span className="circle-ring-border" style={{ borderColor: palette.ring }} />
+      {isGroup && <span className="circle-ring-border inner" style={{ borderColor: palette.ring }} />}
       <span className="circle-ring-center">{label}</span>
       {members.map((m, i) => {
         const angle = ((-90 + (360 / members.length) * i) * Math.PI) / 180;
@@ -85,21 +99,40 @@ export function CircleRing({
         const y = cx + r * Math.sin(angle) - avatarSize / 2 - avatarSize * 0.12;
         const isLead = m.leadSlot !== null;
         const pending = m.status === 'PENDING';
-        const color = pending ? PENDING_AVATAR_COLOR : isLead ? (isPrimary ? PRIMARY_LEAD_COLOR : '#D9A066') : palette.color;
+        const inAlert = inAlertUserIds?.has(m.linkAsSentinel.id) ?? false;
+        const color = inAlert
+          ? IN_ALERT_AVATAR_COLOR
+          : pending
+            ? PENDING_AVATAR_COLOR
+            : isLead
+              ? isPrimary
+                ? PRIMARY_LEAD_COLOR
+                : '#D9A066'
+              : palette.color;
         const canMessage = m.canMessageMe !== false;
+        const Avatar = onSelectMember ? 'button' : 'span';
         return (
-          <span
+          <Avatar
             key={m.id}
-            className="circle-avatar"
+            {...(onSelectMember
+              ? { type: 'button' as const, onClick: () => onSelectMember(m), 'aria-label': m.linkAsSentinel.firstName }
+              : {})}
+            className={`circle-avatar${selectedMemberId === m.id ? ' selected' : ''}`}
             style={{ left: x, top: y, width: avatarSize, height: avatarSize, color }}
           >
             <PersonIcon />
             <MessageBadge on={canMessage} />
-            {isLead && <span className="circle-avatar-lead">{t('sentinel.leadSentinel')}</span>}
-          </span>
+            {showNames ? (
+              <span className="circle-avatar-caption">
+                <span className="circle-avatar-name">{m.linkAsSentinel.firstName}</span>
+                {isLead && <span className="circle-avatar-lead-tag">{t('sentinel.leadSentinel')}</span>}
+              </span>
+            ) : (
+              isLead && <span className="circle-avatar-lead">{t('sentinel.leadSentinel')}</span>
+            )}
+          </Avatar>
         );
       })}
-      <span className="circle-ring-add" aria-hidden="true">+</span>
-    </button>
+    </Root>
   );
 }

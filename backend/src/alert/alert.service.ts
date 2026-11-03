@@ -213,6 +213,7 @@ export class AlertService {
       include: {
         userCompanion: { select: { firstName: true, phone: true } },
         participants: {
+          where: { status: { not: AlertParticipantStatus.CLOSED } },
           include: {
             userSentinels: {
               include: { linkAsSentinel: { select: { phone: true } } },
@@ -294,6 +295,9 @@ export class AlertService {
     if (participant.alert.alertStatus === AlertStatus.RESOLVED) {
       throw new ConflictException('This alert is already closed');
     }
+    if (participant.status === AlertParticipantStatus.CLOSED) {
+      throw new ConflictException('You left this alert');
+    }
 
     await this.prisma.alertParticipant.update({
       where: { id: participant.id },
@@ -305,6 +309,51 @@ export class AlertService {
       actorId: callerId,
     });
     return this.getAlert(callerId, alertId);
+  }
+
+  // Any Sentinel can step out of an alert ("I can't help anymore"): their
+  // participation is CLOSED and they stop being notified. A Lead may only
+  // leave once another Lead has claimed the alert after them, so it is
+  // never left without someone driving it (Sylvie's call).
+  async leaveAlert(callerId: string, alertId: string) {
+    const participant = await this.prisma.alertParticipant.findFirst({
+      where: { alertId, userSentinels: { userSentinelId: callerId } },
+      include: { alert: { select: { alertStatus: true } } },
+    });
+    if (!participant) {
+      throw new NotFoundException('You have no participation on this alert');
+    }
+    if (participant.alert.alertStatus === AlertStatus.RESOLVED) {
+      throw new ConflictException('This alert is already closed');
+    }
+    if (participant.status === AlertParticipantStatus.CLOSED) {
+      throw new ConflictException('You already left this alert');
+    }
+    if (participant.isLead) {
+      const takenOver = await this.prisma.alertParticipant.count({
+        where: {
+          alertId,
+          id: { not: participant.id },
+          isLead: true,
+          status: { not: AlertParticipantStatus.CLOSED },
+          leadAssignedAt: participant.leadAssignedAt
+            ? { gt: participant.leadAssignedAt }
+            : { not: null },
+        },
+      });
+      if (takenOver === 0) {
+        throw new ConflictException(
+          'Another Lead must take the lead before you leave this alert',
+        );
+      }
+    }
+
+    const updated = await this.prisma.alertParticipant.update({
+      where: { id: participant.id },
+      data: { status: AlertParticipantStatus.CLOSED, closedAt: new Date() },
+    });
+    await this.notifyAlertParticipants(alertId);
+    return updated;
   }
 
   async getAlert(callerId: string, alertId: string) {
@@ -397,8 +446,10 @@ export class AlertService {
     closedAt: Date | null;
     closedBy: { firstName: string } | null;
     participants: {
+      status: AlertParticipantStatus;
       contactedAt: Date | null;
       answeredAt: Date | null;
+      closedAt: Date | null;
       leadAssignedAt: Date | null;
       response: string | null;
       circleName: string;
@@ -411,6 +462,7 @@ export class AlertService {
         | 'CONTACTED'
         | 'RESPONDED'
         | 'LEAD_CLAIMED'
+        | 'LEFT'
         | 'ALERT_CLOSED';
       at: Date;
       actorLabel: string;
@@ -450,6 +502,11 @@ export class AlertService {
           at: p.leadAssignedAt,
           actorLabel: name,
         });
+      }
+      // closeAlert stamps closedAt on everyone; only a CLOSED status marks
+      // someone who left before the end.
+      if (p.status === AlertParticipantStatus.CLOSED && p.closedAt) {
+        events.push({ type: 'LEFT', at: p.closedAt, actorLabel: name });
       }
     }
 
@@ -885,7 +942,9 @@ export class AlertService {
       where: { id: alertId },
       select: {
         userCompanionId: true,
+        // Someone who left the alert stops hearing about it.
         participants: {
+          where: { status: { not: AlertParticipantStatus.CLOSED } },
           select: { userSentinels: { select: { userSentinelId: true } } },
         },
       },
@@ -911,8 +970,11 @@ export class AlertService {
     }
   }
 
-  listMyAlerts(callerId: string) {
-    return this.prisma.alert.findMany({
+  // Each alert carries the caller's own participation (null for their own
+  // alert), so a client can tell whether it needs them to act — e.g. the
+  // dashboard's alert mode — without one getAlert() per row.
+  async listMyAlerts(callerId: string) {
+    const alerts = await this.prisma.alert.findMany({
       where: {
         OR: [
           { userCompanionId: callerId },
@@ -923,8 +985,20 @@ export class AlertService {
           },
         ],
       },
+      include: {
+        participants: {
+          where: { userSentinels: { userSentinelId: callerId } },
+          select: { status: true, circleId: true },
+        },
+        // Who the alert is about — the History list names them.
+        userCompanion: { select: { firstName: true, lastName: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
+    return alerts.map(({ participants, ...alert }) => ({
+      ...alert,
+      myParticipation: participants[0] ?? null,
+    }));
   }
 
   // ---- Guards -----------------------------------------------------------

@@ -8,7 +8,9 @@
     "cancel": "Annuler",
     "edit": "Modifier",
     "remove": "Retirer",
-    "delete": "Supprimer"
+    "delete": "Supprimer",
+    "back": "← Retour",
+    "close": "Fermer"
   },
   "sentinel": {
     "status": {
@@ -35,7 +37,8 @@
     "history": "Historique",
     "messages": "Messages",
     "settings": "Paramètres",
-    "logout": "Déconnexion"
+    "logout": "Déconnexion",
+    "info": "Info"
   },
   "auth": {
     "loginTitle": "Connexion",
@@ -95,28 +98,24 @@
     "companions": "Mes companions",
     "companionsHint": "{{count}} personnes sur qui tu veilles",
     "unreadMessages": "Messages non lus",
-    "open": "Ouvrir",
     "alerts": "Alertes",
     "raiseAlert": "Lancer une alerte",
-    "raiseAlertHint": "Déclenche une alerte pour toi ou pour une personne que tu protèges.",
+    "raiseAlertHint": "Pour toi ou une personne que tu protèges",
     "placeholder": "Les résumés seront branchés une fois les modules Sentinel/Alert/Messaging codés.",
     "runningAlert": {
       "title": "Alerte en cours",
       "activeCount": "{{count}} alerte(s) en cours",
       "about": "À propos :",
       "whatToDo": "Ce que tu dois faire :",
-      "whatToDoHint": "Consulte les détails et réponds si on te le demande.",
-      "viewDetails": "Voir les détails →"
+      "whatToDoHint": "Consulte les détails et réponds si on te le demande."
     }
   },
   "circles": {
-    "title": "Cercles",
+    "title": "Mes cercles",
     "intro": "Créez vos cercles (1er cercle, famille, travail...) et gérez les sentinelles qui vous surveillent.",
     "empty": "Aucun cercle pour l'instant. Créez-en un pour commencer.",
     "newCircle": "Nouveau cercle",
-    "namePlaceholder": "Nom du cercle (ex. Voisins)",
     "firstCircle": "1er cercle",
-    "create": "Créer le cercle",
     "confirmDelete": "Supprimer ce cercle ?",
     "members": "Sentinelles",
     "noMembers": "Aucune sentinelle dans ce cercle.",
@@ -149,15 +148,19 @@
     "callOrder": {
       "label": "Ordre d'appel",
       "random": "Aléatoire"
+    },
+    "backToCircles": "← Retour à Mes cercles",
+    "tapHint": "Appuie sur une Sentinel pour modifier ses réglages.",
+    "addFromOtherCircle": "Ajouter une Sentinel d'un autre cercle",
+    "moveHere": "Déplacer ici",
+    "addSentinel": "Ajouter une Sentinel",
+    "memberSections": {
+      "messages": "Messages",
+      "placement": "Place dans mes cercles"
     }
   },
   "groups": {
-    "title": "Cercles de groupe",
-    "intro": "Un cercle partagé entre plusieurs sentinelles (ex. une chorale) — le rejoindre te rend sentinelle de chaque membre, et chaque membre devient ta sentinelle aussi. Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e.",
-    "empty": "Tu ne fais encore partie d'aucun groupe.",
     "newGroup": "Nouveau cercle de groupe",
-    "namePlaceholder": "Ex. Chorale",
-    "create": "Créer",
     "invitations": "Invitations de groupe",
     "invitedBy": "{{who}} t'a invité·e dans \"{{group}}\"",
     "accept": "Accepter",
@@ -170,14 +173,16 @@
     "invitedSent": "Invitation envoyée à {{who}}.",
     "noEligibleContacts": "Personne à inviter pour l'instant — tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e.",
     "eligibilityHint": "Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté·e.",
-    "largeGroupWarning": "Ce groupe compte déjà {{count}} personnes — c'est beaucoup. Tu peux quand même en ajouter si tu veux."
+    "largeGroupWarning": "Ce groupe compte déjà {{count}} personnes — c'est beaucoup. Tu peux quand même en ajouter si tu veux.",
+    "eyebrow": "Groupe",
+    "addMember": "Ajouter un membre"
   },
   "companions": {
     "title": "Companions",
     "intro": "Les personnes dont vous êtes la sentinelle — celles que vous surveillez.",
     "empty": "Vous ne surveillez personne pour l'instant.",
-    "leave": "Me retirer",
-    "confirmLeave": "Ne plus être la sentinelle de cette personne ?",
+    "leave": "Ne plus veiller sur {{name}}",
+    "confirmLeave": "Tu ne seras plus Sentinel de {{name}} : tu ne seras plus prévenu·e de ses alertes. {{name}} en sera informé·e.",
     "invitations": "Invitations reçues",
     "noInvitations": "Aucune invitation en attente.",
     "invitedBy": "{{who}} vous invite comme sentinelle",
@@ -202,11 +207,29 @@
       "reject": "Rejeter (erreur)",
       "report": "Signaler un décès",
       "confirmReport": "Signaler le décès de cette personne ? Un second Sentinel devra confirmer avant que les autres soient prévenus."
-    }
+    },
+    "new": "Devenir Sentinel de quelqu'un",
+    "backToList": "← Retour aux Companions",
+    "needsAnswer": "Réponse attendue",
+    "sections": {
+      "myPlace": "Ma place",
+      "firstCircle": "Aussi dans le 1er cercle de {{name}}",
+      "deathNotice": "Avis de décès"
+    },
+    "firstCircleAlone": "Personne d'autre dans ce 1er cercle pour l'instant.",
+    "firstCircleLead": "Lead",
+    "youAreLead": "Tu es Lead Sentinel pour cette personne",
+    "leaveTitle": "Ne plus veiller sur cette personne ?",
+    "leaveConfirmButton": "Oui, arrêter",
+    "sendMessage": "Écrire à {{name}}"
   },
   "alerts": {
     "title": "Lancer une alerte",
     "intro": "Déclenche une nouvelle alerte pour toi ou pour une personne que tu protèges.",
+    "stop": "Arrêter l'alerte",
+    "stopTitle": "Arrêter cette alerte ?",
+    "stopConfirm": "Toutes les personnes impliquées seront prévenues que l'alerte est terminée, et elle passera dans l'historique. C'est définitif.",
+    "stopConfirmButton": "Oui, arrêter l'alerte",
     "empty": "Aucune alerte pour l'instant.",
     "status": {
       "SENT": "Envoyée",
@@ -215,7 +238,6 @@
       "CLOSING": "En cours de clôture",
       "RESOLVED": "Terminée"
     },
-    "close": "Clôturer",
     "raiseForSelf": "Lancer une alerte pour moi-même",
     "confirmRaise": "Déclencher une alerte ? Votre 1er cercle sera prévenu immédiatement.",
     "defaultReason": "Alerte déclenchée depuis l'application.",
@@ -249,7 +271,8 @@
           "CONTACTED": "Contacté·e",
           "RESPONDED": "A répondu",
           "LEAD_CLAIMED": "A pris le lead",
-          "ALERT_CLOSED": "Alerte clôturée"
+          "ALERT_CLOSED": "Alerte clôturée",
+          "LEFT": "A quitté l'alerte"
         }
       },
       "lead": "Référent·e",
@@ -270,7 +293,7 @@
         "ACTIVE": "Actif",
         "DECLINED": "Décliné",
         "UNAVAILABLE": "Indisponible",
-        "CLOSED": "Clôturé"
+        "CLOSED": "A quitté l'alerte"
       },
       "requestCircle": {
         "title": "Solliciter un autre cercle",
@@ -280,9 +303,9 @@
         "submitMore": "Contacter 2 sentinelles de plus"
       },
       "respond": {
-        "prompt": "On vous demande de répondre à propos de cette alerte.",
-        "yes": "Oui",
-        "no": "Non"
+        "prompt": "On te demande ton aide pour cette alerte. Acceptes-tu de la suivre ?",
+        "yes": "Oui, je la suis",
+        "no": "Non, pas cette fois"
       },
       "statusByCompanion": "Statut (compagnon)",
       "statusByFirstCircle": "Statut (1er cercle)",
@@ -298,25 +321,105 @@
         "title": "Discuter avec le premier cercle",
         "withSentinel": "Chat avec {{name}}",
         "firstCircleSender": "Premier cercle"
-      }
-    }
+      },
+      "leave": {
+        "button": "Quitter cette alerte",
+        "confirm": "Quitter cette alerte ? Tu ne seras plus notifié·e à son sujet.",
+        "needOtherLead": "Un·e autre Lead doit prendre le lead avant que tu puisses quitter cette alerte."
+      },
+      "messageAlert": "Message de départ",
+      "sections": {
+        "todo": "À faire",
+        "know": "À savoir",
+        "discussion": "Discussion"
+      },
+      "role": {
+        "companion": "C'est ton alerte : ton 1er cercle s'en occupe. Tiens ton statut à jour.",
+        "activeLead": "Tu es la ou le Lead Sentinel qui coordonne cette alerte.",
+        "lead": "Tu es Lead Sentinel de ce 1er cercle : tu peux prendre la coordination.",
+        "firstCircle": "Tu fais partie du 1er cercle : tu suis l'alerte et tu aides à la gérer.",
+        "asked": "Le 1er cercle te demande de répondre à une demande.",
+        "left": "Tu as quitté cette alerte.",
+        "involved": "Le 1er cercle t'a demandé ton aide pour cette alerte."
+      },
+      "myResponse": "Ta réponse :",
+      "noResponseYet": "pas encore répondu"
+    },
+    "backToTiles": "← Retour",
+    "seeRunningAlert": "Voir l'alerte en cours",
+    "whoLabel": "Qui est concerné.e ?",
+    "tiles": {
+      "self": {
+        "title": "Pour moi",
+        "hint": "J'ai besoin d'aide : mon 1er cercle est prévenu tout de suite."
+      },
+      "missing": {
+        "title": "Quelqu'un a disparu",
+        "hint": "Une personne sur qui tu veilles est injoignable ou introuvable."
+      },
+      "assistance": {
+        "title": "Quelqu'un a besoin d'aide",
+        "hint": "Besoin de contacter ses proches."
+      },
+      "travel": {
+        "title": "Mode voyage",
+        "hint": "Tes cercles veillent sur toi pendant un voyage."
+      },
+      "soon": "Bientôt disponible"
+    },
+    "self": {
+      "intro": "Tout est facultatif : tu peux aussi juste appuyer sur le bouton.",
+      "situationLabel": "Qu'est-ce qui se passe ? Comment vas-tu ?",
+      "situationPlaceholder": "Ex. : je suis tombé.e et je n'arrive pas à me relever",
+      "needsLabel": "De quoi as-tu besoin ?",
+      "needsPlaceholder": "Ex. : que quelqu'un vienne, un appel, qu'on m'emmène",
+      "needsPrefix": "Ce dont j'ai besoin :",
+      "statusLabel": "Statut (tu pourras le mettre à jour ensuite)",
+      "statusPlaceholder": "Ex. : je suis en sécurité pour l'instant"
+    },
+    "other": {
+      "situationLabel": "Qu'est-ce qui se passe ?",
+      "situationPlaceholder": "Ex. : ne répond plus depuis hier soir",
+      "needsLabel": "De quoi cette personne a-t-elle besoin ?",
+      "needsPlaceholder": "Ex. : que quelqu'un passe la voir, contacter ses proches",
+      "statusPlaceholder": "Ex. : on appelle ses proches"
+    },
+    "stopFinalWordLabel": "Un mot final (facultatif) — il deviendra le statut",
+    "stopFinalWordPlaceholder": "Ex. : Léa est rentrée, tout va bien, merci à toutes et tous"
   },
   "history": {
     "title": "Historique",
-    "intro": "Les alertes résolues.",
-    "empty": "Aucune alerte résolue pour l'instant."
+    "intro": "Les alertes terminées auxquelles tu as participé.",
+    "empty": "Aucune alerte résolue pour l'instant.",
+    "backToList": "← Retour à l'historique",
+    "concerns": "Concerne : {{who}}",
+    "concernsMe": "toi"
   },
   "runningAlertPage": {
     "title": "Alerte en cours",
     "intro": "Ce qui se passe en ce moment.",
-    "empty": "Aucune alerte en cours."
+    "empty": "Aucune alerte en cours.",
+    "backToList": "← Retour aux alertes en cours",
+    "since": "depuis le {{when}}"
   },
   "messages": {
     "title": "Messages",
     "intro": "Discutez avec vos sentinelles, ou avec les personnes que vous protégez.",
     "empty": "Personne à qui écrire pour l'instant.",
-    "open": "Ouvrir",
-    "companionContext": "personne protégée"
+    "noMessageYet": "Aucun message pour l'instant",
+    "photo": "Photo"
+  },
+  "conversation": {
+    "back": "← Retour aux messages",
+    "mySentinel": "Ton Sentinel — cercle « {{circle}} »",
+    "myLeadSentinel": "Ton Lead Sentinel — cercle « {{circle}} »",
+    "iWatch": "Tu veilles sur {{name}} — cercle « {{circle}} »",
+    "iAmLead": "Tu es Lead Sentinel de {{name}} — cercle « {{circle}} »",
+    "noAlert": "Aucune alerte en cours.",
+    "myAlert": "Ton alerte est en cours : {{label}}",
+    "alertAbout": "Alerte en cours pour {{name}} : {{label}}",
+    "lastNews": "Dernière nouvelle : {{status}}",
+    "seeAlert": "Voir l'alerte"
   },
   "notifications": {
     "title": "Notifications",
@@ -397,7 +500,9 @@
       "start": "Supprimer mon compte",
       "word": "SUPPRIMER",
       "confirm": "Pour confirmer, écris {{word}}",
-      "submit": "Supprimer définitivement"
+      "submit": "Supprimer définitivement",
+      "ownAlert": "Une alerte te concernant est en cours. Tu pourras supprimer ton compte une fois qu'elle sera terminée.",
+      "leadOnAlert": "Tu es Lead sur une alerte en cours. Quitte-la d'abord (un·e autre Lead doit prendre le lead), puis supprime ton compte."
     }
   },
   "welcome": {
@@ -423,6 +528,58 @@
       "phone": "Ajoute et vérifie ton numéro de téléphone",
       "lead": "Choisis un Lead Sentinel avec un numéro",
       "sentinel": "Ajoute un autre Sentinel avec un numéro"
+    }
+  },
+  "newCirclePage": {
+    "title": "Nouveau cercle",
+    "intro": "Un cercle rassemble les personnes qui te connaissent dans une même partie de ta vie : famille, travail, sport, voisin·e·s… Si ton 1er cercle ne peut pas résoudre une alerte, il peut demander de l'aide à un autre cercle.",
+    "nameLabel": "Nom du cercle",
+    "namePlaceholder": "Ex. Voisin·e·s",
+    "next": "Ensuite, tu y inviteras les personnes en qui tu as confiance.",
+    "create": "Créer le cercle"
+  },
+  "newGroupPage": {
+    "title": "Nouveau cercle de groupe",
+    "intro": "Un cercle de groupe est partagé entre plusieurs personnes, comme une chorale ou une équipe : chaque membre veille sur tous les autres, et tous veillent sur lui ou elle.",
+    "nameLabel": "Nom du groupe",
+    "namePlaceholder": "Ex. Chorale",
+    "next": "Ensuite, invite des membres. Tu ne peux inviter que des personnes avec qui tu es déjà connecté·e.",
+    "create": "Créer le groupe"
+  },
+  "info": {
+    "title": "À propos de MySentinelCircle",
+    "what": {
+      "title": "C'est quoi ?",
+      "body": [
+        "MySentinelCircle est un filet de sécurité mutuel. Tu choisis les personnes en qui tu as confiance, tes Sentinels, et tu les ranges en cercles autour de toi : ton 1er cercle, le plus proche, puis d'autres cercles (famille, travail, voisin·e·s…).",
+        "Si quelque chose t'inquiète, ou si quelqu'un s'inquiète pour toi, une alerte peut être lancée. Ton 1er cercle est prévenu en premier. S'il ne peut pas résoudre la situation, il peut demander de l'aide à tes autres cercles, étape par étape.",
+        "Ça marche dans les deux sens : tu peux aussi être Sentinel pour les personnes qui comptent sur toi."
+      ]
+    },
+    "how": {
+      "title": "Comment ça marche",
+      "items": [
+        "Personne ne devient ta Sentinel sans avoir accepté ton invitation.",
+        "Ton 1er cercle a au moins un·e Lead, qui coordonne pendant une alerte.",
+        "Les alertes et les réponses passent aussi par SMS : une Sentinel sans l'app peut quand même aider."
+      ]
+    },
+    "privacy": {
+      "title": "Confidentialité",
+      "items": [
+        "Seul·e·s toi et ton 1er cercle voyez tous les détails d'une alerte. Un autre cercle ne voit que la question qu'on lui pose.",
+        "Tes Sentinels ne voient que ce qu'il faut pour veiller sur toi ; c'est toi qui décides qui peut t'écrire.",
+        "Tu peux supprimer ton compte à tout moment depuis les Paramètres. Ton nom, ton numéro, ton email, ta photo et tes cercles sont effacés tout de suite ; les messages et l'historique des alertes restent lisibles par les autres, signés « Compte supprimé »."
+      ]
+    },
+    "security": {
+      "title": "Sécurité",
+      "items": [
+        "Les mots de passe et les codes SMS ne sont jamais stockés tels quels : seulement sous une forme brouillée impossible à inverser (hachage).",
+        "Après 5 tentatives de connexion ratées, le compte est bloqué temporairement.",
+        "Les actions sensibles (changer d'email ou de téléphone, supprimer ton compte) te demandent de confirmer à nouveau ton identité.",
+        "Le nombre de requêtes par minute est limité, pour freiner les attaques automatisées."
+      ]
     }
   }
 }

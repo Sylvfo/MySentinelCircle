@@ -1966,6 +1966,17 @@ describe('SentinelService', () => {
           },
         },
       ]);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        {
+          circleId: 'first-1',
+          leadSlot: null,
+          linkAsSentinel: {
+            id: 'sentinel-2',
+            firstName: 'Chloé',
+            lastName: 'Morel',
+          },
+        },
+      ]);
 
       const result = await service.listCompanions('lead-1');
 
@@ -1982,10 +1993,28 @@ describe('SentinelService', () => {
           },
           proposedCircle: null,
           companion: { id: 'companion-1', email: null, phone: '+41790000000' },
+          firstCircleMembers: [
+            {
+              id: 'sentinel-2',
+              firstName: 'Chloé',
+              lastName: 'Morel',
+              isLead: false,
+            },
+          ],
           deathNotice: { isDeceased: false, pending: null, canReport: true },
         },
       ]);
       expect(prisma.linkSentinels.groupBy).not.toHaveBeenCalled();
+      // The other 1st-circle members are looked up without the caller.
+      expect(prisma.linkSentinels.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          where: {
+            circleId: { in: ['first-1'] },
+            status: LinkStatus.ACCEPTED,
+            userSentinelId: { not: 'lead-1' },
+          },
+        }),
+      );
     });
 
     it('flags canConfirmOrReject via the single-Lead fallback when a report is pending', async () => {
@@ -2017,6 +2046,7 @@ describe('SentinelService', () => {
       prisma.user.findMany.mockResolvedValueOnce([
         { id: 'lead-1', firstName: 'Lea', phone: '+41791111111' },
       ]);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([]);
 
       const result = await service.listCompanions('sentinel-2');
 

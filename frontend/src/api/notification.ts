@@ -21,13 +21,19 @@ export interface NotificationItem {
   createdAt: string;
   readAt: string | null;
   type: NotificationType;
+  actorUserId: string | null;
   actorLabel: string | null;
   accepted: boolean | null;
   targetId: string | null;
 }
 
+// Unread only — read notifications are never listed again.
 export const listNotifications = () => apiGet<NotificationItem[]>('/notification/mine');
 
 export const getUnreadCount = () => apiGet<{ count: number }>('/notification/unread-count');
 
 export const markNotificationRead = (id: string) => apiPost<{ count: number }>(`/notification/${id}/read`, {});
+
+// Fired by pages that mark notifications read on their own (e.g. opening a
+// conversation), so the bell's count refreshes right after.
+export const NOTIFICATIONS_CHANGED = 'notifications:changed';

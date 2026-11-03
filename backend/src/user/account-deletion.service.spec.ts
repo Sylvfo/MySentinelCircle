@@ -1,8 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { UnauthorizedException } from '@nestjs/common';
-import { CircleType, LinkStatus, UserStatus } from '@prisma/client';
-import { AccountDeletionService } from './account-deletion.service';
+import {
+  AlertParticipantStatus,
+  CircleType,
+  LinkStatus,
+  UserStatus,
+} from '@prisma/client';
+import {
+  AccountDeletionService,
+  LEAD_ON_ALERT_IN_PROGRESS,
+  OWN_ALERT_IN_PROGRESS,
+} from './account-deletion.service';
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SentinelService } from '../sentinel/sentinel.service';
@@ -112,7 +121,7 @@ describe('AccountDeletionService', () => {
     prisma.alert.findFirst.mockResolvedValue({ id: 'alert' });
 
     await expect(service.deleteAccount('me')).rejects.toThrow(
-      ConflictException,
+      OWN_ALERT_IN_PROGRESS,
     );
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -121,11 +130,13 @@ describe('AccountDeletionService', () => {
     prisma.alertParticipant.findFirst.mockResolvedValue({ id: 'participant' });
 
     await expect(service.deleteAccount('me')).rejects.toThrow(
-      ConflictException,
+      LEAD_ON_ALERT_IN_PROGRESS,
     );
     expect(prisma.alertParticipant.findFirst).toHaveBeenCalledWith({
       where: expect.objectContaining({
         isLead: true,
+        // A Lead who already left the alert no longer blocks deletion.
+        status: { not: AlertParticipantStatus.CLOSED },
         userSentinels: { userSentinelId: 'me' },
       }),
     });

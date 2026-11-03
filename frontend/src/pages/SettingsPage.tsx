@@ -630,6 +630,12 @@ function ChangePhoneFlow({
   return <AddPhonePanel onChange={onChange} onError={onError} />;
 }
 
+// Backend refusals (account-deletion.service.ts), shown translated instead of raw.
+const DELETE_ERRORS: Record<string, string> = {
+  'An alert about you is in progress: your account can be deleted once it is over': 'settings.delete.ownAlert',
+  'You are a Lead on an alert in progress: leave it before deleting your account': 'settings.delete.leadOnAlert',
+};
+
 function DeleteAccountPanel({
   me,
   onDeleted,
@@ -652,7 +658,8 @@ function DeleteAccountPanel({
       await deleteAccount();
       onDeleted();
     } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
+      const message = err instanceof ApiError ? err.message : String(err);
+      onError(DELETE_ERRORS[message] ? t(DELETE_ERRORS[message]) : message);
       setSubmitting(false);
     }
   };

@@ -355,6 +355,7 @@ model AlertParticipant {
   canSendPhoneAtAlert             Boolean?
   canMessageOwnCircleAtAlert      Boolean?
   firstCircleMessagingModeAtAlert MessagingMode?
+  //question String? @db.Text // the 1st circle's question when this circle was asked (requestCircle)
 
   alertId String
   alert   Alert  @relation(fields: [alertId], references: [id], onDelete: Restrict)

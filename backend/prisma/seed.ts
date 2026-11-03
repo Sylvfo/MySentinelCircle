@@ -137,6 +137,90 @@ async function linkSentinel(params: {
   });
 }
 
+// Find-or-create a circle and link every member into it — ACCEPTED unless
+// stated. Reusing an existing label just adds members to that circle.
+async function fillCircle(
+  userCompanionId: string,
+  label: string,
+  circleType: CircleType,
+  members: { sentinel: { id: string }; status?: LinkStatus; leadSlot?: LeadSlot }[],
+) {
+  const circle = await findOrCreateCircle(userCompanionId, label, circleType);
+  for (const m of members) {
+    await linkSentinel({
+      userSentinelId: m.sentinel.id,
+      userCompanionId,
+      circleId: circle.id,
+      status: m.status ?? LinkStatus.ACCEPTED,
+      leadSlot: m.leadSlot,
+    });
+  }
+  return circle;
+}
+
+// Mirrors SentinelService.createGroup + respondToGroupInvitation: the
+// founder's GROUP circle is the root, every other member gets their own
+// GROUP circle pointing at it plus an ACCEPTED invitation, and every directed
+// pair is linked in the companion's group circle — unless that pair is
+// already linked (from outside the group), which is left untouched.
+async function seedGroup(
+  founder: { id: string },
+  label: string,
+  members: { user: { id: string }; invitedBy: { id: string } }[],
+) {
+  await prisma.user.update({ where: { id: founder.id }, data: { hasPaid: true } });
+  const root =
+    (await prisma.circle.findFirst({
+      where: { userCompanionId: founder.id, label, circleType: CircleType.GROUP, groupRootId: null },
+    })) ??
+    (await prisma.circle.create({
+      data: { userCompanionId: founder.id, label, circleType: CircleType.GROUP },
+    }));
+
+  const circles = [root];
+  for (const m of members) {
+    circles.push(
+      await prisma.circle.upsert({
+        where: { userCompanionId_groupRootId: { userCompanionId: m.user.id, groupRootId: root.id } },
+        update: {},
+        create: { userCompanionId: m.user.id, label, circleType: CircleType.GROUP, groupRootId: root.id },
+      }),
+    );
+    await prisma.sentinelGroupInvitation.upsert({
+      where: { groupRootId_invitedUserId: { groupRootId: root.id, invitedUserId: m.user.id } },
+      update: { status: LinkStatus.ACCEPTED },
+      create: {
+        groupRootId: root.id,
+        invitedUserId: m.user.id,
+        invitedById: m.invitedBy.id,
+        status: LinkStatus.ACCEPTED,
+      },
+    });
+  }
+
+  for (const companionCircle of circles) {
+    for (const sentinelCircle of circles) {
+      const userSentinelId = sentinelCircle.userCompanionId;
+      const userCompanionId = companionCircle.userCompanionId;
+      if (userSentinelId === userCompanionId) continue;
+      const existing = await prisma.linkSentinels.findUnique({
+        where: { userSentinelId_userCompanionId: { userSentinelId, userCompanionId } },
+      });
+      if (existing) continue;
+      await prisma.linkSentinels.create({
+        data: {
+          userSentinelId,
+          userCompanionId,
+          circleId: companionCircle.id,
+          status: LinkStatus.ACCEPTED,
+          initiatedBy: LinkInitiator.COMPANION,
+          sentinelType: SentinelType.SENTINEL,
+        },
+      });
+    }
+  }
+}
+
 async function main() {
   assertSafeTarget();
 
@@ -396,7 +480,7 @@ async function main() {
     userSentinelId: romain.id,
     userCompanionId: noah.id,
     circleId: noahQuartier.id,
-    status: LinkStatus.PENDING,
+    status: LinkStatus.ACCEPTED,
   });
 
   // ---- Thomas: a 4th companion, 1st circle with 2 Leads (useful later for
@@ -489,7 +573,7 @@ async function main() {
     userSentinelId: alicia.id,
     userCompanionId: thomas.id,
     circleId: thomasEtudes.id,
-    status: LinkStatus.PENDING,
+    status: LinkStatus.ACCEPTED,
   });
 
   const thomasFamille = await findOrCreateCircle(thomas.id, 'Famille', CircleType.BASIC);
@@ -525,11 +609,168 @@ async function main() {
   });
   await findOrCreateCircle(emma.id, 'Premier cercle', CircleType.FIRST);
 
+  // ---- Cross-links: turn the 4 separate stars above into one web. Companions
+  // watch over each other, Sentinels watch over several people, and several
+  // Sentinels become companions themselves. Every pair below is new — the
+  // @@unique([userSentinelId, userCompanionId]) allows only one link per pair.
+  // Emma stays Sentinel-less (her 409 case) but watches over others.
+
+  // Companions watching over each other.
+  await fillCircle(lea.id, 'Amis', CircleType.BASIC, [
+    { sentinel: noah },
+    { sentinel: thomas },
+    { sentinel: zoe },
+  ]);
+  await fillCircle(lea.id, 'Voisins', CircleType.BASIC, [{ sentinel: emma }]);
+  await fillCircle(lea.id, 'Travail', CircleType.BASIC, [{ sentinel: juliette }]);
+  await fillCircle(noah.id, 'Premier cercle', CircleType.FIRST, [{ sentinel: chloe }]);
+  await fillCircle(noah.id, 'Amis', CircleType.BASIC, [
+    { sentinel: lea },
+    { sentinel: gabriel },
+  ]);
+  await fillCircle(noah.id, 'Sport', CircleType.BASIC, [{ sentinel: oceane }]);
+  await fillCircle(noah.id, 'Quartier', CircleType.BASIC, [
+    { sentinel: emma },
+    { sentinel: camille },
+  ]);
+  await fillCircle(thomas.id, 'Premier cercle', CircleType.FIRST, [{ sentinel: lea }]);
+  await fillCircle(thomas.id, 'Études', CircleType.BASIC, [{ sentinel: noah }]);
+  await fillCircle(thomas.id, 'Amis', CircleType.BASIC, [
+    { sentinel: gabriel },
+    { sentinel: hugo },
+    { sentinel: zoe },
+    { sentinel: lucas },
+  ]);
+
+  // Sentinels who are companions too.
+  await fillCircle(gabriel.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: lea, leadSlot: LeadSlot.LEAD_1 },
+    { sentinel: chloe },
+    { sentinel: mathis },
+  ]);
+  await fillCircle(gabriel.id, 'Famille', CircleType.BASIC, [{ sentinel: theo }]);
+
+  await fillCircle(zoe.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: noah, leadSlot: LeadSlot.LEAD_1 },
+    { sentinel: hugo, leadSlot: LeadSlot.LEAD_2 },
+    { sentinel: manon },
+  ]);
+  await fillCircle(zoe.id, 'Amis', CircleType.BASIC, [
+    { sentinel: elise },
+    { sentinel: gabriel, status: LinkStatus.PENDING },
+  ]);
+
+  await fillCircle(oceane.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: thomas, leadSlot: LeadSlot.LEAD_1 },
+    { sentinel: yanis },
+    { sentinel: juliette },
+  ]);
+  await fillCircle(oceane.id, 'Sport', CircleType.BASIC, [
+    { sentinel: julien },
+    { sentinel: nadia },
+  ]);
+
+  await fillCircle(chloe.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: mathis, leadSlot: LeadSlot.LEAD_1 },
+    { sentinel: gabriel },
+  ]);
+  await fillCircle(chloe.id, 'Voisins', CircleType.BASIC, [
+    { sentinel: camille },
+    { sentinel: sarah, status: LinkStatus.PENDING },
+  ]);
+
+  await fillCircle(ines.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: maxime, leadSlot: LeadSlot.LEAD_1 },
+    { sentinel: damien },
+    { sentinel: alicia },
+  ]);
+
+  // ---- Demo set: Léa, Gabriel, Chloé, Mathis — Gabriel and Chloé have
+  // 12–20 links (as Sentinel or companion), Léa and Mathis many more through
+  // the Chorale group below. Mathis is the only one with no Lead
+  // Sentinel, and the 8 PENDING links of the whole seed all involve one of them.
+  await fillCircle(lea.id, 'Immeuble', CircleType.BASIC, [
+    { sentinel: elise },
+    { sentinel: romain },
+    { sentinel: leon },
+    { sentinel: nadia },
+  ]);
+  await fillCircle(lea.id, 'Famille', CircleType.BASIC, [
+    { sentinel: damien },
+    { sentinel: coralie },
+    { sentinel: alicia },
+  ]);
+  await fillCircle(lea.id, 'Sport', CircleType.BASIC, [
+    { sentinel: julien },
+    { sentinel: nicolas },
+    { sentinel: hugo },
+  ]);
+  await fillCircle(lea.id, 'Travail', CircleType.BASIC, [{ sentinel: maxime }]);
+
+  await fillCircle(mathis.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: chloe },
+    { sentinel: leon },
+    { sentinel: gabriel },
+    { sentinel: lea },
+  ]);
+  await fillCircle(mathis.id, 'Amis', CircleType.BASIC, [
+    { sentinel: hugo },
+    { sentinel: yanis },
+    { sentinel: juliette, status: LinkStatus.PENDING },
+  ]);
+  await fillCircle(noah.id, 'Sport', CircleType.BASIC, [{ sentinel: mathis }]);
+  await fillCircle(thomas.id, 'Études', CircleType.BASIC, [{ sentinel: mathis }]);
+  await fillCircle(oceane.id, 'Sport', CircleType.BASIC, [{ sentinel: mathis }]);
+
+  await fillCircle(gabriel.id, 'Famille', CircleType.BASIC, [{ sentinel: laura }]);
+  await fillCircle(gabriel.id, 'Sport', CircleType.BASIC, [
+    { sentinel: julien },
+    { sentinel: nicolas },
+  ]);
+  await fillCircle(gabriel.id, 'Travail', CircleType.BASIC, [
+    { sentinel: ines, status: LinkStatus.PENDING },
+    { sentinel: maxime, status: LinkStatus.PENDING },
+  ]);
+
+  await fillCircle(chloe.id, 'Premier cercle', CircleType.FIRST, [{ sentinel: lea }]);
+  await fillCircle(chloe.id, 'Voisins', CircleType.BASIC, [{ sentinel: lucas }]);
+  await fillCircle(chloe.id, 'Amis', CircleType.BASIC, [
+    { sentinel: manon },
+    { sentinel: elise },
+    { sentinel: oceane, status: LinkStatus.PENDING },
+  ]);
+  await fillCircle(thomas.id, 'Amis', CircleType.BASIC, [{ sentinel: chloe }]);
+
+  // A 14-member group circle founded by Léa, with Mathis in it. Each
+  // invitation comes from someone already linked to the invitee (the trust
+  // chain inviteToGroup enforces) — Yanis and Océane through Mathis.
+  await seedGroup(lea, 'Chorale', [
+    { user: mathis, invitedBy: lea },
+    { user: theo, invitedBy: lea },
+    { user: laura, invitedBy: lea },
+    { user: camille, invitedBy: lea },
+    { user: lucas, invitedBy: lea },
+    { user: julien, invitedBy: lea },
+    { user: nicolas, invitedBy: lea },
+    { user: hugo, invitedBy: lea },
+    { user: elise, invitedBy: lea },
+    { user: juliette, invitedBy: lea },
+    { user: damien, invitedBy: lea },
+    { user: yanis, invitedBy: mathis },
+    { user: oceane, invitedBy: mathis },
+  ]);
+
   const rows = [
-    { role: 'Companion', name: 'Léa Dubois', phone: lea.phone, email: lea.email, note: 'Premier cercle (3) + Travail (2) + Voisins (3) + Famille (2)' },
-    { role: 'Companion', name: 'Noah Keller', phone: noah.phone, email: noah.email, note: 'Premier cercle (2) + Amis (2) + Sport (2) + Quartier (2)' },
-    { role: 'Companion', name: 'Thomas Guillod', phone: thomas.phone, email: thomas.email, note: 'Premier cercle (3, 2 Leads) + Études (3) + Famille (2)' },
-    { role: 'Companion', name: 'Emma Favre', phone: emma.phone, email: emma.email, note: 'Premier cercle vide — pas de Lead Sentinel' },
+    { role: 'Companion', name: 'Léa Dubois', phone: lea.phone, email: lea.email, note: 'DEMO — 45 links, founder of group Chorale (14). Premier cercle (3) + Travail (4) + Voisins (4) + Immeuble (4) + Famille (5) + Sport (3) + Amis (3); also Lead of Gabriel, Sentinel of Noah/Thomas/Chloé/Mathis' },
+    { role: 'Companion', name: 'Noah Keller', phone: noah.phone, email: noah.email, note: 'Premier cercle (3) + Amis (4) + Sport (3) + Quartier (4); also Lead of Zoé, Sentinel of Léa/Thomas' },
+    { role: 'Companion', name: 'Thomas Guillod', phone: thomas.phone, email: thomas.email, note: 'Premier cercle (4, 2 Leads) + Études (4) + Famille (2) + Amis (4); also Lead of Océane, Sentinel of Léa' },
+    { role: 'Companion', name: 'Emma Favre', phone: emma.phone, email: emma.email, note: 'Premier cercle vide — pas de Lead Sentinel; Sentinel of Léa/Noah' },
+    { role: 'Companion + Sentinel', name: 'Gabriel Rochat', phone: gabriel.phone, email: gabriel.email, note: 'DEMO — 15 links. own: Premier cercle (3, Lead Léa) + Famille (2) + Sport (2) + Travail (2 PENDING)' },
+    { role: 'Companion + Sentinel', name: 'Zoé Currat', phone: zoe.phone, email: zoe.email, note: 'own: Premier cercle (3, Leads Noah/Hugo) + Amis (2)' },
+    { role: 'Companion + Sentinel', name: 'Océane Bersier', phone: oceane.phone, email: oceane.email, note: 'own: Premier cercle (3, Lead Thomas) + Sport (2)' },
+    { role: 'Companion + Sentinel', name: 'Chloé Morel', phone: chloe.phone, email: chloe.email, note: 'DEMO — 14 links. own: Premier cercle (3, Lead Mathis) + Voisins (3) + Amis (3)' },
+    { role: 'Companion + Sentinel', name: 'Inès Bovet', phone: ines.phone, email: ines.email, note: 'own: Premier cercle (3, Lead Maxime)' },
+    { role: 'Companion + Sentinel', name: 'Mathis Perrin', phone: mathis.phone, email: mathis.email, note: 'DEMO — 33 links, member of group Chorale. own: Premier cercle (4, NO Lead) + Amis (3)' },
     { role: 'Lead Sentinel (Léa)', name: 'Gabriel Rochat', phone: gabriel.phone, email: gabriel.email, note: '' },
     { role: 'Sentinel (Léa)', name: 'Chloé Morel', phone: chloe.phone, email: chloe.email, note: '' },
     { role: 'Sentinel (Léa)', name: 'Mathis Perrin', phone: mathis.phone, email: mathis.email, note: '' },
@@ -547,13 +788,13 @@ async function main() {
     { role: 'Sentinel, Sport (Noah)', name: 'Julien Megevand', phone: julien.phone, email: julien.email, note: 'accepted' },
     { role: 'Sentinel, Sport (Noah)', name: 'Nadia', phone: nadia.phone, email: nadia.email, note: 'accepted, SMS only, no account' },
     { role: 'Sentinel, Quartier (Noah)', name: 'Elise Rey', phone: elise.phone, email: elise.email, note: 'accepted' },
-    { role: 'Sentinel, Quartier (Noah)', name: 'Romain Cuche', phone: romain.phone, email: romain.email, note: 'PENDING' },
+    { role: 'Sentinel, Quartier (Noah)', name: 'Romain Cuche', phone: romain.phone, email: romain.email, note: 'accepted' },
     { role: 'Lead Sentinel (Thomas)', name: 'Océane Bersier', phone: oceane.phone, email: oceane.email, note: 'LEAD_1' },
     { role: 'Lead Sentinel (Thomas)', name: 'Yanis Monney', phone: yanis.phone, email: yanis.email, note: 'LEAD_2' },
     { role: 'Sentinel (Thomas)', name: 'Léon Aebi', phone: leon.phone, email: leon.email, note: '' },
     { role: 'Sentinel, Études (Thomas)', name: 'Juliette Kolly', phone: juliette.phone, email: juliette.email, note: 'accepted' },
     { role: 'Sentinel, Études (Thomas)', name: 'Maxime Dupasquier', phone: maxime.phone, email: maxime.email, note: 'accepted' },
-    { role: 'Sentinel, Études (Thomas)', name: 'Alicia Nguyen', phone: alicia.phone, email: alicia.email, note: 'PENDING' },
+    { role: 'Sentinel, Études (Thomas)', name: 'Alicia Nguyen', phone: alicia.phone, email: alicia.email, note: 'accepted' },
     { role: 'Sentinel, Famille (Thomas)', name: 'Damien Chassot', phone: damien.phone, email: damien.email, note: 'accepted' },
     { role: 'Sentinel, Famille (Thomas)', name: 'Coralie', phone: coralie.phone, email: coralie.email, note: 'accepted, SMS only, no account' },
   ].map((r) => ({ ...r, email: r.email ?? '— (SMS only, no account)' }));

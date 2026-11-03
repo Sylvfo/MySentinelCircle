@@ -102,7 +102,12 @@ export class SentinelService {
         userSentinels: {
           include: {
             linkAsSentinel: {
-              select: { id: true, firstName: true, phone: true },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                phone: true,
+              },
             },
           },
           orderBy: { createdAt: 'asc' },
@@ -1153,6 +1158,9 @@ export class SentinelService {
             userCompanion: {
               select: {
                 id: true,
+                firstName: true,
+                lastName: true,
+                userName: true,
                 email: true,
                 phone: true,
                 status: true,
@@ -1223,6 +1231,43 @@ export class SentinelService {
       : [];
     const reporterById = new Map(reporters.map((r) => [r.id, r]));
 
+    // A 1st-circle Sentinel sees who else shares that 1st circle with them
+    // (accepted members only, names only) — batched in one query.
+    const firstCircleIds = links
+      .filter((l) => l.circle.circleType === CircleType.FIRST)
+      .map((l) => l.circle.id);
+    const firstCircleLinks = firstCircleIds.length
+      ? await this.prisma.linkSentinels.findMany({
+          where: {
+            circleId: { in: firstCircleIds },
+            status: LinkStatus.ACCEPTED,
+            userSentinelId: { not: userId },
+          },
+          select: {
+            circleId: true,
+            leadSlot: true,
+            linkAsSentinel: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
+    const firstCircleMembersByCircle = new Map<
+      string,
+      {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        isLead: boolean;
+      }[]
+    >();
+    for (const m of firstCircleLinks) {
+      const list = firstCircleMembersByCircle.get(m.circleId) ?? [];
+      list.push({ ...m.linkAsSentinel, isLead: m.leadSlot !== null });
+      firstCircleMembersByCircle.set(m.circleId, list);
+    }
+
     return links.map((l) => {
       const companion = l.circle.userCompanion;
       const isPrimary = l.circle.circleType === CircleType.FIRST;
@@ -1257,9 +1302,15 @@ export class SentinelService {
           : null,
         companion: {
           id: companion.id,
+          firstName: companion.firstName,
+          lastName: companion.lastName,
+          userName: companion.userName,
           email: companion.email,
           phone: companion.phone,
         },
+        firstCircleMembers: isPrimary
+          ? (firstCircleMembersByCircle.get(l.circle.id) ?? [])
+          : [],
         deathNotice: {
           isDeceased,
           pending,

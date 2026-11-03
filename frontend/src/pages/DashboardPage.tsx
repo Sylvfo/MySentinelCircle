@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
-import { getAlert, getMyParticipation, listAlerts, type AlertSummary } from '../api/alert';
+import { alertNeedsMe, getAlert, getMyParticipation, listAlerts, type MyAlertSummary } from '../api/alert';
 import { listCircles, listCompanions, type Circle, type Companion } from '../api/sentinel';
 import { Tile } from '../components/Tile';
 import { SecurityScoreBar } from '../components/SecurityScoreBar';
@@ -11,7 +11,7 @@ import { SecurityScoreBar } from '../components/SecurityScoreBar';
 export function DashboardPage() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  const [alerts, setAlerts] = useState<AlertSummary[]>([]);
+  const [alerts, setAlerts] = useState<MyAlertSummary[]>([]);
   const [circles, setCircles] = useState<Circle[]>([]);
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,10 +29,10 @@ export function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Normal vs Alert mode: a "Running Alert" card takes over the top of the
-  // dashboard whenever any alert concerning this viewer (their own, or one
-  // they're a Sentinel participant on) is still active.
-  const activeAlerts = alerts.filter((a) => a.alertStatus !== 'RESOLVED');
+  // Normal vs Alert mode: a "Running Alert" card takes over the top whenever
+  // an active alert needs this viewer to act (see alertNeedsMe). The red
+  // background itself is app-wide, set by AppShell.
+  const activeAlerts = alerts.filter((a) => alertNeedsMe(a, user?.id));
   const runningAlert = activeAlerts[0] ?? null;
   // "People watching over you" counts Sentinels, not circles — sum of
   // accepted members across every real circle (the system reserve circle
@@ -74,35 +74,41 @@ export function DashboardPage() {
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
 
   return (
-    <div className={runningAlert ? 'mode-alert' : undefined}>
+    <div>
       {error && <p className="form-error">{error}</p>}
 
+      {/* Every tile is a link as a whole — no separate "Open" button. */}
       {runningAlert && (
-        <Tile className="alert-active" title={t('dashboard.runningAlert.title')}>
-          <p className="form-hint">{t('dashboard.runningAlert.activeCount', { count: activeAlerts.length })}</p>
-          <p>
-            <strong>{t('dashboard.runningAlert.about')}</strong> {runningAlertName ?? runningAlert.label}
-          </p>
-          <p>
-            <strong>{t('dashboard.runningAlert.whatToDo')}</strong> {t('dashboard.runningAlert.whatToDoHint')}
-          </p>
-          <Link to="/running-alert">{t('dashboard.runningAlert.viewDetails')}</Link>
-        </Tile>
+        <Link to="/running-alert" className="tile-link">
+          <Tile className="alert-active" title={t('dashboard.runningAlert.title')}>
+            <p className="form-hint">{t('dashboard.runningAlert.activeCount', { count: activeAlerts.length })}</p>
+            <p>
+              <strong>{t('dashboard.runningAlert.about')}</strong> {runningAlertName ?? runningAlert.label}
+            </p>
+            <p>
+              <strong>{t('dashboard.runningAlert.whatToDo')}</strong> {t('dashboard.runningAlert.whatToDoHint')}
+            </p>
+          </Tile>
+        </Link>
       )}
 
       <div className="tile-grid">
-        <Tile title={t('securityScore.title')} actions={<Link to="/circles">{t('dashboard.open')}</Link>}>
-          <SecurityScoreBar />
-        </Tile>
-        <Tile title={t('dashboard.raiseAlert')} actions={<Link to="/alerts">{t('dashboard.open')}</Link>}>
-          <p style={{ color: 'var(--text-muted)' }}>{t('dashboard.raiseAlertHint')}</p>
-        </Tile>
-        <Tile title={t('dashboard.circles')} actions={<Link to="/circles">{t('dashboard.open')}</Link>}>
-          <p style={{ color: 'var(--text-muted)' }}>{t('dashboard.circlesHint', { count: sentinelCount })}</p>
-        </Tile>
-        <Tile title={t('dashboard.companions')} actions={<Link to="/companions">{t('dashboard.open')}</Link>}>
-          <p style={{ color: 'var(--text-muted)' }}>{t('dashboard.companionsHint', { count: companions.length })}</p>
-        </Tile>
+        <Link to="/alerts" className="tile-link">
+          <Tile className="tile-raise" title={t('dashboard.raiseAlert')}>
+            <p>{t('dashboard.raiseAlertHint')}</p>
+          </Tile>
+        </Link>
+        <Link to="/circles" className="tile-link">
+          <Tile title={t('dashboard.circles')}>
+            <p style={{ color: 'var(--text-muted)' }}>{t('dashboard.circlesHint', { count: sentinelCount })}</p>
+            <SecurityScoreBar barOnly />
+          </Tile>
+        </Link>
+        <Link to="/companions" className="tile-link">
+          <Tile title={t('dashboard.companions')}>
+            <p style={{ color: 'var(--text-muted)' }}>{t('dashboard.companionsHint', { count: companions.length })}</p>
+          </Tile>
+        </Link>
       </div>
     </div>
   );

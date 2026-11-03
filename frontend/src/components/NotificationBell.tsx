@@ -1,15 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
-import { getUnreadCount, listNotifications, markNotificationRead, type NotificationItem } from '../api/notification';
+import {
+  NOTIFICATIONS_CHANGED,
+  getUnreadCount,
+  listNotifications,
+  markNotificationRead,
+  type NotificationItem,
+} from '../api/notification';
 
 // Maps a notification to the page that already shows the entity it's
-// about — there's no per-entity route (e.g. no /alerts/:id) to deep-link
-// into, so this lands on the right page, not the right row.
+// about. A new message opens its conversation (with the sender); other
+// types have no per-entity route, so they land on the right page.
 function destinationFor(item: NotificationItem): string {
   if (item.type.startsWith('ALERT_')) return '/alerts';
-  if (item.type === 'NEW_MESSAGE') return '/messages';
+  if (item.type === 'NEW_MESSAGE') return item.actorUserId ? `/messages/${item.actorUserId}` : '/messages';
   if (item.type === 'SENTINEL_GROUP_INVITED') return '/circles';
   // DEATH_NOTICE_* falls through to the default below — /companions is
   // also where report/confirm/reject and the announcement itself live.
@@ -30,6 +36,7 @@ export function NotificationBell() {
   const { t } = useTranslation();
   const { socket } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [open, setOpen] = useState(false);
@@ -44,6 +51,13 @@ export function NotificationBell() {
 
   useEffect(() => {
     reloadCount();
+  }, [pathname]);
+
+  // Opening a conversation marks its message notifications read
+  // server-side, without going through this bell.
+  useEffect(() => {
+    window.addEventListener(NOTIFICATIONS_CHANGED, reloadCount);
+    return () => window.removeEventListener(NOTIFICATIONS_CHANGED, reloadCount);
   }, []);
 
   useEffect(() => {
@@ -78,7 +92,11 @@ export function NotificationBell() {
 
   const handleItemClick = async (item: NotificationItem) => {
     setOpen(false);
-    if (!item.readAt) {
+    setItems((list) => list.filter((i) => i.id !== item.id));
+    // A new message isn't marked read here: opening its conversation does
+    // it (for all of that conversation's messages at once), and until then
+    // it must stay unread so the Messages list still shows it in bold.
+    if (item.type !== 'NEW_MESSAGE') {
       try {
         await markNotificationRead(item.id);
         setUnreadCount((count) => Math.max(0, count - 1));
@@ -107,7 +125,7 @@ export function NotificationBell() {
               <button
                 type="button"
                 key={item.id}
-                className={`notification-item${item.readAt ? '' : ' unread'}`}
+                className="notification-item unread"
                 onClick={() => handleItemClick(item)}
               >
                 {t(`notifications.types.${translationKey(item)}`, { who: item.actorLabel ?? '' })}

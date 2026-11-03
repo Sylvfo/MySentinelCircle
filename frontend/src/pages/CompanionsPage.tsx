@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import {
   acceptCircleMove,
@@ -13,13 +14,14 @@ import {
   listMyInvitations,
   rejectDeathReport,
   reportDeath,
-  requestToBeSentinel,
   type Companion,
   type DeathNoticeAnnouncement,
   type Invitation,
 } from '../api/sentinel';
 import { Modal } from '../components/Modal';
 import { Tile } from '../components/Tile';
+import { CompanionIcon } from '../components/CompanionIcon';
+import { PRIMARY_AVATAR_COLOR, companionColor } from '../theme';
 
 export function CompanionsPage() {
   const { t } = useTranslation();
@@ -27,6 +29,7 @@ export function CompanionsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { linkId } = useParams();
 
   const reload = async () => {
     setError(null);
@@ -45,65 +48,166 @@ export function CompanionsPage() {
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
 
+  // Anything waiting on me goes first: a pending circle-move proposal or a
+  // death report to confirm. Invitations received sit above the list anyway.
+  const needsAnswer = (c: Companion) => !!c.proposedCircle || !!c.deathNotice.pending?.canConfirmOrReject;
+  const sorted = [...companions].sort((a, b) => Number(needsAnswer(b)) - Number(needsAnswer(a)));
+
+  // /companions/:linkId: one companion's details and actions, like a
+  // circle's own page on My Circles.
+  if (linkId) {
+    const c = companions.find((x) => x.linkId === linkId);
+    // Unknown id, or I just left this companion from their own page.
+    if (!c) return <Navigate to="/companions" replace />;
+    return (
+      <div className="page-bleed companion-page">
+        <Link to="/companions">{t('companions.backToList')}</Link>
+        {error && <p className="form-error">{error}</p>}
+        <div className="companion-detail-head">
+          <CompanionIcon
+            size={96}
+            color={companionColor(c.companion.id)}
+            shieldColor={c.leadSlot ? PRIMARY_AVATAR_COLOR : undefined}
+          />
+          <h1>
+            {c.companion.firstName} {c.companion.lastName}
+          </h1>
+          {c.companion.userName && <span className="companion-username">@{c.companion.userName}</span>}
+          {c.companion.phone && <span className="companion-contact">{c.companion.phone}</span>}
+          {c.companion.email && <span className="companion-contact">{c.companion.email}</span>}
+          {c.leadSlot && <p className="companion-lead-note">{t('companions.youAreLead')}</p>}
+          <Link to={`/messages/${c.companion.id}`} className="button-link">
+            {t('companions.sendMessage', { name: c.companion.firstName })}
+          </Link>
+        </div>
+        <CompanionPanel companion={c} onChange={reload} onError={setError} />
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <h1>{t('companions.title')}</h1>
-      <p style={{ color: 'var(--text-muted)' }}>{t('companions.intro')}</p>
-      {error && <p className="form-error">{error}</p>}
+    <div className="page-bleed sticky-header-page companion-page">
+      <div className="sticky-header">
+        <h1>{t('companions.title')}</h1>
+        <p style={{ color: 'var(--text-muted)' }}>{t('companions.intro')}</p>
+        {error && <p className="form-error">{error}</p>}
+        <div className="header-actions">
+          <Link to="/companions/new" className="button-link">
+            {t('companions.new')}
+          </Link>
+        </div>
+      </div>
 
       <InvitationsInbox invitations={invitations} onChange={reload} />
-      <RequestForm onError={setError} />
 
       {companions.length === 0 ? (
         <div className="empty-state">{t('companions.empty')}</div>
       ) : (
-        <div className="tile-grid">
-          {companions.map((c) => (
-            <Tile
-              key={c.linkId}
-              title={c.companion.email || c.companion.phone}
-              actions={
-                !c.proposedCircle && (
-                  <button
-                    className="ghost"
-                    onClick={() => {
-                      if (window.confirm(t('companions.confirmLeave'))) void leaveMembership(c.linkId).then(reload);
-                    }}
-                  >
-                    {t('companions.leave')}
-                  </button>
-                )
-              }
-            >
-              <div className="row">
-                <span>
-                  <span className="badge">{t('companions.inCircle', { label: c.circle.label })}</span>
-                  <span className="badge">{t(`sentinel.type.${c.sentinelType}`)}</span>
-                </span>
-              </div>
-              {c.proposedCircle && (
-                <div className="row">
-                  <span>
-                    {t('companions.circleMoveProposed', {
-                      who: c.companion.email || c.companion.phone,
-                    })}
-                  </span>
-                  <span className="row-actions">
-                    <button onClick={() => acceptCircleMove(c.linkId).then(reload)}>
-                      {t('companions.acceptCircleMove')}
-                    </button>
-                    <button className="ghost" onClick={() => declineCircleMove(c.linkId).then(reload)}>
-                      {t('companions.declineCircleMove')}
-                    </button>
-                  </span>
-                </div>
-              )}
-              <DeathNoticeControls companion={c} onChange={reload} onError={setError} />
-            </Tile>
+        <div className="companion-grid">
+          {sorted.map((c) => (
+            <Link key={c.linkId} to={`/companions/${c.linkId}`} className="companion-card">
+              {/* Their own blue-violet shade; the shield turns gold when I'm their Lead. */}
+              <CompanionIcon
+                size={72}
+                color={companionColor(c.companion.id)}
+                shieldColor={c.leadSlot ? PRIMARY_AVATAR_COLOR : undefined}
+              />
+              <span className="companion-name">{c.companion.firstName}</span>
+              {needsAnswer(c) && <span className="companion-needs-answer">{t('companions.needsAnswer')}</span>}
+            </Link>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+// What can be done about one companion, grouped like a Sentinel's panel on
+// My Circles: my place in their circles, then the death notice, then leaving.
+function CompanionPanel({
+  companion: c,
+  onChange,
+  onError,
+}: {
+  companion: Companion;
+  onChange: () => void;
+  onError: (m: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const run = (action: () => Promise<unknown>) =>
+    action()
+      .then(onChange)
+      .catch((err) => onError(err instanceof ApiError ? err.message : String(err)));
+
+  return (
+    <Tile className="companion-panel">
+      <section className="member-panel-section">
+        <h4>{t('companions.sections.myPlace')}</h4>
+        <div>
+          <span className="badge">{t('companions.inCircle', { label: c.circle.label })}</span>
+          <span className="badge">{t(`sentinel.type.${c.sentinelType}`)}</span>
+        </div>
+        {c.proposedCircle && (
+          <>
+            <p style={{ margin: 0 }}>{t('companions.circleMoveProposed', { who: c.companion.firstName })}</p>
+            <div className="row">
+              <button onClick={() => run(() => acceptCircleMove(c.linkId))}>{t('companions.acceptCircleMove')}</button>
+              <button className="ghost" onClick={() => run(() => declineCircleMove(c.linkId))}>
+                {t('companions.declineCircleMove')}
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+
+      {c.circle.isPrimary && (
+        <section className="member-panel-section">
+          <h4>{t('companions.sections.firstCircle', { name: c.companion.firstName })}</h4>
+          {c.firstCircleMembers.length === 0 ? (
+            <p style={{ margin: 0, color: 'var(--text-muted)' }}>{t('companions.firstCircleAlone')}</p>
+          ) : (
+            <div>
+              {c.firstCircleMembers.map((m) => (
+                <span key={m.id} className="badge">
+                  {[m.firstName, m.lastName].filter(Boolean).join(' ')}
+                  {m.isLead && ` · ${t('companions.firstCircleLead')}`}
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      <DeathNoticeSection companion={c} onChange={onChange} onError={onError} />
+
+      {!c.proposedCircle && (
+        <section className="member-panel-section">
+          <button className="ghost danger" onClick={() => setConfirmingLeave(true)}>
+            {t('companions.leave', { name: c.companion.firstName })}
+          </button>
+        </section>
+      )}
+      {confirmingLeave && (
+        <Modal title={t('companions.leaveTitle')} onClose={() => setConfirmingLeave(false)}>
+          <p>{t('companions.confirmLeave', { name: c.companion.firstName })}</p>
+          <div className="row">
+            <button
+              className="danger"
+              onClick={() => {
+                setConfirmingLeave(false);
+                void run(() => leaveMembership(c.linkId));
+              }}
+            >
+              {t('companions.leaveConfirmButton')}
+            </button>
+            <button className="ghost" onClick={() => setConfirmingLeave(false)}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </Tile>
   );
 }
 
@@ -133,6 +237,19 @@ function InvitationsInbox({ invitations, onChange }: { invitations: Invitation[]
 // Report/confirm/reject a death, and view the announcement once deceased.
 // Eligibility (who sees which button) is decided server-side and carried
 // on the companion row (listCompanions) — this component just renders it.
+// Only rendered (as its own panel section) when there's something to show.
+function DeathNoticeSection(props: { companion: Companion; onChange: () => void; onError: (m: string) => void }) {
+  const { t } = useTranslation();
+  const { deathNotice } = props.companion;
+  if (!deathNotice.isDeceased && !deathNotice.pending && !deathNotice.canReport) return null;
+  return (
+    <section className="member-panel-section">
+      <h4>{t('companions.sections.deathNotice')}</h4>
+      <DeathNoticeControls {...props} />
+    </section>
+  );
+}
+
 function DeathNoticeControls({
   companion,
   onChange,
@@ -224,40 +341,4 @@ function DeathNoticeControls({
   }
 
   return null;
-}
-
-function RequestForm({ onError }: { onError: (m: string) => void }) {
-  const { t } = useTranslation();
-  const [phone, setPhone] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [info, setInfo] = useState<string | null>(null);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setInfo(null);
-    try {
-      await requestToBeSentinel(phone.trim());
-      setPhone('');
-      setInfo(t('companions.requestSent'));
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form className="panel inline-form" onSubmit={submit}>
-      <h2>{t('companions.requestTitle')}</h2>
-      <p style={{ color: 'var(--text-muted)' }}>{t('companions.requestIntro')}</p>
-      <div className="row">
-        <input type="tel" required placeholder={t('companions.targetPhone')} value={phone} onChange={(e) => setPhone(e.target.value)} />
-        <button type="submit" disabled={submitting || !phone.trim()}>
-          {t('companions.sendRequest')}
-        </button>
-      </div>
-      {info && <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{info}</p>}
-    </form>
-  );
 }

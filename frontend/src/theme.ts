@@ -8,6 +8,8 @@ export const PRIMARY_RING_COLOR = '#F7ECDC';
 export const PRIMARY_AVATAR_COLOR = '#D9A066';
 export const PRIMARY_LEAD_COLOR = '#B8822E';
 export const PENDING_AVATAR_COLOR = '#9a9a9a';
+// A Sentinel who is themselves the subject of an alert in progress.
+export const IN_ALERT_AVATAR_COLOR = '#b3261e';
 export const PAGE_BG_COLOR = '#EAF4F2';
 
 interface CirclePalette {
@@ -29,4 +31,15 @@ export function circlePalette(index: number): CirclePalette {
 // Kept for any other spot still using the old flat list.
 export function circleColor(index: number): string {
   return circlePalette(index).color;
+}
+
+// Each companion's own stable shade between blue and violet, picked from
+// their id so it stays the same from one visit to the next. When I'm their
+// Lead, only the shield turns gold (PRIMARY_AVATAR_COLOR); the person keeps
+// this shade.
+export function companionColor(id: string): string {
+  let hash = 0;
+  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  const hue = 220 + (hash % 51); // 220 = blue … 270 = violet
+  return `hsl(${hue} 60% 52%)`;
 }

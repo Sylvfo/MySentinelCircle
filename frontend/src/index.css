@@ -137,11 +137,29 @@ button, input {
 .app-shell {
   display: flex;
   min-height: 100vh;
+  /* App-wide light blue gradient; fixed so it spans the viewport, not the
+     page height. Exposed as a variable so sticky headers can repaint it. */
+  --page-gradient: linear-gradient(180deg, #eef5fc 0%, #b9d4f0 100%);
+  background: var(--page-gradient) fixed;
+}
+
+/* Every page turns red while an alert needs the viewer (AppShell). */
+.app-shell.alert-mode {
+  --page-gradient: linear-gradient(180deg, #fdeceb 0%, #f4b4b0 100%);
 }
 
 .app-nav {
   width: 250px;
   flex-shrink: 0;
+  /* White up to its border line, over the app-wide blue/red gradient. */
+  background: var(--bg);
+  /* Always visible: stays put while the page scrolls. */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
   border-right: 1px solid var(--border);
   padding: 1.25rem 1rem;
   display: flex;
@@ -189,6 +207,57 @@ button, input {
 .app-nav .user-name {
   color: var(--text-muted);
   font-size: 0.85rem;
+}
+
+/* Overrides `.app-nav a`'s block layout: the name sits inline in .user-row. */
+.app-nav button.user-name {
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.app-nav button.user-name:hover,
+.app-nav button.user-name[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* UserMenu dropdown: fixed, placed under the name button by script. */
+.user-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 10rem;
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+}
+
+.user-menu a,
+.user-menu button {
+  display: block;
+  padding: 0.5rem 0.7rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.user-menu a:hover,
+.user-menu button:hover {
+  background: var(--bg-subtle);
 }
 
 .app-nav a {
@@ -435,6 +504,41 @@ button, input {
   margin-top: 0;
 }
 
+/* A whole tile as a link (Dashboard): keeps the tile's own text colors and
+   lifts slightly on hover to show it's clickable. */
+.tile-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.tile-link .tile {
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.tile-link:hover .tile,
+.tile-link:focus-visible .tile {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+/* Dashboard's "Raise An Alert" tile, styled as a red call-to-action. */
+.tile.tile-raise {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.tile.tile-raise p {
+  margin: 0;
+  opacity: 0.9;
+}
+
+.tile-grid .tile-link .tile {
+  margin-top: 0;
+  height: 100%;
+}
+
 /* Alert-type selection cards (AlertsPage) */
 .alert-type-grid {
   display: grid;
@@ -466,19 +570,6 @@ button, input {
 
 /* Normal vs Alert visual mode — a soft gradient accent when the viewer has
    an active alert to pay attention to, cool/calm otherwise. */
-.mode-alert {
-  margin: -2rem -2rem 1.5rem;
-  padding: 2rem 2rem 1.5rem;
-  background: linear-gradient(180deg, var(--accent-subtle) 0%, #f7dade 100%);
-}
-
-@media (max-width: 640px) {
-  .mode-alert {
-    margin: -1rem -1rem 1.25rem;
-    padding: 1rem 1rem 1.25rem;
-  }
-}
-
 .modal-dialog {
   border: none;
   border-radius: var(--radius);
@@ -488,6 +579,14 @@ button, input {
 
 .modal-dialog::backdrop {
   background: rgba(0, 0, 0, 0.5);
+}
+
+/* .panel has no fill of its own (pages paint the gradient behind it); a
+   modal floats over the backdrop, so it needs a solid one. */
+.modal-dialog .panel {
+  margin-top: 0;
+  background: var(--bg);
+  box-shadow: var(--shadow);
 }
 
 .row {
@@ -534,6 +633,17 @@ button, input {
   background: var(--accent);
   color: white;
   cursor: pointer;
+}
+
+/* A router Link that looks like a primary button (e.g. "New circle"). */
+.app-content a.button-link {
+  display: inline-block;
+  margin-top: 1.25rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  text-decoration: none;
 }
 
 .app-content button:disabled {
@@ -624,32 +734,78 @@ button, input {
   font-size: 0.9rem;
 }
 
-/* My Circles page — soft blue-green background, same bleed trick as .mode-alert */
-.circles-page-bg{margin:-2rem -2rem 0; padding:2rem 2rem 3rem; background:#EAF4F2; min-height:calc(100vh - 4rem);}
+/* Full-bleed page wrapper (cancels .app-content padding): spacing only, the background is the app-wide gradient (.app-shell) */
+.page-bleed{margin:-2rem -2rem 0; padding:2rem 2rem 3rem; min-height:calc(100vh - 4rem);}
 @media (max-width:640px){
-  .circles-page-bg{margin:-1rem -1rem 0; padding:1rem 1rem 2rem;}
+  .page-bleed{margin:-1rem -1rem 0; padding:1rem 1rem 2rem;}
 }
 
 /* My Circles — ring overview (CircleRing.tsx) */
-.circles-overview{display:flex; flex-direction:column; align-items:center; gap:1.5rem; margin-top:1.5rem;}
-.circles-primary-row{display:flex; justify-content:center;}
-.circles-other-row{display:flex; flex-wrap:wrap; justify-content:center; gap:2.5rem; max-width:900px;}
-.circles-other-row > div:nth-child(even){margin-top:2.2rem;}
-.circles-other-row > div:nth-child(3n+2){margin-top:1rem;}
+.circles-overview{display:flex; flex-direction:column; align-items:center; gap:0; margin-top:2.75rem;} /* room for the top avatar, which overhangs the ring */
+.circles-primary-row{display:flex; justify-content:center; padding-right:25%;} /* 1st circle: nudged left */
+.header-actions{display:flex; flex-wrap:wrap; justify-content:flex-end; gap:0.5rem; margin-top:0.75rem;}
+.header-actions a.button-link{margin-top:0; text-align:center;}
+.circles-other-row{display:flex; flex-wrap:wrap; justify-content:center; gap:1rem; max-width:900px; margin-top:0.5rem;} /* rings close, never touching (avatars overhang ~23px) */
+.circles-other-row > div:nth-child(even){margin-top:1rem;}
+.circles-other-row > div:nth-child(3n+2){margin-top:0.5rem;}
+/* Mobile: rings zigzag left/right and may run up to a third off-screen
+   (clipped by .page-bleed), so they stay big on a narrow screen. */
+@media (max-width:640px){
+  /* clip, not hidden: hidden would make this a scroll box and break the sticky header. */
+  .page-bleed{overflow-x:clip;}
+  .circles-overview{align-items:stretch;}
+  .circles-primary-row{justify-content:flex-start; padding-right:0;}
+  /* .app-content prefix: outranks the ring's own `all:unset` reset further down. */
+  .app-content .circles-primary-row > .circle-ring{flex-shrink:0; margin-left:-87px;} /* 260px ring: 1/3 hidden */
+  .circles-other-row{flex-direction:column; flex-wrap:nowrap; gap:0;}
+  .circles-other-row > div,
+  .circles-other-row > div:nth-child(even),
+  .circles-other-row > div:nth-child(3n+2){margin-top:0;}
+  /* Left and right rings never share a column, so they may overlap in height;
+     two rings on the same side stay ~50px apart (step 130px for a 210px ring). */
+  .circles-other-row > div:nth-child(n+2){margin-top:-5rem;}
+  .circles-other-row > div:nth-child(odd){align-self:flex-end; margin-right:-70px;} /* 210px ring: 1/3 hidden */
+  .circles-other-row > div:nth-child(even){align-self:flex-start; margin-left:-70px;}
+}
 
 /* Higher specificity than .app-content button (background/padding/radius) on
    purpose — this is a <button> for accessibility, but must look like plain
    circular content, not the app's default button chrome. */
-.app-content button.circle-ring{all:unset; position:relative; cursor:pointer; border-radius:50%; display:block; background:none; padding:0;}
+.app-content .circle-ring{all:unset; position:relative; cursor:pointer; border-radius:50%; display:block; background:none; padding:0;}
+.circle-detail{display:flex; flex-direction:column; align-items:center; gap:2rem; margin-top:3.5rem;} /* ring centered, panel below */
+.circle-detail-side{width:100%; max-width:520px; min-width:0;}
+.circle-detail-ring{display:flex; flex-direction:column; align-items:center; gap:1.25rem;}
+.app-content button.circle-add-btn{border-radius:999px; padding:0.55rem 1.1rem;}
+.circle-detail-side .tile{margin-top:0;}
+.circle-detail-head{display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem 0.75rem; margin-bottom:1rem;}
+.circle-detail-head h2{margin:0; display:flex; align-items:center; gap:0.5rem;}
+.circle-detail-eyebrow{flex-basis:100%; font-size:0.8rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-muted);}
+.circle-detail-head .tile-actions{margin-left:auto;}
+.circle-dot{display:inline-block; width:10px; height:10px; border-radius:50%;}
+.member-panel h3{margin:0 0 0.2rem;}
+.member-panel-phone{margin:0 0 0.5rem; color:var(--text-muted); font-variant-numeric:tabular-nums;}
+.add-from-circle{margin-bottom:1.25rem; padding-bottom:1rem; border-bottom:1px solid var(--border);}
+.member-panel-badges{margin-bottom:0.9rem;}
+.member-panel-badges .badge:first-child{margin-left:0;}
+.member-panel-section{display:flex; flex-direction:column; align-items:flex-start; gap:0.6rem; padding:0.9rem 0; border-top:1px solid var(--border);}
+.member-panel-section:first-of-type{border-top:none; padding-top:0;}
+.member-panel-section h4{margin:0; font-size:0.8rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
+.member-panel-close{display:flex; justify-content:flex-end; margin-top:1rem;}
 .circle-ring:focus-visible{outline:2px solid var(--accent); outline-offset:4px;}
-.circle-ring.expanded{box-shadow:0 0 0 3px var(--accent-subtle);}
-.circle-ring-border{position:absolute; inset:0; border-radius:50%; border-style:solid; border-width:8px; background:#fff; pointer-events:none;}
+.circle-ring-border{position:absolute; inset:0; border-radius:50%; border-style:solid; border-width:5px; background:transparent; pointer-events:none;}
+.circle-ring-border.inner{inset:10px;} /* group circles: double line */
 .circle-ring-center{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:0 42px; font-weight:700; font-family:var(--font-brand); pointer-events:none;}
-.circle-ring-add{position:absolute; right:2px; bottom:2px; width:26px; height:26px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; line-height:1; box-shadow:0 1px 4px rgba(0,0,0,0.25); pointer-events:none;}
 
-.circle-avatar{position:absolute; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.18));}
+.app-content .circle-avatar{all:unset; position:absolute; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.18));}
+.app-content button.circle-avatar{cursor:pointer;}
+.circle-avatar:focus-visible,
+.circle-avatar.selected{outline:2px solid var(--accent); outline-offset:3px; border-radius:50%;}
+/* Detail view's "+": invite a Sentinel into this circle. */
 .circle-avatar svg{width:92%; height:92%;}
 .circle-avatar-lead{position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:3px; font-size:10px; font-weight:700; color:#B8822E; white-space:nowrap;}
+.circle-avatar-caption{position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:2px; display:flex; flex-direction:column; align-items:center; white-space:nowrap; line-height:1.2;}
+.circle-avatar-name{font-size:12px; font-weight:700; color:var(--text);}
+.circle-avatar-lead-tag{font-size:10px; font-weight:700; color:#B8822E;}
 .circle-msg-badge{position:absolute; right:-4px; bottom:-4px; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.25);}
 .circle-msg-badge svg{width:15px; height:15px;}
 
@@ -669,6 +825,9 @@ button, input {
     padding: 0.6rem 0.75rem;
     border-right: none;
     border-bottom: 1px solid var(--border);
+    align-self: stretch;
+    /* Fixed height: .sticky-header sticks right below it (top: 52px). */
+    height: 52px;
   }
 
   .app-nav .brand {
@@ -787,8 +946,38 @@ button, input {
   background: var(--text-muted);
 }
 
-.security-score-label {
-  margin: 0.5rem 0 0;
+/* Sticky page header (My Circles, Companions): title, intro and main
+   buttons stay fixed while the content scrolls underneath; repaints the page
+   gradient so nothing shows through. The page wrapper drops its top padding
+   so the header starts right where it sticks and never shifts first. */
+.sticky-header-page {
+  padding-top: 0;
+}
+
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 -2rem;
+  padding: 2rem 2rem 1rem;
+  background: var(--page-gradient) fixed;
+}
+
+/* Circles page: the score as a small caption + bar instead of a tile. */
+.security-score-compact {
+  max-width: 420px;
+  margin-top: 1rem;
+}
+
+.security-score-compact h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.security-score-compact .security-score-missing {
+  font-size: 0.8rem;
 }
 
 .security-score-missing {
@@ -797,3 +986,188 @@ button, input {
   color: var(--text-muted);
   font-size: 0.9rem;
 }
+
+/* Info page: readable line length for the explanations. */
+.info-page {
+  max-width: 680px;
+}
+
+.info-page ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Mobile .sticky-header: below the sticky top bar, matching the page's 1rem
+   gutter. Kept last so it outranks the base rule above. */
+@media (max-width: 640px) {
+  .sticky-header-page {
+    padding-top: 0;
+  }
+
+  .sticky-header {
+    top: 52px;
+    margin: 0 -1rem;
+    padding: 1rem 1rem 1rem;
+  }
+}
+
+/* Companions: blue-violet family (Circles uses blue/teal), shield + person
+   icon (vs the Sentinels' plain silhouette). */
+:root {
+  --companion-color: #5b5bd6;
+}
+
+.companion-icon {
+  flex-shrink: 0;
+  color: var(--companion-color);
+}
+
+.companion-contact {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.companion-username {
+  color: var(--companion-color);
+  font-weight: 700;
+}
+
+/* Destructive actions (e.g. stop watching over a companion). */
+.app-content button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.app-content button.ghost.danger {
+  background: none;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.companion-lead-note {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #b8822e;
+}
+
+/* List: just the icon, the name and a Lead note; tap to open the details. */
+.companion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.app-content a.companion-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.9rem 0.5rem;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+  text-align: center;
+}
+
+.app-content a.companion-card:hover,
+.app-content a.companion-card:focus-visible {
+  background: rgba(91, 91, 214, 0.08);
+}
+
+.companion-name {
+  font-weight: 700;
+}
+
+.companion-needs-answer {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+/* Detail page */
+.companion-detail-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 2rem 0 1.5rem;
+  text-align: center;
+}
+
+.companion-detail-head h1 {
+  margin: 0.4rem 0 0;
+}
+
+.companion-panel {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* The page's own buttons pick up the blue-violet too. */
+.companion-page a.button-link {
+  background: var(--companion-color);
+}
+
+/* Messages list: one clickable row per conversation — name, then a one-line
+   preview of the last message. Higher specificity than .app-content button. */
+.conversation-list{display:flex; flex-direction:column; padding:0;}
+.app-content button.conversation-row{display:flex; flex-direction:column; align-items:flex-start; gap:0.2rem; width:100%; padding:0.75rem 1rem; background:none; color:var(--text); border-radius:0; border-bottom:1px solid var(--border); text-align:left; font:inherit; font-weight:400;}
+.app-content button.conversation-row:last-child{border-bottom:none;}
+.app-content button.conversation-row:hover{background:var(--bg-subtle);}
+.conversation-name{display:flex; align-items:center; gap:0.4rem;}
+.conversation-preview{max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--text-muted); font-size:0.9rem;}
+.app-content button.conversation-row.unread{background:var(--accent-subtle);}
+.app-content button.conversation-row.unread .conversation-name,
+.app-content button.conversation-row.unread .conversation-preview{font-weight:700; color:var(--text);}
+
+/* Conversation page: who the other person is + any running alert, fixed at
+   the top (.sticky-header); the messages scroll underneath. */
+.conversation-header{display:flex; flex-direction:column; gap:0.75rem; border-bottom:1px solid var(--border);}
+.conversation-contact{display:flex; align-items:flex-start; gap:1rem;}
+.conversation-contact h1{margin:0;}
+.conversation-contact-details{display:flex; flex-wrap:wrap; gap:0.25rem 1rem; margin:0.25rem 0 0.5rem; color:var(--text-muted); font-size:0.9rem;}
+.conversation-alert{display:flex; flex-direction:column; gap:0.2rem; padding:0.6rem 0.8rem; border-radius:var(--radius); background:var(--accent-subtle); border-left:4px solid var(--danger);}
+.conversation-alert-none{margin:0; color:var(--text-muted); font-size:0.9rem;}
+.conversation-compose{margin-top:1rem;}
+
+.app-content a.button-link.member-panel-message{margin:0 0 0.5rem;}
+
+/* History list: one clickable row per resolved alert — its name/keyword,
+   then who it was about and when. */
+.history-list{display:flex; flex-direction:column; padding:0;}
+.app-content a.history-row{display:flex; flex-direction:column; gap:0.2rem; padding:0.75rem 1rem; color:var(--text); text-decoration:none; border-bottom:1px solid var(--border);}
+.app-content a.history-row:last-child{border-bottom:none;}
+.app-content a.history-row:hover{background:var(--bg-subtle);}
+.history-label{font-weight:700;}
+.history-meta{color:var(--text-muted); font-size:0.9rem;}
+
+/* Raise Alert: the 4 tiles, 2x2 on desktop, stacked on mobile. Travel mode
+   isn't built yet — dimmed and not clickable. */
+.raise-grid{grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));}
+.tile.tile-soon{opacity:0.6; height:100%; margin-top:0;}
+
+/* Raise Alert form (all 3 tiles): optional fields above the big red button. */
+.raise-self-form label{display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.9rem; font-weight:600;}
+.raise-self-form textarea,.raise-self-form input,.raise-self-form select{font:inherit; font-weight:400; padding:0.5rem 0.6rem; border:1px solid var(--border); border-radius:6px;}
+.alert-message{margin:0.5rem 0;}
+.alert-message p{margin:0.2rem 0 0; white-space:pre-wrap;}
+
+/* Alert page sections: To do / To know / Discussion, then the ways out
+   (leave, stop the alert) at the very bottom, set apart from the rest. */
+.alert-section{margin-top:1.5rem;}
+.alert-section h2{margin:0 0 0.6rem; font-size:0.85rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
+.alert-timeline-toggle summary{cursor:pointer; font-weight:600; margin:0.75rem 0 0.4rem;}
+.alert-exit{display:flex; flex-wrap:wrap; align-items:flex-start; gap:0.75rem; margin-top:2rem; padding-top:1rem; border-top:1px solid var(--border);}
+.running-alert-header h1{margin:0.4rem 0 0.2rem; display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem;}
+.running-alert-meta{margin:0; color:var(--text-muted);}
+
+/* One line above "To do": what the viewer is responsible for here. */
+.alert-role{margin:1rem 0 0; padding:0.6rem 0.8rem; border-radius:var(--radius); background:var(--accent-subtle); color:var(--accent); font-weight:600;}
+
+.stop-final-word{display:flex; flex-direction:column; gap:0.3rem; margin:0.5rem 0 1rem; font-weight:600;}
+.stop-final-word textarea{font:inherit; font-weight:400; padding:0.5rem 0.6rem; border:1px solid var(--border); border-radius:6px;}

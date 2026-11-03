@@ -20,6 +20,30 @@ export interface AlertSummary {
   closedById: string | null;
 }
 
+// listAlerts() rows only: the caller's own participation (null on their own
+// alert), to tell whether an alert needs them to act.
+export interface MyAlertSummary extends AlertSummary {
+  myParticipation: { status: string; circleId: string } | null;
+  // Who the alert is about.
+  userCompanion: { firstName: string; lastName: string | null };
+}
+
+// Needs the caller now: it's their own alert, they're in its 1st circle
+// (and haven't left), or they've been asked a question still unanswered.
+export function alertNeedsMe(alert: MyAlertSummary, userId: string | undefined): boolean {
+  if (alert.alertStatus === 'RESOLVED') return false;
+  if (alert.userCompanionId === userId) return true;
+  const mine = alert.myParticipation;
+  if (!mine || mine.status === 'CLOSED') return false;
+  return mine.circleId === alert.firstCircleId || mine.status === 'CONTACTED';
+}
+
+// Outside the companion's 1st circle: such a viewer only sees the alert's
+// name, statuses and their own answer, not its details.
+export function isOuterCircleViewer(alert: MyAlertSummary, userId: string | undefined): boolean {
+  return alert.userCompanionId !== userId && alert.myParticipation?.circleId !== alert.firstCircleId;
+}
+
 export interface AlertParticipant {
   id: string;
   status: string;
@@ -64,7 +88,7 @@ export interface AlertDetail extends AlertSummary {
 }
 
 export interface TimelineEvent {
-  type: 'ALERT_RAISED' | 'CONTACTED' | 'RESPONDED' | 'LEAD_CLAIMED' | 'ALERT_CLOSED';
+  type: 'ALERT_RAISED' | 'CONTACTED' | 'RESPONDED' | 'LEAD_CLAIMED' | 'LEFT' | 'ALERT_CLOSED';
   at: string;
   actorLabel: string;
   detail?: string;
@@ -79,7 +103,11 @@ export const closeAlert = (id: string) => apiPost<AlertSummary>(`/alert/${id}/cl
 
 export const claimLead = (id: string) => apiPost<AlertDetail>(`/alert/${id}/claim-lead`, {});
 
-export const listAlerts = () => apiGet<AlertSummary[]>('/alert/mine');
+// "I can't help anymore": the caller's participation becomes CLOSED. A Lead
+// can only leave once another Lead has taken the lead after them.
+export const leaveAlert = (id: string) => apiPost<AlertParticipant>(`/alert/${id}/leave`, {});
+
+export const listAlerts = () => apiGet<MyAlertSummary[]>('/alert/mine');
 
 export const getAlert = (id: string) => apiGet<AlertDetail>(`/alert/${id}`);
 

@@ -48,9 +48,11 @@ export class NotificationService {
     return notification;
   }
 
+  // Unread only — a notification disappears once read (clicked, or its
+  // conversation opened); there's no history of old ones.
   listMine(userId: string) {
     return this.prisma.notification.findMany({
-      where: { userId },
+      where: { userId, readAt: null },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });

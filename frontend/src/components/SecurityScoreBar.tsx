@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { getSecurityScore, type SecurityScore } from '../api/sentinel';
 
 // `refreshKey` changes when the page's circles reload, so the bar follows.
-export function SecurityScoreBar({ refreshKey }: { refreshKey?: number }) {
+// `barOnly` drops the missing-items notes (Dashboard tile).
+export function SecurityScoreBar({ refreshKey, barOnly }: { refreshKey?: number; barOnly?: boolean }) {
   const { t } = useTranslation();
   const [security, setSecurity] = useState<SecurityScore | null>(null);
 
@@ -31,10 +32,7 @@ export function SecurityScoreBar({ refreshKey }: { refreshKey?: number }) {
         />
         <div className="security-score-minimum" />
       </div>
-      <p className="security-score-label">
-        <strong>{security.score} %</strong> — {t(`securityScore.levels.${security.level}`)}
-      </p>
-      {security.missing.length > 0 && (
+      {!barOnly && security.missing.length > 0 && (
         <ul className="security-score-missing">
           {security.missing.map((item) => (
             <li key={item}>{t(`securityScore.missing.${item}`)}</li>

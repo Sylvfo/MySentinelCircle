@@ -117,11 +117,11 @@ describe('NotificationService', () => {
   });
 
   describe('listMine / getUnreadCount', () => {
-    it('scopes the list to the caller, newest first', async () => {
+    it('scopes the list to the caller, unread only, newest first', async () => {
       await service.listMine('user-1');
 
       expect(prisma.notification.findMany).toHaveBeenCalledWith({
-        where: { userId: 'user-1' },
+        where: { userId: 'user-1', readAt: null },
         orderBy: { createdAt: 'desc' },
         take: 50,
       });
