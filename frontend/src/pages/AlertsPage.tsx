@@ -308,7 +308,17 @@ export function StopAlertButton({ alert, onStopped }: { alert: MyAlertSummary; o
 // act on right now — first, for someone under stress), "To know"
 // (read-only), the discussion, then the ways out at the very bottom
 // (leave, then `footer` — the Running Alert page's "Stop the alert").
-export function AlertDetailPanel({ alertId, footer }: { alertId: string; footer?: ReactNode }) {
+// `view: 'chat'` renders only the alert's conversations — the Running Alert
+// page shows them on their own page, reached from a button in its header.
+export function AlertDetailPanel({
+  alertId,
+  footer,
+  view = 'main',
+}: {
+  alertId: string;
+  footer?: ReactNode;
+  view?: 'main' | 'chat';
+}) {
   const { t } = useTranslation();
   const { user, socket } = useAuth();
   const [detail, setDetail] = useState<AlertDetail | null>(null);
@@ -389,13 +399,21 @@ export function AlertDetailPanel({ alertId, footer }: { alertId: string; footer?
 
   if (!detail) {
     if (myParticipation) {
+      // An outer circle answers the questions it was asked — nothing to show
+      // without any, or once they've left the alert.
       const canRespondLight =
-        myParticipation.status !== 'WAITING' && myParticipation.alert.alertStatus !== 'RESOLVED';
+        myParticipation.questions.length > 0 &&
+        myParticipation.status !== 'WAITING' &&
+        myParticipation.status !== 'CLOSED' &&
+        myParticipation.alert.alertStatus !== 'RESOLVED';
       const canChat =
         !!myParticipation.firstCircleMessagingModeAtAlert &&
         myParticipation.firstCircleMessagingModeAtAlert !== 'NONE' &&
         myParticipation.alert.alertStatus !== 'RESOLVED';
       const canLeaveLight = myParticipation.status !== 'CLOSED' && myParticipation.alert.alertStatus !== 'RESOLVED';
+      if (view === 'chat') {
+        return canChat ? <CircleChatSection alertId={alertId} /> : null;
+      }
       return (
         <div className="alert-detail">
           <p className="alert-role">
@@ -492,7 +510,6 @@ export function AlertDetailPanel({ alertId, footer }: { alertId: string; footer?
       onSave={isFirstCircleSentinel ? (message) => updateAlertStatus(alertId, message).then(loadDetail) : undefined}
     />
   );
-  const hasTodo = canRespond || canClaimLead || isAlertManager || canRequestCircle;
 
   // What this viewer is responsible for here, said in one line above "To do".
   const roleKey = isCompanion
@@ -507,119 +524,12 @@ export function AlertDetailPanel({ alertId, footer }: { alertId: string; footer?
             ? 'asked'
             : 'involved';
 
-  return (
+  const conversations = (
     <div className="alert-detail">
-      <p className="alert-role">{t(`alerts.detail.role.${roleKey}`)}</p>
-      {hasTodo && (
-        <AlertSection title={t('alerts.detail.sections.todo')}>
-          {canRespond && myParticipant && (
-            <AlertReplyPanel
-              alertId={alertId}
-              firstCircleResponse={myParticipant.circleId === detail.firstCircleId ? myParticipant.response : undefined}
-              questions={myParticipant.questions}
-              onChange={loadDetail}
-            />
-          )}
-          {canClaimLead && (
-            <p>
-              {activeLead
-                ? t('alerts.detail.currentLead', { name: activeLead.userSentinels.linkAsSentinel.firstName })
-                : t('alerts.detail.noLeadYet')}{' '}
-              <button className="ghost" onClick={() => claimLead(alertId).then(loadDetail)}>
-                {t('alerts.detail.claimLead')}
-              </button>
-            </p>
-          )}
-          {isCompanion && companionStatus}
-          {isFirstCircleSentinel && (
-            <>
-              {firstCircleStatus}
-              {/* The name: any 1st-circle Sentinel can set/rename it. */}
-              <StatusNoteField
-                label={t('alerts.detail.labelField')}
-                value={detail.label}
-                placeholder={t('alerts.detail.labelPlaceholder')}
-                meta={labelMeta}
-                onSave={(label) => updateAlertLabel(alertId, label).then(loadDetail)}
-              />
-            </>
-          )}
-          {canRequestCircle && (
-            <AskQuestionForm
-              alertId={alertId}
-              participants={detail.participants.filter((p) => p.contactedAt && p.circleId !== detail.firstCircleId)}
-              onChange={loadDetail}
-            />
-          )}
-          {canRequestCircle && (
-            <RequestCircleForm
-              alertId={alertId}
-              circles={detail.userCompanion.myCircles}
-              participants={detail.participants}
-              onChange={loadDetail}
-            />
-          )}
-        </AlertSection>
-      )}
-
-      <AlertSection title={t('alerts.detail.sections.know')}>
-        <AlertMessage text={detail.messageAlert} />
-        {!isCompanion && companionStatus}
-        {!isFirstCircleSentinel && firstCircleStatus}
-
-        <h3>{t('alerts.detail.participants')}</h3>
-        {!canClaimLead && (
-          <p>
-            {activeLead
-              ? t('alerts.detail.currentLead', { name: activeLead.userSentinels.linkAsSentinel.firstName })
-              : t('alerts.detail.noLeadYet')}
-          </p>
-        )}
-        <ul>
-          {detail.participants.map((p) => (
-            <li key={p.id}>
-              {p.userSentinels.linkAsSentinel.firstName}
-              {p.isLead && <span className="badge">{t('alerts.detail.lead')}</span>}
-              {activeLead?.id === p.id && (
-                <span className="badge status-accepted">{t('alerts.detail.activeLeadBadge')}</span>
-              )}
-              <span className="badge">{t(`alerts.detail.participantStatus.${p.status}`)}</span>
-              <span style={{ color: 'var(--text-muted)' }}> — {p.circleName}</span>
-              {p.requestedBy && (
-                <span style={{ color: 'var(--text-muted)' }}> · {t('alerts.detail.requestedBy', { name: p.requestedBy.firstName })}</span>
-              )}
-              {p.response && (
-                <span style={{ color: 'var(--text-muted)' }}>
-                  {' '}
-                  · {t('alerts.detail.response', { response: replyLabel(t, p.response) })}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-
-        <AlertRepliesSummary participants={detail.participants} firstCircleId={detail.firstCircleId} />
-
-        {detail.timeline.length > 0 && (
-          // Folded by default: useful afterwards, noise in the moment.
-          <details className="alert-timeline-toggle">
-            <summary>{t('alerts.detail.timeline.title')}</summary>
-            <ul className="alert-timeline">
-              {detail.timeline.map((e, i) => (
-                <li key={i}>
-                  <span className="badge">{t(`alerts.detail.timeline.event.${e.type}`)}</span>
-                  <strong>{e.actorLabel}</strong>
-                  {e.detail && <span> — {e.type === 'RESPONDED' ? replyLabel(t, e.detail) : e.detail}</span>}
-                  <span style={{ color: 'var(--text-muted)' }}> · {new Date(e.at).toLocaleString()}</span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-      </AlertSection>
-
-      {detail.conversations.length > 0 && (
-        <AlertSection title={t('alerts.detail.sections.discussion')}>
+      {detail.conversations.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
+      ) : (
+        <>
           {/* One block per conversation on this alert: the main 1st-circle
               chat, plus one per outer-circle Sentinel who's opened an
               isolated chat with the 1st circle. Told apart by participants —
@@ -653,8 +563,125 @@ export function AlertDetailPanel({ alertId, footer }: { alertId: string; footer?
             }
             return <ConversationThread key={conv.id} conversationId={conv.id} title={title} resolveSenderName={senderName} />;
           })}
-        </AlertSection>
+        </>
       )}
+      {error && <p className="form-error">{error}</p>}
+    </div>
+  );
+  if (view === 'chat') return conversations;
+
+  // The roster grouped by circle, 1st circle first — the "Circles" section.
+  const circleGroups = new Map<string, AlertParticipant[]>();
+  for (const p of [...detail.participants].sort(
+    (a, b) => Number(b.circleId === detail.firstCircleId) - Number(a.circleId === detail.firstCircleId),
+  )) {
+    circleGroups.set(p.circleName, [...(circleGroups.get(p.circleName) ?? []), p]);
+  }
+
+  return (
+    <div className="alert-detail">
+      <p className="alert-role">{t(`alerts.detail.role.${roleKey}`)}</p>
+      {/* My own answer stays in view, outside the folded sections. */}
+      {canRespond && myParticipant && (
+        <AlertReplyPanel
+          alertId={alertId}
+          firstCircleResponse={myParticipant.circleId === detail.firstCircleId ? myParticipant.response : undefined}
+          questions={myParticipant.questions}
+          onChange={loadDetail}
+        />
+      )}
+
+      <FoldSection title={t('alerts.detail.sections.info')}>
+        <p>
+          {activeLead
+            ? t('alerts.detail.currentLead', { name: activeLead.userSentinels.linkAsSentinel.firstName })
+            : t('alerts.detail.noLeadYet')}{' '}
+          {canClaimLead && (
+            <button className="ghost" onClick={() => claimLead(alertId).then(loadDetail)}>
+              {t('alerts.detail.claimLead')}
+            </button>
+          )}
+        </p>
+        {/* The name: any 1st-circle Sentinel can set/rename it. */}
+        <StatusNoteField
+          label={t('alerts.detail.labelField')}
+          value={detail.label}
+          placeholder={t('alerts.detail.labelPlaceholder')}
+          meta={labelMeta}
+          onSave={isFirstCircleSentinel ? (label) => updateAlertLabel(alertId, label).then(loadDetail) : undefined}
+        />
+        <AlertMessage text={detail.messageAlert} />
+        {companionStatus}
+        {firstCircleStatus}
+      </FoldSection>
+
+      <FoldSection title={t('alerts.detail.sections.circles')}>
+        {[...circleGroups].map(([circleName, members]) => (
+          <div key={circleName} className="alert-circle-group">
+            <h3>{circleName}</h3>
+            <ul>
+              {members.map((p) => (
+                <li key={p.id}>
+                  {p.userSentinels.linkAsSentinel.firstName}
+                  {p.isLead && <span className="badge">{t('alerts.detail.lead')}</span>}
+                  {activeLead?.id === p.id && (
+                    <span className="badge status-accepted">{t('alerts.detail.activeLeadBadge')}</span>
+                  )}
+                  <span className="badge">{t(`alerts.detail.participantStatus.${p.status}`)}</span>
+                  {p.requestedBy && (
+                    <span style={{ color: 'var(--text-muted)' }}> · {t('alerts.detail.requestedBy', { name: p.requestedBy.firstName })}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        {canRequestCircle && (
+          <RequestCircleForm
+            alertId={alertId}
+            circles={detail.userCompanion.myCircles}
+            participants={detail.participants}
+            onChange={loadDetail}
+          />
+        )}
+        {canRequestCircle && (
+          <AskQuestionForm
+            alertId={alertId}
+            participants={detail.participants.filter((p) => p.contactedAt && p.circleId !== detail.firstCircleId)}
+            onChange={loadDetail}
+          />
+        )}
+      </FoldSection>
+
+      <FoldSection title={t('alerts.detail.sections.replies')}>
+        <AlertRepliesSummary participants={detail.participants} firstCircleId={detail.firstCircleId} />
+        <ul className="alert-reply-list">
+          {detail.participants
+            .filter((p) => p.response)
+            .map((p) => (
+              <li key={p.id}>
+                <strong>{p.userSentinels.linkAsSentinel.firstName}</strong>
+                <span style={{ color: 'var(--text-muted)' }}> ({p.circleName})</span> — {replyLabel(t, p.response!)}
+              </li>
+            ))}
+        </ul>
+        {detail.timeline.length > 0 && (
+          <>
+            <h3>{t('alerts.detail.timeline.title')}</h3>
+            <ul className="alert-timeline">
+              {detail.timeline.map((e, i) => (
+                <li key={i}>
+                  <span className="badge">{t(`alerts.detail.timeline.event.${e.type}`)}</span>
+                  <strong>{e.actorLabel}</strong>
+                  {e.detail && <span> — {e.type === 'RESPONDED' ? replyLabel(t, e.detail) : e.detail}</span>}
+                  <span style={{ color: 'var(--text-muted)' }}> · {new Date(e.at).toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </FoldSection>
+
       {error && <p className="form-error">{error}</p>}
 
       {(canLeave || footer) && (
@@ -664,6 +691,17 @@ export function AlertDetailPanel({ alertId, footer }: { alertId: string; footer?
         </div>
       )}
     </div>
+  );
+}
+
+// A section of the alert page that opens when tapped — closed by default,
+// so the page stays short under stress.
+function FoldSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="alert-fold">
+      <summary>{title}</summary>
+      <div className="alert-fold-body">{children}</div>
+    </details>
   );
 }
 

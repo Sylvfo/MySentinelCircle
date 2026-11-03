@@ -11,7 +11,9 @@ import { AlertDetailPanel, StopAlertButton } from './AlertsPage';
 // Alert Mode counterpart to /alerts, which is for launching a new one.
 // /running-alert lists the alerts in progress (or goes straight to the only
 // one); /running-alert/:alertId is one alert, its summary fixed on top.
-export function RunningAlertPage() {
+// With `chat`, /running-alert/:alertId/chat: that alert's conversations
+// only, on their own page.
+export function RunningAlertPage({ chat = false }: { chat?: boolean }) {
   const { t } = useTranslation();
   const { user, socket } = useAuth();
   const { alertId } = useParams();
@@ -59,6 +61,16 @@ export function RunningAlertPage() {
         <Navigate to="/running-alert" replace />
       );
     }
+    if (chat) {
+      return (
+        <div>
+          <Link to={`/running-alert/${a.id}`}>{t('runningAlertPage.backToAlert')}</Link>
+          <h1>{t('runningAlertPage.chatTitle')}</h1>
+          <p style={{ color: 'var(--text-muted)' }}>{a.label}</p>
+          <AlertDetailPanel alertId={a.id} view="chat" />
+        </div>
+      );
+    }
     const launched = new Date(a.launchedAt ?? a.createdAt).toLocaleString(undefined, {
       dateStyle: 'short',
       timeStyle: 'short',
@@ -79,6 +91,13 @@ export function RunningAlertPage() {
               </>
             )}
           </p>
+          {/* The 1st-circle chat lives on its own page (the companion reads
+              it, the 1st circle writes in it). */}
+          {!isOuterCircleViewer(a, user?.id) && (
+            <Link to={`/running-alert/${a.id}/chat`} className="button-link running-alert-chat-link">
+              {t('runningAlertPage.openChat')}
+            </Link>
+          )}
         </div>
         {error && <p className="form-error">{error}</p>}
         <AlertDetailPanel alertId={a.id} footer={<StopAlertButton alert={a} onStopped={reload} />} />

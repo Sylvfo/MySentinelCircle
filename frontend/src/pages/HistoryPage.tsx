@@ -45,6 +45,9 @@ export function HistoryPage() {
           {!isOuterCircleViewer(a, user?.id) && ` · ${t(`alerts.type.${a.alertType}`)}`} · {date(a)}
         </p>
         <AlertDetailPanel alertId={a.id} />
+        {/* The alert's conversations, read back below the details. */}
+        <h2 className="history-chat-title">{t('alerts.detail.sections.discussion')}</h2>
+        <AlertDetailPanel alertId={a.id} view="chat" />
       </div>
     );
   }

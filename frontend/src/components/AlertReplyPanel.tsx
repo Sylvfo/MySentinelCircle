@@ -8,6 +8,7 @@ import {
   type AlertQuestion,
 } from '../api/alert';
 import { Tile } from './Tile';
+import { replyLabel } from './replyLabel';
 
 function ReplyChoices({
   codes,
@@ -22,12 +23,25 @@ function ReplyChoices({
   return (
     <div className="row wrap">
       {codes.map((code) => (
-        <button key={code} className={code === current ? undefined : 'ghost'} onClick={() => onSelect(code)}>
+        <button
+          key={code}
+          className={code === current ? 'reply-choice selected' : 'reply-choice ghost'}
+          aria-pressed={code === current}
+          onClick={() => onSelect(code)}
+        >
           {t(`alerts.replies.${code}`)}
         </button>
       ))}
     </div>
   );
+}
+
+// The answer on record, spelled out — clicking a choice must visibly do
+// something, not just recolor a button.
+function SavedReply({ current }: { current: string | null }) {
+  const { t } = useTranslation();
+  if (!current) return null;
+  return <p className="reply-saved">✓ {t('alerts.detail.respond.saved', { reply: replyLabel(t, current) })}</p>;
 }
 
 function FreeReply({ current, onSubmit }: { current: string | null; onSubmit: (text: string) => void }) {
@@ -83,6 +97,7 @@ export function AlertReplyPanel({
         <>
           <p>{t('alerts.detail.respond.prompt')}</p>
           <ReplyChoices codes={FIRST_CIRCLE_REPLY_CODES} current={firstCircleResponse} onSelect={(code) => reply(code)} />
+          <SavedReply current={firstCircleResponse} />
         </>
       )}
       {questions.map((question) => (
@@ -97,6 +112,7 @@ export function AlertReplyPanel({
               onSelect={(code) => reply(code, question.id)}
             />
           )}
+          <SavedReply current={question.response} />
         </div>
       ))}
       {error && <p className="form-error">{error}</p>}

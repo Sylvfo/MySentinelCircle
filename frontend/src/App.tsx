@@ -52,6 +52,7 @@ function App() {
             <Route path="/alerts/:kind" element={<AlertsPage />} />
             <Route path="/running-alert" element={<RunningAlertPage />} />
             <Route path="/running-alert/:alertId" element={<RunningAlertPage />} />
+            <Route path="/running-alert/:alertId/chat" element={<RunningAlertPage chat />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/history/:alertId" element={<HistoryPage />} />
             <Route path="/messages" element={<MessagesPage />} />

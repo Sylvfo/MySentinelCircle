@@ -307,7 +307,8 @@
       "respond": {
         "prompt": "On vous demande de répondre à propos de cette alerte.",
         "freePlaceholder": "En quelques mots",
-        "send": "Envoyer"
+        "send": "Envoyer",
+        "saved": "Ta réponse : {{reply}}"
       },
       "statusByCompanion": "Statut (personne protégée)",
       "statusByFirstCircle": "Statut (1er cercle)",
@@ -333,7 +334,10 @@
       "sections": {
         "todo": "À faire",
         "know": "À savoir",
-        "discussion": "Discussion"
+        "discussion": "Discussion",
+        "info": "Infos de l'alerte",
+        "circles": "Cercles",
+        "replies": "Réponses et suivi"
       },
       "role": {
         "companion": "C'est ton alerte : ton 1er cercle s'en occupe. Tiens ton statut à jour.",
@@ -428,7 +432,10 @@
     "intro": "Ce qui se passe en ce moment.",
     "empty": "Aucune alerte en cours.",
     "backToList": "← Retour aux alertes en cours",
-    "since": "depuis le {{when}}"
+    "since": "depuis le {{when}}",
+    "openChat": "💬 Chat du 1er cercle",
+    "chatTitle": "Chat du 1er cercle",
+    "backToAlert": "← Retour à l'alerte"
   },
   "messages": {
     "title": "Messages",

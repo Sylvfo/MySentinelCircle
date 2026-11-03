@@ -1171,3 +1171,22 @@ button, input {
 
 .stop-final-word{display:flex; flex-direction:column; gap:0.3rem; margin:0.5rem 0 1rem; font-weight:600;}
 .stop-final-word textarea{font:inherit; font-weight:400; padding:0.5rem 0.6rem; border:1px solid var(--border); border-radius:6px;}
+
+/* Alert reply choices: the chosen one stands out, and the saved answer is
+   spelled out underneath. */
+.app-content button.reply-choice.selected{box-shadow:0 0 0 3px var(--accent-subtle); font-weight:700;}
+.reply-saved{margin:0.4rem 0 0; color:var(--accent); font-weight:600;}
+
+.app-content a.button-link.running-alert-chat-link{margin-top:0.6rem;}
+.history-chat-title{margin-top:2rem; font-size:0.85rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
+
+/* Alert page: folded sections (Alert info / Circles / Replies), closed by
+   default and opened by tapping their title bar. */
+.alert-fold{margin-top:0.9rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg);}
+.alert-fold summary{cursor:pointer; padding:0.8rem 1rem; font-weight:700; list-style:none; display:flex; justify-content:space-between; align-items:center;}
+.alert-fold summary::-webkit-details-marker{display:none;}
+.alert-fold summary::after{content:'▾'; transition:transform 0.15s;}
+.alert-fold[open] summary::after{transform:rotate(180deg);}
+.alert-fold-body{padding:0 1rem 1rem;}
+.alert-circle-group h3{margin:0.6rem 0 0.3rem; font-size:1rem;}
+.alert-circle-group ul,.alert-reply-list{margin:0; padding-left:1.1rem;}
