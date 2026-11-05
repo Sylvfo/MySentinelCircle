@@ -18,7 +18,6 @@ import {
   listIncomingRequests,
   listMyGroupInvitations,
   listMyGroups,
-  updateCircle,
   updateMembership,
   type Circle,
   type Group,
@@ -26,15 +25,19 @@ import {
   type IncomingRequest,
 } from '../api/sentinel';
 import { Tile } from '../components/Tile';
+import { Modal } from '../components/Modal';
 import { CircleRing } from '../components/CircleRing';
 import { SecurityScoreBar } from '../components/SecurityScoreBar';
-import { PRIMARY_AVATAR_COLOR, circlePalette } from '../theme';
+import { PENDING_AVATAR_COLOR, PRIMARY_AVATAR_COLOR, circlePalette } from '../theme';
+import { PersonAvatar } from '../components/PersonAvatar';
 
 // Soft guidance only — nothing stops a circle from growing past this, it
 // just starts showing a "that's a lot" hint on the invite form. Group
 // circles (e.g. a choir) get a higher threshold since they're expected to
 // be bigger than a personal circle.
 const LARGE_CIRCLE_THRESHOLD = 10;
+// Hard cap enforced by the backend: a 1st circle handles an alert together.
+const FIRST_CIRCLE_MAX = 6;
 const LARGE_GROUP_THRESHOLD = 30;
 
 interface GroupContact {
@@ -113,6 +116,11 @@ export function CirclesPage() {
   // staggered row. Clicking a ring opens that circle's own detail view.
   const primaryCircle = circles.find((c) => c.circleType === 'FIRST');
   const otherCircles = circles.filter((c) => c.circleType !== 'FIRST' && c.circleType !== 'RESERVED');
+  // Sentinels parked in the reserve (e.g. from a deleted circle): still
+  // linked, but in no circle — shown below the rings so they aren't lost.
+  const reserveMembers = circles
+    .filter((c) => c.circleType === 'RESERVED')
+    .flatMap((c) => c.userSentinels.filter((m) => m.status === 'ACCEPTED' || m.status === 'PENDING'));
   const liveMembersOf = (c: Circle) => c.userSentinels.filter((m) => m.status === 'ACCEPTED' || m.status === 'PENDING');
 
   if (circleId) {
@@ -204,6 +212,30 @@ export function CirclesPage() {
         )}
       </div>
 
+      {reserveMembers.length > 0 && (
+        <section className="reserve-section">
+          <h2>{t('circles.reserve.title')}</h2>
+          <p className="form-hint">{t('circles.reserve.hint')}</p>
+          <ul className="reserve-list">
+            {reserveMembers.map((m) => (
+              <li key={m.id}>
+                <Link to={`/people/${m.linkAsSentinel.id}?from=sentinel`}>
+                  <PersonAvatar
+                    userId={m.linkAsSentinel.id}
+                    avatarPath={m.linkAsSentinel.avatarPath}
+                    sentinelColor={PENDING_AVATAR_COLOR}
+                    companionColor={null}
+                    size={44}
+                    photoRing={PENDING_AVATAR_COLOR}
+                  />
+                  <span>{m.linkAsSentinel.firstName}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* Groups open from their own (double) ring above; only pending
           invitations are listed here. */}
       <GroupInvitationsInbox invitations={groupInvitations} onChange={reload} />
@@ -286,11 +318,15 @@ function CircleCard({
   const { t } = useTranslation();
   const navigate = useNavigate();
 
+  // Deleting a circle never breaks a link: its Sentinels move to the
+  // reserve circle (backend deleteCircle), confirmed in a real dialog first.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const del = async () => {
-    if (!window.confirm(t('circles.confirmDelete'))) return;
+    setConfirmingDelete(false);
     try {
       await deleteCircle(circle.id);
       onChange();
+      navigate('/circles');
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
     }
@@ -305,12 +341,20 @@ function CircleCard({
     (m) => m.status === 'ACCEPTED' || m.status === 'PENDING',
   );
 
-  // null resolves to "allowed" (inherits the companion's default) unless
-  // explicitly set to false.
-  const circleCanMessage = circle.canMessageMe !== false;
-  const toggleCircleCanMessage = async () => {
+  // "During an alert, can write to my 1st circle" is set per person
+  // (firstCircleMessagingMode); here it's switched for the whole circle at
+  // once. Only people with an account can chat — Sentinels SMS can't.
+  const chatCapable = liveMembers.filter((m) => m.sentinelType !== 'ONLY_SMS');
+  const alertChatCount = chatCapable.filter((m) => m.firstCircleMessagingMode !== 'NONE').length;
+  const alertChatAll = chatCapable.length > 0 && alertChatCount === chatCapable.length;
+  const toggleAlertChat = async () => {
+    const mode = alertChatAll ? 'NONE' : 'INDIVIDUAL';
     try {
-      await updateCircle(circle.id, { canMessageMe: !circleCanMessage });
+      for (const m of chatCapable) {
+        if ((m.firstCircleMessagingMode !== 'NONE') !== (mode !== 'NONE')) {
+          await updateMembership(m.id, { firstCircleMessagingMode: mode });
+        }
+      }
       onChange();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
@@ -324,6 +368,37 @@ function CircleCard({
 
   return (
     <div className="circle-detail">
+      {confirmingDelete && (
+        <Modal title={t('circles.deleteCircle.title', { circle: circle.label })} onClose={() => setConfirmingDelete(false)}>
+          <p className="delete-circle-warning">⚠️ {t('circles.deleteCircle.warning')}</p>
+          {liveMembers.length > 0 && (
+            <p>{t('circles.deleteCircle.toReserve', { count: liveMembers.length })}</p>
+          )}
+          <div className="row">
+            <button className="danger" onClick={del}>
+              {t('circles.deleteCircle.confirm')}
+            </button>
+            <button className="ghost" onClick={() => setConfirmingDelete(false)}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </Modal>
+      )}
+      <div className="circle-detail-head">
+        {group && <span className="circle-detail-eyebrow">{t('groups.eyebrow')}</span>}
+        <h2>
+          <span
+            className="circle-dot"
+            style={{ background: isPrimary ? PRIMARY_AVATAR_COLOR : circlePalette(colorIndex).color }}
+          />
+          {circle.label}
+          {isPrimary && <span className="badge status-accepted">{t('circles.firstCircle')}</span>}
+        </h2>
+        {group ? (
+          <GroupActions group={group} onChange={onChange} onError={onError} />
+        ) : null}
+      </div>
+
       <div className="circle-detail-ring">
         <CircleRing
           label={circle.label}
@@ -337,37 +412,27 @@ function CircleCard({
           onSelectMember={(m) => navigate(`/people/${m.linkAsSentinel.id}?from=sentinel`)}
           isGroup={!!group}
         />
-        <button type="button" className="circle-add-btn" onClick={() => setPanel('add')}>
-          + {group ? t('groups.addMember') : t('circles.addSentinel')}
-        </button>
+        {/* Under the ring: delete on the left (not for the 1st circle or a
+            group), add on the right. */}
+        <div className="circle-ring-actions">
+          {!group && !isPrimary ? (
+            <button type="button" className="ghost danger" onClick={() => setConfirmingDelete(true)}>
+              {t('circles.deleteCircle.button')}
+            </button>
+          ) : (
+            <span />
+          )}
+          <button
+            type="button"
+            className="circle-add-btn"
+            disabled={isPrimary && liveMembers.length >= FIRST_CIRCLE_MAX}
+            onClick={() => setPanel('add')}
+          >
+            + {group ? t('groups.addMember') : t('circles.addSentinel')}
+          </button>
+        </div>
       </div>
       <div className="circle-detail-side">
-        <div className="circle-detail-head">
-          {group && <span className="circle-detail-eyebrow">{t('groups.eyebrow')}</span>}
-          <h2>
-            <span
-              className="circle-dot"
-              style={{ background: isPrimary ? PRIMARY_AVATAR_COLOR : circlePalette(colorIndex).color }}
-            />
-            {circle.label}
-            {isPrimary && <span className="badge status-accepted">{t('circles.firstCircle')}</span>}
-          </h2>
-          {group ? (
-            <GroupActions group={group} onChange={onChange} onError={onError} />
-          ) : (
-            !isPrimary && (
-              <div className="tile-actions">
-                <button className="ghost" onClick={toggleCircleCanMessage}>
-                  {circleCanMessage ? t('circles.blockMessaging') : t('circles.allowMessaging')}
-                </button>
-                <button className="ghost" onClick={del}>
-                  {t('common.delete')}
-                </button>
-              </div>
-            )
-          )}
-        </div>
-
         {panel === 'add' && group ? (
           <Tile>
             <GroupInviteForm group={group} contacts={groupContacts} onChange={onChange} onError={onError} />
@@ -404,13 +469,43 @@ function CircleCard({
             </div>
           </Tile>
         ) : (
-          <p style={{ color: 'var(--text-muted)' }}>
-            {liveMembers.length === 0 ? t('circles.noMembers') : t('circles.tapHint')}
-          </p>
+          liveMembers.length === 0 && <p style={{ color: 'var(--text-muted)' }}>{t('circles.noMembers')}</p>
         )}
 
-        {liveMembers.length >= LARGE_CIRCLE_THRESHOLD && (
-          <p className="form-hint">{t('circles.largeCircleWarning', { count: liveMembers.length })}</p>
+        {/* Two different things, spelled out: everyday messages with me,
+            and the alert-time chat with my 1st circle. */}
+        {!isPrimary && !group && (
+          <section className="circle-messaging">
+            <h3>{t('circles.messaging.title')}</h3>
+            <label className="circle-messaging-row">
+              <input
+                type="checkbox"
+                checked={alertChatAll}
+                disabled={chatCapable.length === 0}
+                ref={(el) => {
+                  if (el) el.indeterminate = alertChatCount > 0 && !alertChatAll;
+                }}
+                onChange={toggleAlertChat}
+              />
+              <span>
+                <strong>{t('circles.messaging.duringAlert')}</strong>
+                <small>{t('circles.messaging.duringAlertHint')}</small>
+                {alertChatCount > 0 && !alertChatAll && (
+                  <small>{t('circles.messaging.someAllowed', { count: alertChatCount, total: chatCapable.length })}</small>
+                )}
+              </span>
+            </label>
+          </section>
+        )}
+
+        {isPrimary ? (
+          liveMembers.length >= FIRST_CIRCLE_MAX && (
+            <p className="form-hint">{t('circles.firstCircleFull', { max: FIRST_CIRCLE_MAX })}</p>
+          )
+        ) : (
+          liveMembers.length >= LARGE_CIRCLE_THRESHOLD && (
+            <p className="form-hint">{t('circles.largeCircleWarning', { count: liveMembers.length })}</p>
+          )
         )}
       </div>
     </div>

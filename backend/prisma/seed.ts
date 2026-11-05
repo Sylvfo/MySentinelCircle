@@ -54,7 +54,7 @@ function assertSafeTarget() {
 
 interface SeedAccount {
   firstName: string;
-  lastName: string;
+  lastName: string | null;
   phone: string;
   email: string;
   userName: string;
@@ -742,6 +742,37 @@ async function main() {
   ]);
   await fillCircle(thomas.id, 'Amis', CircleType.BASIC, [{ sentinel: chloe }]);
 
+  // ---- Deji: linked both ways with Léa, Mathis and Chloé ----
+  // In their "Amis" circles, and they make up his own 1st circle (Léa as
+  // Lead), so he can be tried as Sentinel and as companion.
+  const deji = await upsertAccount({
+    firstName: 'Deji',
+    lastName: null,
+    phone: '+41791234500',
+    email: 'deji@testmsc.ch',
+    userName: 'deji',
+  });
+  await fillCircle(lea.id, 'Amis', CircleType.BASIC, [{ sentinel: deji }]);
+  await fillCircle(mathis.id, 'Amis', CircleType.BASIC, [{ sentinel: deji }]);
+  await fillCircle(chloe.id, 'Amis', CircleType.BASIC, [{ sentinel: deji }]);
+  await fillCircle(deji.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: lea, leadSlot: LeadSlot.LEAD_1 },
+    { sentinel: mathis },
+  ]);
+  // Chloé is a work colleague, not in his 1st circle (the upsert moves her
+  // there on a re-run).
+  await fillCircle(deji.id, 'Travail', CircleType.BASIC, [
+    { sentinel: chloe },
+    { sentinel: ines },
+    { sentinel: maxime },
+    { sentinel: romain },
+  ]);
+  await fillCircle(deji.id, 'Voisins', CircleType.BASIC, [
+    { sentinel: lucas },
+    { sentinel: camille },
+    { sentinel: nadia },
+  ]);
+
   // A 14-member group circle founded by Léa, with Mathis in it. Each
   // invitation comes from someone already linked to the invitee (the trust
   // chain inviteToGroup enforces) — Yanis and Océane through Mathis.
@@ -771,6 +802,7 @@ async function main() {
     { role: 'Companion + Sentinel', name: 'Océane Bersier', phone: oceane.phone, email: oceane.email, note: 'own: Premier cercle (3, Lead Thomas) + Sport (2)' },
     { role: 'Companion + Sentinel', name: 'Chloé Morel', phone: chloe.phone, email: chloe.email, note: 'DEMO — 14 links. own: Premier cercle (3, Lead Mathis) + Voisins (3) + Amis (3)' },
     { role: 'Companion + Sentinel', name: 'Inès Bovet', phone: ines.phone, email: ines.email, note: 'own: Premier cercle (3, Lead Maxime)' },
+    { role: 'Companion + Sentinel', name: 'Deji', phone: deji.phone, email: deji.email, note: 'own: Premier cercle (2, Lead Léa) + Travail (4, with Chloé) + Voisins (3); Sentinel in the Amis of Léa, Mathis, Chloé' },
     { role: 'Companion + Sentinel', name: 'Mathis Perrin', phone: mathis.phone, email: mathis.email, note: 'DEMO — 33 links, member of group Chorale. own: Premier cercle (4, NO Lead) + Amis (3)' },
     { role: 'Lead Sentinel (Léa)', name: 'Gabriel Rochat', phone: gabriel.phone, email: gabriel.email, note: '' },
     { role: 'Sentinel (Léa)', name: 'Chloé Morel', phone: chloe.phone, email: chloe.email, note: '' },
@@ -852,6 +884,7 @@ const DEMO_AVATARS: { phone: string; file: string }[] = [
   { phone: '+41771990033', file: 'leon.png' },
   { phone: '+41791112255', file: 'maxime.png' },
   { phone: '+41771334477', file: 'damien.png' },
+  { phone: '+41791234500', file: 'deji.png' },
 ];
 
 // Demo public statuses (the line shown under a name on a person page and

@@ -1,7 +1,16 @@
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { ApiError } from '../api/client';
-import { removeMembership, updateMembership, type Circle, type Membership, type MessagingMode } from '../api/sentinel';
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { ApiError } from "../api/client";
+import { PRIMARY_AVATAR_COLOR, circlePalette } from "../theme";
+import { Modal } from "./Modal";
+import {
+  removeMembership,
+  updateMembership,
+  type Circle,
+  type LeadSlot,
+  type Membership,
+  type MessagingMode,
+} from "../api/sentinel";
 
 // What I can do about one of my Sentinels (role, messaging, placement) —
 // shown on their person page (PersonPage), under "watches over you".
@@ -19,138 +28,164 @@ export function SentinelActions({
   onError: (msg: string) => void;
 }) {
   const { t } = useTranslation();
-  const otherCircles = circles.filter((c) => c.id !== m.circleId);
-  const [moveTo, setMoveTo] = useState(otherCircles[0]?.id ?? '');
-
-  const remove = async () => {
-    if (!window.confirm(t('circles.confirmRemoveMember'))) return;
+  // Real circles to move into (not this one, not the reserve — the reserve
+  // has its own button below).
+  const reserve = circles.find((c) => c.circleType === "RESERVED");
+  const otherCircles = circles.filter(
+    (c) => c.id !== m.circleId && c.circleType !== "RESERVED",
+  );
+  // Moving: one button opens a small window listing my other circles; a
+  // circle picked there then goes through the usual confirmation.
+  const [picking, setPicking] = useState(false);
+  // Same colors as on My Circles: gold for the 1st circle, else the
+  // blue/teal palette in the order of my other circles.
+  const ordinary = circles.filter(
+    (c) => c.circleType !== "FIRST" && c.circleType !== "RESERVED",
+  );
+  const circleColorOf = (c: Circle) =>
+    c.circleType === "FIRST"
+      ? PRIMARY_AVATAR_COLOR
+      : circlePalette(Math.max(0, ordinary.findIndex((o) => o.id === c.id))).color;
+  // Every change here is confirmed first, in a small window saying what
+  // will happen.
+  const [pending, setPending] = useState<{ text: string; confirm: string; danger?: boolean; run: () => Promise<unknown> } | null>(null);
+  const ask = (text: string, confirm: string, run: () => Promise<unknown>, danger = false) =>
+    setPending({ text, confirm, run, danger });
+  const runPending = async () => {
+    const p = pending;
+    setPending(null);
+    if (!p) return;
     try {
-      await removeMembership(m.id);
+      await p.run();
       onChange();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
     }
   };
+  const name = m.linkAsSentinel.firstName;
+  const circleLabel = (id: string) => circles.find((c) => c.id === id)?.label ?? "";
 
-  const move = async () => {
-    if (!moveTo) return;
-    try {
-      await updateMembership(m.id, { circleId: moveTo });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
+  const toReserve = () =>
+    reserve &&
+    ask(
+      t("circles.confirm.toReserve", { name }),
+      t("circles.placement.toReserve"),
+      () => updateMembership(m.id, { circleId: reserve.id }),
+    );
+
+  // Ends only this direction (they stop watching over me).
+  const remove = () =>
+    ask(t("circles.placement.removeExplain", { name }), t("circles.placement.removeConfirm"), () => removeMembership(m.id), true);
+
+  const move = (circleId: string) => {
+    setPicking(false);
+    ask(
+      t("circles.confirm.move", { name, circle: circleLabel(circleId) }),
+      t("circles.placement.moveTo", { circle: circleLabel(circleId) }),
+      () => updateMembership(m.id, { circleId }),
+    );
   };
 
-  const toggleLead = async () => {
-    try {
-      await updateMembership(m.id, { requestedAsLead: !m.leadSlot });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
+  const setLeadOrder = (leadSlot: LeadSlot) =>
+    ask(
+      t("circles.confirm.leadOrder", { name, slot: t(`circles.leadOrder.${leadSlot === "LEAD_1" ? "first" : leadSlot === "LEAD_2" ? "second" : "third"}`) }),
+      t("common.confirm"),
+      () => updateMembership(m.id, { leadSlot }),
+    );
 
-  // Permanent Me<->Sentinel channel — per-individual override (beats the
-  // circle's own setting). null resolves to "allowed" unless set false.
-  const memberCanMessage = m.canMessageMe !== false;
-  const toggleMemberCanMessage = async () => {
-    try {
-      await updateMembership(m.id, { canMessageMe: !memberCanMessage });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
+  const toggleLead = () =>
+    ask(
+      t(m.leadSlot ? "circles.confirm.removeLead" : "circles.confirm.makeLead", { name }),
+      m.leadSlot ? t("circles.removeLead") : t("circles.makeLead"),
+      () => updateMembership(m.id, { requestedAsLead: !m.leadSlot }),
+    );
 
   // Alert-time only: can this 1st-circle Sentinel join the live group chat
-  // once an alert is raised. Separate from canMessageMe above.
-  const toggleCanMessageOwnCircle = async () => {
-    try {
-      await updateMembership(m.id, { canMessageOwnCircle: !m.canMessageOwnCircle });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
+  // once an alert is raised.
+  const toggleCanMessageOwnCircle = () =>
+    ask(
+      t(m.canMessageOwnCircle ? "circles.confirm.excludeFromAlertChat" : "circles.confirm.includeInAlertChat", { name }),
+      t("common.confirm"),
+      () => updateMembership(m.id, { canMessageOwnCircle: !m.canMessageOwnCircle }),
+    );
 
-  // Outer-circle Sentinels only: whether this Sentinel can later open an
-  // isolated chat with the 1st circle once solicited on an alert. Set any
-  // time, not alert-specific — whatever value it has when an alert next
-  // contacts this Sentinel is what gets frozen in for that alert.
-  const setFirstCircleMessagingMode = async (mode: MessagingMode) => {
-    try {
-      await updateMembership(m.id, { firstCircleMessagingMode: mode });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
+  // Outer-circle Sentinels only: whether this Sentinel can open an isolated
+  // chat with the 1st circle once solicited on an alert.
+  const setFirstCircleMessagingMode = (mode: MessagingMode) =>
+    ask(
+      t(mode === "NONE" ? "circles.confirm.alertChatOff" : "circles.confirm.alertChatOn", { name }),
+      t("common.confirm"),
+      () => updateMembership(m.id, { firstCircleMessagingMode: mode }),
+    );
 
   const proposedCircleLabel = m.proposedCircleId
     ? circles.find((c) => c.id === m.proposedCircleId)?.label
     : null;
 
-  // Manual call order for batched alert escalation (max 2 contacted at a
-  // time, see AlertService.requestCircle) — outer circles only, the 1st
-  // circle always notifies everyone at once.
-  const [callOrderInput, setCallOrderInput] = useState(m.callOrder?.toString() ?? '');
-  const saveCallOrder = async () => {
-    const trimmed = callOrderInput.trim();
-    const value = trimmed === '' ? undefined : Number(trimmed);
-    if (value !== undefined && (!Number.isInteger(value) || value < 1)) return;
-    if (value === undefined || value === m.callOrder) return;
-    try {
-      await updateMembership(m.id, { callOrder: value });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
-
   return (
     <div className="member-panel">
-      <div className="member-panel-badges">
-        <span className={`badge status-${m.status.toLowerCase()}`}>{t(`sentinel.status.${m.status}`)}</span>
-        <span className="badge">{t(`sentinel.type.${m.sentinelType}`)}</span>
-        {m.leadSlot && <span className="badge">{t('sentinel.leadSentinel')}</span>}
-        {proposedCircleLabel && <span className="badge">{t('circles.awaitingFirstCircleConsent')}</span>}
-      </div>
+      {/* Only what's unusual: a link not accepted yet, or a pending move.
+          (Accepted, type and Lead are already said by the title and pill.) */}
+      {(m.status !== "ACCEPTED" || proposedCircleLabel) && (
+        <div className="member-panel-badges">
+          {m.status !== "ACCEPTED" && (
+            <span className={`badge status-${m.status.toLowerCase()}`}>
+              {t(`sentinel.status.${m.status}`)}
+            </span>
+          )}
+          {proposedCircleLabel && (
+            <span className="badge">
+              {t("circles.awaitingFirstCircleConsent")}
+            </span>
+          )}
+        </div>
+      )}
       {/* Three sections: role on top, messaging in the middle, then where
           this Sentinel sits among my circles (move / remove). Empty sections
           aren't shown. */}
-      {m.status === 'ACCEPTED' && (
+      {/* Call order (outer circles) is hidden for now: the backend keeps it,
+          contacting in random order when unset. */}
+      {m.status === "ACCEPTED" && isPrimary && (
         <section className="member-panel-section">
-          {isPrimary ? (
-            <button className="ghost" onClick={toggleLead}>
-              {m.leadSlot ? t('circles.removeLead') : t('circles.makeLead')}
-            </button>
-          ) : (
-            <label className="row" style={{ gap: '0.3rem' }}>
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('circles.callOrder.label')}</span>
-              <input
-                type="number"
-                min={1}
-                style={{ width: '3.5rem' }}
-                placeholder={t('circles.callOrder.random')}
-                value={callOrderInput}
-                onChange={(e) => setCallOrderInput(e.target.value)}
-                onBlur={saveCallOrder}
-              />
-            </label>
-          )}
+              <button className="ghost" onClick={toggleLead}>
+                {m.leadSlot ? t("circles.removeLead") : t("circles.makeLead")}
+              </button>
+              {/* Lead order: Lead 1 is the responsible Lead when an alert starts;
+                the next ones take over if they can't. */}
+              {m.leadSlot && (
+                <label className="row" style={{ gap: "0.3rem" }}>
+                  <span
+                    style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}
+                  >
+                    {t("circles.leadOrder.label")}
+                  </span>
+                  <select
+                    value={m.leadSlot}
+                    onChange={(e) => setLeadOrder(e.target.value as LeadSlot)}
+                  >
+                    <option value="LEAD_1">
+                      {t("circles.leadOrder.first")}
+                    </option>
+                    <option value="LEAD_2">
+                      {t("circles.leadOrder.second")}
+                    </option>
+                    <option value="LEAD_3">
+                      {t("circles.leadOrder.third")}
+                    </option>
+                  </select>
+                </label>
+              )}
         </section>
       )}
 
-      {m.sentinelType !== 'ONLY_SMS' && m.status === 'ACCEPTED' && (
+      {m.sentinelType !== "ONLY_SMS" && m.status === "ACCEPTED" && (
         <section className="member-panel-section">
-          <h4>{t('circles.memberSections.messages')}</h4>
-          <button className="ghost" onClick={toggleMemberCanMessage}>
-            {memberCanMessage ? t('circles.blockMessaging') : t('circles.allowMessaging')}
-          </button>
+          <h4>{t("circles.memberSections.messages")}</h4>
           {isPrimary && (
             <button className="ghost" onClick={toggleCanMessageOwnCircle}>
-              {m.canMessageOwnCircle ? t('circles.excludeFromAlertChat') : t('circles.includeInAlertChat')}
+              {m.canMessageOwnCircle
+                ? t("circles.excludeFromAlertChat")
+                : t("circles.includeInAlertChat")}
             </button>
           )}
           {/* GROUP exists in the schema but isn't exposed here yet — it
@@ -158,42 +193,74 @@ export function SentinelActions({
               chat), so a 3rd option would just be a misleading duplicate
               until it actually means something different. */}
           {!isPrimary && (
-            <label className="row" style={{ gap: '0.3rem' }}>
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {t('circles.firstCircleMessagingMode.label')}
+            <label className="row" style={{ gap: "0.3rem" }}>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                {t("circles.firstCircleMessagingMode.label")}
               </span>
               <select
-                value={m.firstCircleMessagingMode === 'NONE' ? 'NONE' : 'INDIVIDUAL'}
-                onChange={(e) => setFirstCircleMessagingMode(e.target.value as MessagingMode)}
+                value={
+                  m.firstCircleMessagingMode === "NONE" ? "NONE" : "INDIVIDUAL"
+                }
+                onChange={(e) =>
+                  setFirstCircleMessagingMode(e.target.value as MessagingMode)
+                }
               >
-                <option value="NONE">{t('circles.firstCircleMessagingMode.none')}</option>
-                <option value="INDIVIDUAL">{t('circles.firstCircleMessagingMode.individual')}</option>
+                <option value="NONE">
+                  {t("circles.firstCircleMessagingMode.none")}
+                </option>
+                <option value="INDIVIDUAL">
+                  {t("circles.firstCircleMessagingMode.individual")}
+                </option>
               </select>
             </label>
           )}
         </section>
       )}
 
-      <section className="member-panel-section">
-        <h4>{t('circles.memberSections.placement')}</h4>
+      <section className="member-panel-section member-placement">
         {otherCircles.length > 0 && (
-          <div className="row">
-            <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}>
-              {otherCircles.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-            <button className="ghost" onClick={move}>
-              {t('circles.move')}
-            </button>
-          </div>
+          <button className="ghost" onClick={() => setPicking(true)}>
+            {t("circles.placement.moveTitle")}
+          </button>
         )}
-        <button className="ghost" onClick={remove}>
-          {t('circles.removeMember')}
+        {reserve && m.circleId !== reserve.id && (
+          <button className="ghost" onClick={toReserve}>
+            {t("circles.placement.toReserve")}
+          </button>
+        )}
+        <button className="ghost danger" onClick={remove}>
+          {t("circles.placement.removeLink")}
         </button>
       </section>
+
+      {picking && (
+        <Modal title={t("circles.placement.pickTitle", { name })} onClose={() => setPicking(false)}>
+          <ul className="circle-pick-list">
+            {otherCircles.map((c) => (
+              <li key={c.id}>
+                <button type="button" onClick={() => move(c.id)}>
+                  <span className="circle-pick-dot" style={{ background: circleColorOf(c) }} />
+                  {c.label}
+                  <span aria-hidden="true" className="circle-pick-arrow">›</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Modal>
+      )}
+      {pending && (
+        <Modal title={t("circles.confirm.title")} onClose={() => setPending(null)}>
+          <p>{pending.text}</p>
+          <div className="row">
+            <button className={pending.danger ? "danger" : undefined} onClick={runPending}>
+              {pending.confirm}
+            </button>
+            <button className="ghost" onClick={() => setPending(null)}>
+              {t("common.cancel")}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

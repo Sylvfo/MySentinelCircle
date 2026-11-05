@@ -10,7 +10,8 @@
     "remove": "Remove",
     "delete": "Delete",
     "back": "← Back",
-    "close": "Close"
+    "close": "Close",
+    "confirm": "Confirm"
   },
   "sentinel": {
     "status": {
@@ -113,7 +114,17 @@
       "activeCount": "{{count}} active alert(s)",
       "about": "About:",
       "whatToDo": "What you have to do:",
-      "whatToDoHint": "Check the details and respond if you're asked to."
+      "whatToDoHint": "Check the details and respond if you're asked to.",
+      "open": "See the alert and answer",
+      "ask": {
+        "mine": "Your 1st circle is worried about you. If you are fine, say so to stop the alert.",
+        "going": "You said “Yes, I'm on it”. Follow the discussion in the 1st circle Room.",
+        "answered": "You answered “{{reply}}”. You can still say “Yes, I'm on it”.",
+        "question": "{{name}}'s 1st circle is asking you: “{{question}}”",
+        "thanks": "Thank you, your answer was passed on. The 1st circle takes care of the rest.",
+        "found": "{{name}} has been found. See what's left to do.",
+        "generic": "See the alert and answer if you're asked to."
+      }
     }
   },
   "circles": {
@@ -122,7 +133,6 @@
     "empty": "No circle yet. Create one to get started.",
     "newCircle": "New circle",
     "firstCircle": "1st circle",
-    "confirmDelete": "Delete this circle?",
     "members": "Sentinels",
     "noMembers": "No Sentinel in this circle.",
     "largeCircleWarning": "This circle already has {{count}} people — that's a lot. You can still add more if you want.",
@@ -141,15 +151,13 @@
     "move": "Move",
     "makeLead": "Make Lead Sentinel",
     "removeLead": "Remove as Lead",
-    "blockMessaging": "Block messaging",
-    "allowMessaging": "Allow messaging",
     "excludeFromAlertChat": "Exclude from alert chat",
     "includeInAlertChat": "Include in alert chat",
     "awaitingFirstCircleConsent": "Awaiting acceptance for the 1st circle",
     "firstCircleMessagingMode": {
-      "label": "Chat with 1st circle during an alert",
-      "none": "Not allowed",
-      "individual": "Allowed"
+      "label": "During an alert, can write to my 1st circle",
+      "none": "No",
+      "individual": "Yes"
     },
     "callOrder": {
       "label": "Call order",
@@ -163,6 +171,51 @@
     "memberSections": {
       "messages": "Messages",
       "placement": "Place in my circles"
+    },
+    "leadOrder": {
+      "label": "Lead order",
+      "first": "Lead 1 · responsible at the start",
+      "second": "Lead 2",
+      "third": "Lead 3"
+    },
+    "firstCircleFull": "Your 1st circle is full ({{max}} people maximum): it handles an alert together, live. Add other people to another circle.",
+    "messaging": {
+      "title": "Messages",
+      "duringAlert": "Allow each Sentinel to write to the 1st circle during an alert",
+      "duringAlertHint": "Each one can open their own chat with your 1st circle (and you). Otherwise they only answer the 1st circle's questions. SMS Sentinels, with no account, can't chat.",
+      "someAllowed": "Allowed for {{count}} of {{total}} people: set on each person's page."
+    },
+    "deleteCircle": {
+      "button": "Delete circle",
+      "title": "Delete the “{{circle}}” circle?",
+      "warning": "The circle will be deleted for good.",
+      "toReserve": "The {{count}} people in this circle are not removed: they move to your reserve circle, and you stay linked with them. You can put them back in another circle later.",
+      "confirm": "Yes, delete the circle"
+    },
+    "reserve": {
+      "title": "Sentinels in reserve",
+      "hint": "They are still linked with you, but in no circle: they are not alerted."
+    },
+    "placement": {
+      "moveTitle": "Move to another circle",
+      "toReserve": "Put in the reserve circle",
+      "removeLink": "Remove the Sentinel link",
+      "removeExplain": "{{name}} will no longer watch over you. Nothing changes the other way: if you watch over {{name}}, you stay their Sentinel.",
+      "removeConfirm": "Yes, remove the link",
+      "moveTo": "Move to “{{circle}}”",
+      "pickTitle": "Move {{name}} to…"
+    },
+    "confirm": {
+      "title": "Confirm the change",
+      "toReserve": "{{name}} goes to your reserve circle: still linked with you, but no longer alerted.",
+      "move": "{{name}} will move to the “{{circle}}” circle.",
+      "leadOrder": "{{name}} becomes {{slot}}.",
+      "makeLead": "{{name}} becomes a Lead Sentinel of your 1st circle.",
+      "removeLead": "{{name}} will no longer be a Lead Sentinel (stays in your 1st circle).",
+      "excludeFromAlertChat": "During an alert, {{name}} will no longer be in the 1st circle Room.",
+      "includeInAlertChat": "During an alert, {{name}} will be in the 1st circle Room.",
+      "alertChatOn": "During an alert, {{name}} will be able to write to your 1st circle.",
+      "alertChatOff": "During an alert, {{name}} will no longer be able to write to your 1st circle."
     }
   },
   "groups": {
@@ -249,6 +302,33 @@
       "lead": "You're responsible for them if something happens: you coordinate the alert and the other Sentinels.",
       "firstCircle": "If something happens, you're part of the group that handles the alert.",
       "others": "If something happens, their 1st circle may ask for your help: answer a question, go and check…"
+    },
+    "leaveExplain": "You will no longer watch over {{name}}. Nothing changes the other way: if {{name}} watches over you, {{name}} stays your Sentinel.",
+    "confirmMove": {
+      "accept": "You will join {{name}}'s 1st circle: you'll be alerted first.",
+      "decline": "You stay in your current circle for {{name}}."
+    },
+    "requests": {
+      "joinFirstCircle": {
+        "button": "Ask to join {{name}}'s 1st circle",
+        "message": "Hi {{name}}, I'd like to be in your 1st circle. You can move me there from my page."
+      },
+      "becomeLead": {
+        "button": "Ask to be {{name}}'s Lead Sentinel",
+        "message": "Hi {{name}}, I'd like to be a Lead Sentinel of your 1st circle. You can appoint me from my page."
+      },
+      "stopLead": {
+        "button": "Ask to stop being {{name}}'s Lead Sentinel",
+        "message": "Hi {{name}}, I'd like to stop being a Lead Sentinel of your 1st circle. You can remove that role from my page."
+      },
+      "explain": "Only {{name}} can make this change. This message will be sent to them in your conversation:",
+      "send": "Send the request",
+      "sent": "Request sent to {{name}}.",
+      "openConversation": "See the conversation",
+      "leaveFirstCircle": {
+        "button": "Ask to leave {{name}}'s 1st circle",
+        "message": "Hi {{name}}, I'd like to leave your 1st circle while still watching over you. You can move me to another circle from my page."
+      }
     }
   },
   "alerts": {
@@ -304,10 +384,10 @@
         }
       },
       "lead": "Lead",
-      "currentLead": "Current lead: {{name}}",
-      "noLeadYet": "No one has claimed the lead yet",
-      "claimLead": "Take the lead",
-      "activeLeadBadge": "Active lead",
+      "currentLead": "Responsible: {{name}}",
+      "noLeadYet": "No responsible Lead yet",
+      "claimLead": "Take over the responsibility",
+      "activeLeadBadge": "Responsible",
       "chatTitle": "1st circle chat",
       "noMessages": "No message yet.",
       "messagePlaceholder": "Write a message...",
@@ -333,7 +413,10 @@
         "prompt": "You've been asked to respond about this alert.",
         "freePlaceholder": "In a few words",
         "send": "Send",
-        "saved": "Your answer: {{reply}}"
+        "saved": "Your answer: {{reply}}",
+        "confirm": "Confirm: {{reply}}",
+        "sent": "Sent: {{reply}}",
+        "goingIsFinal": "Once confirmed, “Yes, I'm on it” is sent to the 1st circle and can't be changed."
       },
       "statusByCompanion": "Status (companion)",
       "statusByFirstCircle": "Status (1st circle)",
@@ -384,7 +467,35 @@
         "noAnswer": "no reply",
         "firstCircle": "1st circle"
       },
-      "roster": "1st circle"
+      "roster": "1st circle",
+      "leadExplain": "The whole 1st circle acts together. The responsible Lead decides what happens once the person is found.",
+      "takeOverConfirm": "Take over the responsibility for this alert? The current responsible Lead will be told.",
+      "found": {
+        "button": "Person found",
+        "title": "Person found — what next?",
+        "intro": "You are the responsible Lead: say how the person is and what is needed now.",
+        "notePlaceholder": "Details (where, what's needed…)",
+        "submit": "Confirm",
+        "submitClose": "Confirm and end the alert",
+        "options": {
+          "FINE": {
+            "title": "All fine",
+            "hint": "Ends the alert for everyone."
+          },
+          "PICKUP": {
+            "title": "Someone must pick them up",
+            "hint": "The alert stays open until it's done."
+          },
+          "REPATRIATION": {
+            "title": "Repatriation to organize",
+            "hint": "The alert stays open until it's done."
+          },
+          "CARE": {
+            "title": "Needs care",
+            "hint": "The alert stays open until it's done."
+          }
+        }
+      }
     },
     "backToTiles": "← Back",
     "seeRunningAlert": "See the running alert",
@@ -434,15 +545,160 @@
       "WHERE_SEEN": "Where did you last see them?"
     },
     "replies": {
-      "GOING": "I'm going",
+      "GOING": "Yes, I'm on it",
       "LATER": "Later",
-      "UNAVAILABLE": "Unavailable",
+      "UNAVAILABLE": "I can't",
       "YES": "Yes",
       "NO": "No",
       "TODAY": "Today",
       "THIS_WEEK": "This week",
       "LONGER": "Before that",
       "DONT_KNOW": "I don't know"
+    },
+    "guide": {
+      "steps": [
+        "Alert raised",
+        "1st circle told",
+        "Wider search",
+        "Person found",
+        "Over"
+      ],
+      "stepsLabel": "Where the alert stands",
+      "gotIt": "Got it",
+      "roles": {
+        "activeLead": {
+          "banner": "Your role · Responsible Lead",
+          "tag": "You are the responsible Lead",
+          "title": "{{name}} needs help",
+          "welcome": [
+            "The 1st circle acts with you: talk in the Room.",
+            "Anyone can ask the other circles for help.",
+            "Once {{name}} is found, you decide what happens next."
+          ],
+          "todo": [
+            "Coordinate with the 1st circle in the Room",
+            "Once {{name}} is found: tap “Person found” in the Room and decide what next"
+          ]
+        },
+        "lead": {
+          "banner": "Your role · Lead",
+          "tag": "You are a Lead of this 1st circle",
+          "title": "{{name}} needs help",
+          "welcome": [
+            "{{lead}} is responsible; you act with the 1st circle.",
+            "If {{lead}} can't, you can take over the responsibility."
+          ],
+          "todo": [
+            "Act with the 1st circle",
+            "{{lead}} unavailable? Take over the responsibility"
+          ]
+        },
+        "firstCircle": {
+          "banner": "Your role · 1st circle",
+          "tag": "You are in their 1st circle",
+          "title": "{{name}} needs help",
+          "welcome": [
+            "Say whether you can take care of it.",
+            "Talk in the 1st circle Room.",
+            "You can ask the other circles for help."
+          ],
+          "todo": [
+            "Say whether you can take care of it",
+            "Talk with the circle in the Room",
+            "Ask for help if needed"
+          ]
+        },
+        "found": {
+          "banner": "{{name}} has been found",
+          "tag": "Good news",
+          "title": "{{name}} has been found",
+          "welcome": [
+            "{{lead}} decided what happens next: {{followUp}}",
+            "The alert stays open until it's done."
+          ],
+          "todo": [
+            "{{followUp}}",
+            "Once done: stop the alert (at the bottom of the page)"
+          ]
+        },
+        "companion": {
+          "banner": "If you are fine",
+          "tag": "An alert is about you",
+          "title": "Your 1st circle is worried about you",
+          "welcome": [
+            "If you are fine, say so: it stops the alert.",
+            "Otherwise, write what is going on."
+          ],
+          "todo": [
+            "Say so right away with “Stop the alert”: the alert stops",
+            "Otherwise, write what is going on in your status"
+          ]
+        },
+        "asked": {
+          "banner": "Your role · one question",
+          "tag": "{{name}}'s 1st circle is asking you",
+          "title": "A question about {{name}}",
+          "welcome": [
+            "Answer the question below.",
+            "That's all: the 1st circle takes care of the rest."
+          ],
+          "todo": [
+            "Answer, even if you don't know"
+          ]
+        }
+      }
+    },
+    "where": {
+      "title": "You are in {{name}}'s 1st circle",
+      "roomTitle": "1st circle Room:",
+      "room": "everything happens there. The discussion, who is responsible, the alert's name and the statuses.",
+      "repliesTitle": "Replies, below:",
+      "replies": "who answered what, and everything that happened, in order.",
+      "circlesTitle": "Circles, below:",
+      "circles": "{{name}}'s other circles, to ask for help.",
+      "openRoom": "Open the 1st circle Room"
+    },
+    "circlesView": {
+      "none": "No other circle.",
+      "notContacted": "Not contacted",
+      "contactedAt": "Contacted · {{time}}",
+      "answeredCount": "{{answered}} of {{total}} answered",
+      "askedBy": "asked by {{name}}",
+      "requestHelp": "Ask for help",
+      "askQuestion": "Ask a question",
+      "contactMore": "Contact more people ({{count}})",
+      "sendRequest": "Send to {{circle}}",
+      "sendTo": "Send to {{count}} people",
+      "dot": {
+        "answered": "answered",
+        "waiting": "contacted, no answer yet",
+        "notYet": "not contacted yet",
+        "left": "left"
+      }
+    },
+    "timelineView": {
+      "firstCircle": "1st circle",
+      "pending": "waiting",
+      "answered": "{{count}} answered",
+      "filter": "Show",
+      "show": {
+        "all": "All",
+        "reply": "Replies",
+        "action": "Actions"
+      },
+      "ALERT_RAISED": "raised the alert",
+      "LEAD_CLAIMED": "is responsible",
+      "LEFT": "left the alert",
+      "ALERT_CLOSED": "stopped the alert",
+      "FOUND": "Person found",
+      "requested": "asked the {{circle}} circle for help",
+      "asked": "asked {{count}} people a question"
+    },
+    "ask": {
+      "missing": "{{name}} isn't answering anymore. Can you help find them now?",
+      "help": "{{name}} needs help. Can you take care of it now?",
+      "assistance": "{{name}} needs assistance. Can you step in now?",
+      "whatItMeans": "Taking care of it means trying to reach {{name}}, going to see if needed, and keeping the 1st circle posted in the Room."
     }
   },
   "history": {
@@ -478,7 +734,10 @@
       "contacts": "With your contacts",
       "alerts": "During an alert"
     },
-    "alertChatName": "Alert · {{who}}"
+    "alertChatName": "Alert · {{who}}",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "emoji": "Add an emoji"
   },
   "conversation": {
     "back": "← Back to messages",
@@ -488,13 +747,13 @@
     "seeAlert": "See the alert",
     "attach": "Add",
     "attachPhoto": "Photo",
-    "theyForMe": "{{name}} watches over you ({{role}})",
+    "theyForMe": "{{name}} is your {{role}}",
     "theyNotForMe": "{{name}} isn't one of your Sentinels",
-    "meForThem": "You watch over {{name}} ({{role}})",
+    "meForThem": "You are {{name}}'s {{role}}",
     "meNotForThem": "You don't watch over {{name}}",
-    "roleLead": "Lead Sentinel",
-    "roleFirstCircle": "1st circle",
-    "roleCircle": "circle “{{circle}}”"
+    "roleCircle": "Sentinel",
+    "chipLead": "Lead · 1st circle",
+    "chipFirstCircle": "1st circle"
   },
   "notifications": {
     "title": "Notifications",
@@ -587,7 +846,51 @@
     "avatarAdd": "Add a photo",
     "avatarChange": "Change photo",
     "avatarRemove": "Remove",
-    "publicStatusHint": "Visible to your Sentinels, the people you watch over, and the other members of their 1st circles you're in."
+    "publicStatusHint": "Visible to your Sentinels, the people you watch over, and the other members of their 1st circles you're in.",
+    "theme": {
+      "toDark": "Night mode",
+      "toLight": "Day mode"
+    },
+    "tiles": {
+      "profile": {
+        "title": "My profile",
+        "hint": "What others see: photo, name, status"
+      },
+      "account": {
+        "title": "My account and security",
+        "hint": "Phone, email, password"
+      },
+      "subscription": {
+        "title": "Subscription",
+        "hint": "Account type, free or paid"
+      },
+      "preferences": {
+        "title": "Preferences",
+        "hint": "Language"
+      },
+      "deathNotice": {
+        "title": "In case of death",
+        "hint": "Prepare the announcement to your Sentinels"
+      },
+      "delete": {
+        "title": "Delete my account",
+        "hint": "Permanent"
+      }
+    },
+    "subscription": {
+      "plan": "Your plan",
+      "free": "Free",
+      "paid": "Paid",
+      "whatPaid": "A paid account lets you create a group circle, among other things. More will follow.",
+      "upgrade": "Upgrade to a paid account",
+      "soon": "Online payment is coming soon.",
+      "userTypes": {
+        "ACCOUNT": "Personal account",
+        "ORGANISATION": "Organisation",
+        "ONLY_SMS": "SMS only",
+        "UNCOMPLETE": "Incomplete account"
+      }
+    }
   },
   "welcome": {
     "title": "Welcome",
@@ -612,7 +915,16 @@
       "phone": "Add and verify your phone number",
       "lead": "Choose a Lead Sentinel with a phone number",
       "sentinel": "Add another Sentinel with a phone number"
-    }
+    },
+    "whatsMissing": "What's missing",
+    "notReadyTap": "Not ready yet · tap to see what's missing",
+    "minimumTitle": "For your safety net to work, you need at least:",
+    "minimum": {
+      "phone": "your phone number, verified",
+      "lead": "a Lead Sentinel with a phone number",
+      "sentinel": "one other Sentinel with a phone number"
+    },
+    "minimumWhy": "Without that, an alert can't reach anyone by SMS."
   },
   "newCirclePage": {
     "title": "New circle",
@@ -698,12 +1010,29 @@
           "Changing your email or phone, or deleting your account, asks you to confirm your identity again.",
           "The number of requests per minute is limited to slow down automated attacks."
         ]
+      },
+      "symbols": {
+        "title": "Symbols and colors",
+        "summary": [],
+        "details": []
       }
     },
     "feedback": {
       "title": "Give feedback",
       "hint": "A bug, something unclear, something you don't like, an idea…",
       "newReply": "The team answered you ({{count}} new)"
+    },
+    "symbols": {
+      "sentinel": "Filled silhouette: a Sentinel, someone who watches over you. Blue or blue-green, the color of their circle.",
+      "firstCircle": "Gold: they are in your 1st circle.",
+      "lead": "Dark gold: a Lead of your 1st circle.",
+      "pending": "Grey: invitation not accepted yet.",
+      "companion": "Outlined silhouette, rather violet: a companion, someone you watch over. Each person has their own shade.",
+      "companionGold": "Gold outline: you are in their 1st circle. Dark gold: you are their Lead.",
+      "both": "Both together: you watch over each other.",
+      "inAlert": "Red: this person is concerned by an alert in progress.",
+      "ring": "A ring: a circle. Gold for your 1st circle, blue or blue-green for the others.",
+      "groupRing": "A double ring: a group circle."
     }
   },
   "sentinelHome": {
@@ -739,7 +1068,7 @@
     "sentinelRole": {
       "lead": "Lead Sentinel · {{circle}}",
       "firstCircle": "1st circle · {{circle}}",
-      "other": "Sentinel · circle “{{circle}}”",
+      "other": "{{name}} is in your “{{circle}}” circle",
       "pending": "Invitation sent · {{circle}}"
     },
     "sentinelHint": {
@@ -759,6 +1088,25 @@
       "openChat": "Open the chat",
       "canWriteDirect": "You can write to each other directly (Message button above).",
       "cannotWrite": "No message possible between you two."
+    },
+    "companionRole": {
+      "lead": "You're their Lead Sentinel",
+      "firstCircle": "You're in their 1st circle",
+      "others": "You're in their “{{circle}}” circle"
+    },
+    "end": {
+      "button": "End the links with {{name}}",
+      "title": "End the links with {{name}}?",
+      "warning": "You will no longer be linked, either way.",
+      "explain": "{{name}} will no longer watch over you, and you will no longer watch over {{name}}. Your messages stay readable. You can invite each other again later.",
+      "confirm": "Yes, end the links"
+    },
+    "block": {
+      "button": "Block {{name}}",
+      "title": "Block {{name}}?",
+      "warning": "This is permanent, both ways.",
+      "explain": "The link ends both ways, and neither you nor {{name}} can ever invite the other again.",
+      "confirm": "Yes, block"
     }
   }
 }

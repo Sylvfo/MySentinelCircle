@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
-import { alertNeedsMe, getAlert, getMyParticipation, listAlerts, type MyAlertSummary } from '../api/alert';
+import { alertNeedsMe, getMyParticipation, listAlerts, type MyAlertSummary, type MyParticipation } from '../api/alert';
+import { replyLabel } from '../components/replyLabel';
+import { firstCircleAskKey } from '../alertAsk';
 import { listCircles, listCompanions, type Circle, type Companion } from '../api/sentinel';
 import { Tile } from '../components/Tile';
 import { SecurityScoreBar } from '../components/SecurityScoreBar';
@@ -22,6 +24,9 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   // alertId -> first name of the person each running alert is about.
   const [aboutNames, setAboutNames] = useState<Record<string, string>>({});
+  // alertId -> my own participation (my answer, the questions put to me),
+  // to say on the tile exactly what is asked of me.
+  const [mine, setMine] = useState<Record<string, MyParticipation>>({});
 
   useEffect(() => {
     Promise.all([listAlerts(), listCircles(), listCompanions()])
@@ -56,27 +61,48 @@ export function DashboardPage() {
   // same way AlertsPage's detail panel does (an outer-circle Sentinel can
   // get a 403 from getAlert and needs the lighter getMyParticipation view).
   useEffect(() => {
-    const nameOf = async (alertId: string, companionId: string): Promise<string | null> => {
-      if (companionId === user?.id) return user?.firstName ?? null;
-      try {
-        return (await getAlert(alertId)).userCompanion.firstName;
-      } catch {
-        try {
-          return (await getMyParticipation(alertId)).alert.userCompanion.firstName;
-        } catch {
-          return null;
-        }
-      }
-    };
+    // My own alert: no participation, my own name. Otherwise my
+    // participation carries both the name and what's asked of me.
     void Promise.all(
-      activeAlerts.map(async (a) => [a.id, await nameOf(a.id, a.userCompanionId)] as const),
-    ).then((pairs) => {
+      activeAlerts.map(async (a) => {
+        if (a.userCompanionId === user?.id) return [a.id, user?.firstName ?? null, null] as const;
+        try {
+          const p = await getMyParticipation(a.id);
+          return [a.id, p.alert.userCompanion.firstName, p] as const;
+        } catch {
+          return [a.id, null, null] as const;
+        }
+      }),
+    ).then((rows) => {
       const names: Record<string, string> = {};
-      for (const [id, n] of pairs) if (n) names[id] = n;
+      const parts: Record<string, MyParticipation> = {};
+      for (const [id, n, p] of rows) {
+        if (n) names[id] = n;
+        if (p) parts[id] = p;
+      }
       setAboutNames(names);
+      setMine(parts);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIds, user?.id]);
+
+  // In one sentence, what this alert asks of me right now.
+  const askOf = (a: MyAlertSummary): string => {
+    const name = aboutNames[a.id] ?? '';
+    if (a.userCompanionId === user?.id) return t('dashboard.runningAlert.ask.mine');
+    const p = mine[a.id];
+    if (!p) return t('dashboard.runningAlert.ask.generic');
+    if (p.alert.alertStatus === 'CLOSING') return t('dashboard.runningAlert.ask.found', { name });
+    const isFirstCircle = a.myParticipation?.circleId === a.firstCircleId;
+    if (isFirstCircle) {
+      if (!p.response) return t(`alerts.ask.${firstCircleAskKey(a.alertType)}`, { name });
+      if (p.response === 'GOING') return t('dashboard.runningAlert.ask.going');
+      return t('dashboard.runningAlert.ask.answered', { reply: replyLabel(t, p.response) });
+    }
+    const open = p.questions.find((q) => !q.response);
+    if (open) return t('dashboard.runningAlert.ask.question', { name, question: t(`alerts.questions.${open.kind}`) });
+    return t('dashboard.runningAlert.ask.thanks');
+  };
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
 
@@ -98,9 +124,8 @@ export function DashboardPage() {
             <p>
               <strong>{t('dashboard.runningAlert.about')}</strong> {aboutNames[a.id] ?? a.label}
             </p>
-            <p>
-              <strong>{t('dashboard.runningAlert.whatToDo')}</strong> {t('dashboard.runningAlert.whatToDoHint')}
-            </p>
+            <p className="running-ask">{askOf(a)}</p>
+            <p className="running-open">{t('dashboard.runningAlert.open')} ›</p>
           </Tile>
         </Link>
       ))}
@@ -149,6 +174,20 @@ export function DashboardPage() {
                     size={140}
                     isGroup={otherCircles[0].circleType === 'GROUP'}
                     showNames={otherCircles[0].circleType !== 'GROUP'}
+                    strongRing
+                  />
+                </div>
+              )}
+              {otherCircles[1] && (
+                <div className="preview-ring third">
+                  <CircleRing
+                    label={otherCircles[1].label}
+                    members={liveMembersOf(otherCircles[1])}
+                    isPrimary={false}
+                    colorIndex={1}
+                    size={140}
+                    isGroup={otherCircles[1].circleType === 'GROUP'}
+                    showNames={otherCircles[1].circleType !== 'GROUP'}
                     strongRing
                   />
                 </div>

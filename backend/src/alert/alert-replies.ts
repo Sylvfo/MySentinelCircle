@@ -18,9 +18,10 @@ export interface AlertReplyOption {
 
 // Choices of the 1st circle, who always answer from the app.
 export const FIRST_CIRCLE_REPLIES: AlertReplyOption[] = [
-  { code: 'GOING', smsLabel: "J'y vais", words: [] },
+  // "Can you take care of it now?" — GOING = yes, I'm on it (final).
+  { code: 'GOING', smsLabel: "Oui, je m'en occupe", words: [] },
   { code: 'LATER', smsLabel: 'Plus tard', words: [] },
-  { code: 'UNAVAILABLE', smsLabel: 'Pas dispo', words: [] },
+  { code: 'UNAVAILABLE', smsLabel: 'Je ne peux pas', words: [] },
 ];
 
 interface AlertQuestionDefinition {

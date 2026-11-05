@@ -13,6 +13,13 @@ import {
   type DeathNoticeAnnouncement,
 } from '../api/sentinel';
 import { Modal } from './Modal';
+import { Link } from 'react-router-dom';
+import { getDirectConversation, sendMessage } from '../api/messaging';
+
+type RequestKind = 'joinFirstCircle' | 'leaveFirstCircle' | 'becomeLead' | 'stopLead';
+
+const choice = (c: 'accept' | 'decline') =>
+  c === 'accept' ? 'companions.acceptCircleMove' : 'companions.declineCircleMove';
 
 // What I can do about someone I watch over — my place in their circles,
 // the death notice, leaving — shown on their person page (PersonPage),
@@ -28,6 +35,26 @@ export function CompanionActions({
 }) {
   const { t } = useTranslation();
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+  // Asking them for a change (join their 1st circle, become / stop being
+  // their Lead Sentinel): only they can decide, so it goes to them as a
+  // message in our conversation — after a confirmation saying so.
+  const [asking, setAsking] = useState<RequestKind | null>(null);
+  const [sent, setSent] = useState<{ kind: RequestKind; conversationUserId: string } | null>(null);
+  const requestKinds: RequestKind[] = !c.circle.isPrimary
+    ? ['joinFirstCircle']
+    : [c.leadSlot ? 'stopLead' : 'becomeLead', 'leaveFirstCircle'];
+  const sendRequest = async (kind: RequestKind) => {
+    setAsking(null);
+    try {
+      const conv = await getDirectConversation(c.companion.id);
+      await sendMessage(conv.id, t(`companions.requests.${kind}.message`, { name: c.companion.firstName }));
+      setSent({ kind, conversationUserId: c.companion.id });
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    }
+  };
+  // Accepting / declining a move into their 1st circle: confirmed first.
+  const [pendingMove, setPendingMove] = useState<'accept' | 'decline' | null>(null);
   const run = (action: () => Promise<unknown>) =>
     action()
       .then(onChange)
@@ -35,24 +62,19 @@ export function CompanionActions({
 
   return (
     <div className="companion-panel">
-      <section className="member-panel-section">
-        <h4>{t('companions.sections.myPlace')}</h4>
-        <div>
-          <span className="badge">{t('companions.inCircle', { label: c.circle.label })}</span>
-          <span className="badge">{t(`sentinel.type.${c.sentinelType}`)}</span>
-        </div>
-        {c.proposedCircle && (
-          <>
-            <p style={{ margin: 0 }}>{t('companions.circleMoveProposed', { who: c.companion.firstName })}</p>
-            <div className="row">
-              <button onClick={() => run(() => acceptCircleMove(c.linkId))}>{t('companions.acceptCircleMove')}</button>
-              <button className="ghost" onClick={() => run(() => declineCircleMove(c.linkId))}>
-                {t('companions.declineCircleMove')}
-              </button>
-            </div>
-          </>
-        )}
-      </section>
+      {/* Which circle I'm in is the pill under the figure; only a pending
+          move into their 1st circle needs saying here. */}
+      {c.proposedCircle && (
+        <section className="member-panel-section">
+          <p style={{ margin: 0 }}>{t('companions.circleMoveProposed', { who: c.companion.firstName })}</p>
+          <div className="row">
+            <button onClick={() => setPendingMove('accept')}>{t('companions.acceptCircleMove')}</button>
+            <button className="ghost" onClick={() => setPendingMove('decline')}>
+              {t('companions.declineCircleMove')}
+            </button>
+          </div>
+        </section>
+      )}
 
       {c.circle.isPrimary && (
         <section className="member-panel-section">
@@ -72,33 +94,85 @@ export function CompanionActions({
         </section>
       )}
 
-      <DeathNoticeSection companion={c} onChange={onChange} onError={onError} />
-
       {!c.proposedCircle && (
         <section className="member-panel-section">
-          <button className="ghost danger" onClick={() => setConfirmingLeave(true)}>
-            {t('companions.leave', { name: c.companion.firstName })}
-          </button>
+          {requestKinds.map((kind) => (
+            <button key={kind} className="ghost" onClick={() => setAsking(kind)}>
+              {t(`companions.requests.${kind}.button`, { name: c.companion.firstName })}
+            </button>
+          ))}
+          {sent && (
+            <p className="request-sent">
+              ✓ {t('companions.requests.sent', { name: c.companion.firstName })}{' '}
+              <Link to={`/messages/${sent.conversationUserId}`}>{t('companions.requests.openConversation')}</Link>
+            </p>
+          )}
         </section>
       )}
-      {confirmingLeave && (
-        <Modal title={t('companions.leaveTitle')} onClose={() => setConfirmingLeave(false)}>
-          <p>{t('companions.confirmLeave', { name: c.companion.firstName })}</p>
+      {asking && (
+        <Modal title={t(`companions.requests.${asking}.button`, { name: c.companion.firstName })} onClose={() => setAsking(null)}>
+          <p>{t('companions.requests.explain', { name: c.companion.firstName })}</p>
+          <blockquote className="request-preview">
+            {t(`companions.requests.${asking}.message`, { name: c.companion.firstName })}
+          </blockquote>
           <div className="row">
-            <button
-              className="danger"
-              onClick={() => {
-                setConfirmingLeave(false);
-                void run(() => leaveMembership(c.linkId));
-              }}
-            >
-              {t('companions.leaveConfirmButton')}
-            </button>
-            <button className="ghost" onClick={() => setConfirmingLeave(false)}>
+            <button onClick={() => void sendRequest(asking)}>{t('companions.requests.send')}</button>
+            <button className="ghost" onClick={() => setAsking(null)}>
               {t('common.cancel')}
             </button>
           </div>
         </Modal>
+      )}
+      {pendingMove && (
+        <Modal title={t('circles.confirm.title')} onClose={() => setPendingMove(null)}>
+          <p>{t(`companions.confirmMove.${pendingMove}`, { name: c.companion.firstName })}</p>
+          <div className="row">
+            <button
+              onClick={() => {
+                const choice = pendingMove;
+                setPendingMove(null);
+                void run(() => (choice === 'accept' ? acceptCircleMove(c.linkId) : declineCircleMove(c.linkId)));
+              }}
+            >
+              {t(choice(pendingMove))}
+            </button>
+            <button className="ghost" onClick={() => setPendingMove(null)}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      <DeathNoticeSection companion={c} onChange={onChange} onError={onError} />
+
+      {/* Ends only this direction — confirmed in place, like "remove the
+          Sentinel link" on the other tile. */}
+      {!c.proposedCircle && (
+        <section className="member-panel-section">
+          {!confirmingLeave ? (
+            <button className="ghost danger" onClick={() => setConfirmingLeave(true)}>
+              {t('companions.leave', { name: c.companion.firstName })}
+            </button>
+          ) : (
+            <div className="remove-link-confirm">
+              <p>{t('companions.leaveExplain', { name: c.companion.firstName })}</p>
+              <div className="row">
+                <button
+                  className="danger"
+                  onClick={() => {
+                    setConfirmingLeave(false);
+                    void run(() => leaveMembership(c.linkId));
+                  }}
+                >
+                  {t('companions.leaveConfirmButton')}
+                </button>
+                <button className="ghost" onClick={() => setConfirmingLeave(false)}>
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
       )}
     </div>
   );

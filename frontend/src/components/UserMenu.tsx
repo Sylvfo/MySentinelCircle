@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
+import { setThemeChoice, useThemeChoice } from '../themeMode';
 
 // Your own name in the nav: opens a small menu (Settings / Log out). The menu
 // is position: fixed from the button's on-screen spot, because the mobile
@@ -13,6 +14,9 @@ export function UserMenu() {
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Re-renders on a theme change; what's on screen is <html data-theme>.
+  useThemeChoice();
+  const isDark = document.documentElement.dataset.theme === 'dark';
 
   // Closes on navigation, outside click, Escape, and scroll/resize (the
   // fixed position would otherwise drift away from the button).
@@ -65,6 +69,11 @@ export function UserMenu() {
           <Link to="/settings" role="menuitem">
             {t('nav.settings')}
           </Link>
+          {/* Quick day/night switch (the full choice, incl. Automatic, is in
+              Settings). */}
+          <button type="button" role="menuitem" onClick={() => setThemeChoice(isDark ? 'light' : 'dark')}>
+            {isDark ? `☀️ ${t('settings.theme.toLight')}` : `🌙 ${t('settings.theme.toDark')}`}
+          </button>
           <button type="button" role="menuitem" onClick={logout}>
             {t('nav.logout')}
           </button>

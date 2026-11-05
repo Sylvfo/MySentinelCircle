@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { API_URL, ApiError } from '../api/client';
+import { ApiError } from '../api/client';
+import { MessageBubbles } from '../components/MessageBubbles';
 import { NOTIFICATIONS_CHANGED } from '../api/notification';
 import {
   getSupportConversation,
@@ -185,18 +186,7 @@ export function FeedbackPage() {
           {messages.length > 0 && (
             <>
               <h2 className="messages-section-title">{t('feedback.history')}</h2>
-              <ul className="alert-chat-messages">
-                {[...messages].reverse().map((m) => (
-                  <li key={m.id}>
-                    <strong>{m.senderId === user?.id ? t('alerts.detail.me') : t('feedback.team')}</strong> :{' '}
-                    {m.type === 'IMAGE' ? (
-                      <img src={`${API_URL}/uploads/messages/${m.body}`} alt="" className="feedback-image" />
-                    ) : (
-                      m.body
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <MessageBubbles messages={messages} myId={user?.id} nameOf={() => t('feedback.team')} />
             </>
           )}
         </>

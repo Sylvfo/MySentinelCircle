@@ -119,7 +119,7 @@ export function CircleRing({
     >
       <span className="circle-ring-border" style={{ borderColor: ringColor }} />
       {isGroup && <span className="circle-ring-border inner" style={{ borderColor: ringColor }} />}
-      <span className="circle-ring-center">{label}</span>
+      <span className={`circle-ring-center${isGroup ? ' group' : ''}`}>{label}</span>
       {members.map((m, i) => {
         const angle = ((-90 + (360 / members.length) * i) * Math.PI) / 180;
         const x = cx + r * Math.cos(angle) - avatarSize / 2;
@@ -136,7 +136,8 @@ export function CircleRing({
                 ? PRIMARY_LEAD_COLOR
                 : '#D9A066'
               : palette.color;
-        const canMessage = m.canMessageMe !== false;
+        // Can chat in the app (has an account) — a Sentinel SMS can't.
+        const canMessage = m.sentinelType !== 'ONLY_SMS';
         const Avatar = onSelectMember ? 'button' : 'span';
         return (
           <Avatar

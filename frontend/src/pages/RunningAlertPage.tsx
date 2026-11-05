@@ -92,6 +92,16 @@ export function RunningAlertPage({ chat = false }: { chat?: boolean }) {
               </>
             )}
           </p>
+          {/* The live statuses, read-only, right under the title — they're
+              written in the 1st circle room. */}
+          <p className="running-alert-status">
+            <strong>{t('alerts.detail.statusByCompanion')} :</strong>{' '}
+            {a.statusByCompanion ?? <span className="running-alert-meta">{t('alerts.detail.status.none')}</span>}
+          </p>
+          <p className="running-alert-status">
+            <strong>{t('alerts.detail.statusByFirstCircle')} :</strong>{' '}
+            {a.statusByFirstCircle ?? <span className="running-alert-meta">{t('alerts.detail.status.none')}</span>}
+          </p>
           {/* The 1st-circle chat lives on its own page (the companion reads
               it, the 1st circle writes in it). */}
           {!isOuterCircleViewer(a, user?.id) && (

@@ -130,6 +130,12 @@ describe('SentinelService', () => {
       const result = await service.listCircles('me');
 
       expect(prisma.circle.create).toHaveBeenCalledTimes(2);
+      // A deleted (CLOSED) circle never shows up again.
+      expect(prisma.circle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userCompanionId: 'me', status: CircleStatus.ACTIVE },
+        }),
+      );
       expect(result.map((c) => c.id)).toEqual([
         'first-1',
         'basic-1',
@@ -1256,7 +1262,107 @@ describe('SentinelService', () => {
         }),
       );
       expect(result).toEqual({ id: 'link-1', proposedCircleId: 'first-1' });
-      expect(prisma.linkSentinels.count).not.toHaveBeenCalled(); // no Lead-slot logic touched
+      // Only the 1st circle's room check — no Lead-slot logic touched.
+      expect(prisma.linkSentinels.count).toHaveBeenCalledTimes(1);
+      expect(prisma.linkSentinels.count).toHaveBeenCalledWith({
+        where: {
+          circleId: 'first-1',
+          status: { in: [LinkStatus.PENDING, LinkStatus.ACCEPTED] },
+        },
+      });
+    });
+
+    it('refuses a move into a 1st circle that already has 6 people', async () => {
+      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+        id: 'link-1',
+        status: LinkStatus.ACCEPTED,
+        circleId: 'work-1',
+        leadSlot: null,
+        requestedAsLead: false,
+        sentinelType: SentinelType.SENTINEL,
+        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
+        linkAsSentinel: {
+          userType: UserType.ACCOUNT,
+          phone: '+33611111111',
+          firstName: 'Ada',
+        },
+      });
+      prisma.circle.findUnique.mockResolvedValueOnce({
+        id: 'first-1',
+        userCompanionId: 'me',
+        circleType: CircleType.FIRST,
+        status: CircleStatus.ACTIVE,
+        label: 'Premier cercle',
+      });
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'me',
+        firstName: 'Me',
+      });
+      prisma.linkSentinels.count.mockResolvedValueOnce(6);
+
+      await expect(
+        service.updateMembership('me', 'link-1', { circleId: 'first-1' }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+    });
+
+    describe('Lead order (leadSlot)', () => {
+      const lead2 = {
+        id: 'link-2',
+        status: LinkStatus.ACCEPTED,
+        circleId: 'first-1',
+        leadSlot: LeadSlot.LEAD_2,
+        requestedAsLead: true,
+        sentinelType: SentinelType.SENTINEL,
+        circle: { userCompanionId: 'me', circleType: CircleType.FIRST },
+        linkAsSentinel: { userType: UserType.ACCOUNT },
+      };
+
+      it('swaps with the current holder of the slot', async () => {
+        prisma.linkSentinels.findUnique.mockResolvedValueOnce(lead2);
+        prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' }); // holds LEAD_1
+        prisma.linkSentinels.update.mockImplementation(({ where, data }) =>
+          Promise.resolve({ id: where.id, ...data }),
+        );
+
+        const result = await service.updateMembership('me', 'link-2', {
+          leadSlot: LeadSlot.LEAD_1,
+        });
+
+        expect(prisma.linkSentinels.update.mock.calls.map((c) => c[0])).toEqual(
+          [
+            { where: { id: 'link-2' }, data: { leadSlot: null } },
+            { where: { id: 'link-1' }, data: { leadSlot: LeadSlot.LEAD_2 } },
+            { where: { id: 'link-2' }, data: { leadSlot: LeadSlot.LEAD_1 } },
+          ],
+        );
+        expect(result).toEqual({ id: 'link-2', leadSlot: LeadSlot.LEAD_1 });
+      });
+
+      it('just takes a free slot', async () => {
+        prisma.linkSentinels.findUnique.mockResolvedValueOnce(lead2);
+        prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
+        prisma.linkSentinels.update.mockResolvedValue({});
+
+        await service.updateMembership('me', 'link-2', {
+          leadSlot: LeadSlot.LEAD_3,
+        });
+
+        expect(prisma.linkSentinels.update).toHaveBeenCalledTimes(2);
+      });
+
+      it('refuses a Sentinel who is not a 1st-circle Lead', async () => {
+        prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+          ...lead2,
+          leadSlot: null,
+        });
+
+        await expect(
+          service.updateMembership('me', 'link-2', {
+            leadSlot: LeadSlot.LEAD_1,
+          }),
+        ).rejects.toThrow(BadRequestException);
+      });
     });
 
     it('rejects updating a link that is not ACCEPTED (e.g. a REMOVED one)', async () => {
@@ -1411,15 +1517,114 @@ describe('SentinelService', () => {
     });
   });
 
-  describe('canSendDirectMessage', () => {
-    const linkRow = (overrides: Record<string, unknown> = {}) => ({
-      id: 'link-1',
-      canMessageMe: null,
-      circle: { circleType: CircleType.BASIC, canMessageMe: null },
-      userCompanion: { allowMessagingByDefault: true },
+  describe('endRelationship', () => {
+    const row = (overrides: Record<string, unknown> = {}) => ({
+      id: 'mine',
+      status: LinkStatus.ACCEPTED,
+      userCompanionId: 'me',
+      userSentinelId: 'theo',
+      circleId: 'circle-basic',
+      leadSlot: null,
+      circle: { circleType: CircleType.BASIC },
+      linkAsSentinel: {
+        id: 'theo',
+        firstName: 'Théo',
+        lastName: null,
+        phone: '+41790000009',
+      },
+      userCompanion: {
+        id: 'me',
+        firstName: 'Me',
+        lastName: null,
+        phone: '+41790000008',
+      },
       ...overrides,
     });
+    const theirs = () =>
+      row({
+        id: 'theirs',
+        userCompanionId: 'theo',
+        userSentinelId: 'me',
+        linkAsSentinel: {
+          id: 'me',
+          firstName: 'Me',
+          lastName: null,
+          phone: '+41790000008',
+        },
+        userCompanion: {
+          id: 'theo',
+          firstName: 'Théo',
+          lastName: null,
+          phone: '+41790000009',
+        },
+      });
 
+    it('ends both directions: my Sentinel removed, and I leave theirs', async () => {
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([row(), theirs()]);
+
+      await expect(
+        service.endRelationship('me', 'theo', false),
+      ).resolves.toEqual({ ended: 2, blocked: false });
+
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+        where: { id: 'mine' },
+        data: { status: LinkStatus.REMOVED },
+      });
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+        where: { id: 'theirs' },
+        data: { status: LinkStatus.REMOVED },
+      });
+      // Leaving their circle tells them, like leaving from the app.
+      expect(notifications.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'theo',
+          type: NotificationType.SENTINEL_LEFT,
+        }),
+      );
+    });
+
+    it('blocks both directions', async () => {
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([row(), theirs()]);
+
+      await service.endRelationship('me', 'theo', true);
+
+      expect(prisma.linkSentinels.update).toHaveBeenCalledTimes(2);
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+        where: { id: 'theirs' },
+        data: { status: LinkStatus.BLOCKED },
+      });
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it('changes nothing when one side is the last Lead of a 1st circle', async () => {
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        row(),
+        {
+          ...theirs(),
+          leadSlot: LeadSlot.LEAD_1,
+          circle: { circleType: CircleType.FIRST },
+        },
+      ]);
+      prisma.linkSentinels.count
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(0);
+
+      await expect(
+        service.endRelationship('me', 'theo', false),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+    });
+
+    it('404s when there is no link with this person', async () => {
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([]);
+
+      await expect(
+        service.endRelationship('me', 'stranger', true),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('canSendDirectMessage', () => {
     it('returns false when there is no accepted link between the two', async () => {
       prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
 
@@ -1428,57 +1633,16 @@ describe('SentinelService', () => {
       expect(result).toBe(false);
     });
 
-    it('is always true for the 1st circle, regardless of any setting', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
-        linkRow({
-          circle: { circleType: CircleType.FIRST, canMessageMe: null },
-          userCompanion: { allowMessagingByDefault: false },
-        }),
-      );
+    it('is always true with an accepted link, whatever the circle', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
 
       const result = await service.canSendDirectMessage('me', 'sentinel-1');
 
       expect(result).toBe(true);
-    });
-
-    it('falls back to the companion-wide default when nothing more specific is set', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
-        linkRow({ userCompanion: { allowMessagingByDefault: false } }),
-      );
-
-      const result = await service.canSendDirectMessage('me', 'sentinel-1');
-
-      expect(result).toBe(false);
-    });
-
-    it('the circle setting overrides the companion-wide default', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
-        linkRow({
-          circle: { circleType: CircleType.BASIC, canMessageMe: true },
-          userCompanion: { allowMessagingByDefault: false },
-        }),
-      );
-
-      const result = await service.canSendDirectMessage('me', 'sentinel-1');
-
-      expect(result).toBe(true);
-    });
-
-    it('the per-individual setting overrides the circle setting', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
-        linkRow({
-          canMessageMe: false,
-          circle: { circleType: CircleType.BASIC, canMessageMe: true },
-        }),
-      );
-
-      const result = await service.canSendDirectMessage('me', 'sentinel-1');
-
-      expect(result).toBe(false);
     });
 
     it('resolves direction-agnostically — the caller can be the Sentinel side', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(linkRow());
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
 
       await service.canSendDirectMessage('sentinel-1', 'me');
 

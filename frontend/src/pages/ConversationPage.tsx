@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError, API_URL } from '../api/client';
+import { ApiError } from '../api/client';
 import { listCircles, listCompanions } from '../api/sentinel';
 import { listAlerts, type MyAlertSummary } from '../api/alert';
 import { NOTIFICATIONS_CHANGED } from '../api/notification';
@@ -15,6 +15,11 @@ import {
   type Message,
 } from '../api/messaging';
 import { PersonAvatar } from '../components/PersonAvatar';
+import { CircleChip } from '../components/CircleChip';
+import { SentinelIcon } from '../components/SentinelIcon';
+import { CompanionIcon } from '../components/CompanionIcon';
+import { MessageBubbles } from '../components/MessageBubbles';
+import { EmojiButton } from '../components/EmojiButton';
 import { avatarPathOf, myCompanionColor, mySentinelColor, publicStatusOf } from '../relations';
 
 // Everything known about the other person, from both directions of the
@@ -182,13 +187,9 @@ export function ConversationPage() {
   };
 
   const name = info?.firstName ?? '';
-  // Most specific role only: Lead, else 1st circle, else the circle's name.
-  const roleLabel = (r: { circle: string; isLead: boolean; isFirstCircle: boolean }) =>
-    r.isLead
-      ? t('conversation.roleLead')
-      : r.isFirstCircle
-        ? t('conversation.roleFirstCircle')
-        : t('conversation.roleCircle', { circle: r.circle });
+  // Always just "Sentinel" in the sentence: which circle (Lead, 1st circle
+  // or the circle's name) is the pill right after it (CircleChip).
+  const roleLabel = (_r: { circle: string; isLead: boolean; isFirstCircle: boolean }) => t('conversation.roleCircle');
 
   return (
     <div className="page-bleed sticky-header-page conversation-page">
@@ -203,31 +204,38 @@ export function ConversationPage() {
               sentinelColor={info.sentinelColor}
               companionColor={info.companionColor}
               size={64}
+              // The relations are spelled out right beside it: photo only.
+              photoRing="#134356"
             />
             <div>
               <h1>
                 {info.firstName} {info.lastName}
               </h1>
-              {info.publicStatus && <p className="conversation-status">{info.publicStatus}</p>}
               {/* One line per direction. No link at all only happens for
                   the feedback inbox's correspondents: no lines then. */}
               {(info.asMySentinel || info.asMyCompanion) && (
                 <div className="conversation-relations">
-                  <p>
-                    {info.asMySentinel
-                      ? t('conversation.theyForMe', { name, role: roleLabel(info.asMySentinel) })
-                      : t('conversation.theyNotForMe', { name })}
-                  </p>
-                  <p>
-                    {info.asMyCompanion
-                      ? t('conversation.meForThem', { name, role: roleLabel(info.asMyCompanion) })
-                      : t('conversation.meNotForThem', { name })}
-                  </p>
+                  {info.asMySentinel && (
+                    <span className="conversation-rel" style={{ color: info.sentinelColor ?? undefined }}>
+                      <SentinelIcon size={16} />
+                      <span>{t('conversation.theyForMe', { name, role: roleLabel(info.asMySentinel) })}</span>
+                      <CircleChip relation={info.asMySentinel} color={info.sentinelColor} />
+                    </span>
+                  )}
+                  {info.asMyCompanion && (
+                    <span className="conversation-rel">
+                      <CompanionIcon size={17} color={info.companionColor ?? undefined} />
+                      <span>{t('conversation.meForThem', { name, role: roleLabel(info.asMyCompanion) })}</span>
+                      <CircleChip relation={info.asMyCompanion} color={info.companionColor} />
+                    </span>
+                  )}
                 </div>
               )}
             </div>
           </Link>
         )}
+        {/* Their status under the photo, across the whole header. */}
+        {info?.publicStatus && <p className="conversation-status">{info.publicStatus}</p>}
         {/* Only when there is one: no alert is the normal case. */}
         {!loading &&
           alerts.map((a) => (
@@ -254,24 +262,8 @@ export function ConversationPage() {
           {messages.length === 0 ? (
             <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
           ) : (
-            <ul className="alert-chat-messages">
-              {/* Oldest at the top, newest at the bottom next to the
-                  composer, like any messaging app. */}
-              {messages.map((m) => (
-                <li key={m.id}>
-                  <strong>{m.senderId === user?.id ? t('alerts.detail.me') : name}</strong> :{' '}
-                  {m.type === 'IMAGE' ? (
-                    <img
-                      src={`${API_URL}/uploads/messages/${m.body}`}
-                      alt=""
-                      style={{ maxWidth: 200, borderRadius: 8, display: 'block' }}
-                    />
-                  ) : (
-                    m.body
-                  )}
-                </li>
-              ))}
-            </ul>
+            // Oldest at the top, newest at the bottom next to the composer.
+            <MessageBubbles messages={messages} myId={user?.id} />
           )}
           {error && <p className="form-error">{error}</p>}
           {/* Messaging-app composer, fixed at the bottom of the screen
@@ -320,6 +312,7 @@ export function ConversationPage() {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
             />
+            <EmojiButton onPick={(emoji) => setDraft((d) => d + emoji)} />
             <button
               type="submit"
               className="compose-icon-btn compose-send"

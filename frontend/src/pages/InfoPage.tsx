@@ -2,6 +2,16 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useUnreadCounts } from '../unreadCounts';
+import { SentinelIcon } from '../components/SentinelIcon';
+import { CompanionIcon } from '../components/CompanionIcon';
+import { RelationIcons } from '../components/RelationIcons';
+import {
+  circlePalette,
+  IN_ALERT_AVATAR_COLOR,
+  PENDING_AVATAR_COLOR,
+  PRIMARY_AVATAR_COLOR,
+  PRIMARY_LEAD_COLOR,
+} from '../theme';
 
 // What the app is, plus the privacy/security promises it actually keeps —
 // every line here must match real backend behavior (see auth/user/alert
@@ -11,7 +21,7 @@ import { useUnreadCounts } from '../unreadCounts';
 // compact tiles (same satin look as the Dashboard's) that unfold one at a
 // time — first the essentials, then "Learn more" for the full detail.
 
-type SectionKey = 'what' | 'how' | 'alert' | 'privacy' | 'security';
+type SectionKey = 'what' | 'how' | 'symbols' | 'alert' | 'privacy' | 'security';
 
 const ICONS: Record<SectionKey, ReactNode> = {
   what: (
@@ -26,6 +36,12 @@ const ICONS: Record<SectionKey, ReactNode> = {
       <circle cx="12" cy="12" r="3" />
       <circle cx="12" cy="12" r="6.5" />
       <circle cx="12" cy="12" r="10" />
+    </>
+  ),
+  symbols: (
+    <>
+      <circle cx="12" cy="7" r="4" />
+      <path d="M4 21 V17 A8 6 0 0 1 20 17 V21" />
     </>
   ),
   alert: (
@@ -44,7 +60,7 @@ const ICONS: Record<SectionKey, ReactNode> = {
   security: <path d="M12 2 L20 5 V11 C20 16.5 16.5 20.5 12 22 C7.5 20.5 4 16.5 4 11 V5 Z" />,
 };
 
-const SECTIONS: SectionKey[] = ['what', 'how', 'alert', 'privacy', 'security'];
+const SECTIONS: SectionKey[] = ['what', 'how', 'symbols', 'alert', 'privacy', 'security'];
 
 export function InfoPage() {
   const { t } = useTranslation();
@@ -94,7 +110,12 @@ export function InfoPage() {
                   <polyline points="6 9 12 15 18 9" fill="none" stroke="currentColor" strokeWidth="2" />
                 </svg>
               </button>
-              {isOpen && (
+              {isOpen && key === 'symbols' && (
+                <div className="about-tile-body" id={`about-${key}`}>
+                  <SymbolsLegend />
+                </div>
+              )}
+              {isOpen && key !== 'symbols' && (
                 <div className="about-tile-body" id={`about-${key}`}>
                   <ul>
                     {list(`info.sections.${key}.summary`).map((item) => (
@@ -146,5 +167,108 @@ export function InfoPage() {
         </span>
       </Link>
     </div>
+  );
+}
+
+// What the people icons and rings mean — drawn with the app's own
+// components and colors, so the legend can't drift from what's on screen.
+function Ring({ color, double = false }: { color: string; double?: boolean }) {
+  return (
+    <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
+      <circle cx="20" cy="20" r="17" fill="none" stroke={color} strokeWidth="3" />
+      {double && <circle cx="20" cy="20" r="11" fill="none" stroke={color} strokeWidth="3" />}
+    </svg>
+  );
+}
+
+function SymbolsLegend() {
+  const { t } = useTranslation();
+  const blue = circlePalette(0);
+  const teal = circlePalette(1);
+  const rows: { key: string; icon: ReactNode }[] = [
+    {
+      key: 'sentinel',
+      icon: (
+        <>
+          <span style={{ color: blue.color }}>
+            <SentinelIcon size={30} />
+          </span>
+          <span style={{ color: teal.color }}>
+            <SentinelIcon size={30} />
+          </span>
+        </>
+      ),
+    },
+    {
+      key: 'firstCircle',
+      icon: (
+        <span style={{ color: PRIMARY_AVATAR_COLOR }}>
+          <SentinelIcon size={30} />
+        </span>
+      ),
+    },
+    {
+      key: 'lead',
+      icon: (
+        <span style={{ color: PRIMARY_LEAD_COLOR }}>
+          <SentinelIcon size={30} />
+        </span>
+      ),
+    },
+    {
+      key: 'pending',
+      icon: (
+        <span style={{ color: PENDING_AVATAR_COLOR }}>
+          <SentinelIcon size={30} />
+        </span>
+      ),
+    },
+    {
+      key: 'companion',
+      icon: (
+        <>
+          <CompanionIcon size={32} color="hsl(232 62% 50%)" />
+          <CompanionIcon size={32} color="hsl(270 62% 50%)" />
+        </>
+      ),
+    },
+    {
+      key: 'companionGold',
+      icon: (
+        <>
+          <CompanionIcon size={32} leadColor={PRIMARY_AVATAR_COLOR} />
+          <CompanionIcon size={32} leadColor={PRIMARY_LEAD_COLOR} />
+        </>
+      ),
+    },
+    { key: 'both', icon: <RelationIcons sentinelColor={teal.color} companionColor="hsl(250 62% 50%)" size={30} /> },
+    {
+      key: 'inAlert',
+      icon: (
+        <span style={{ color: IN_ALERT_AVATAR_COLOR }}>
+          <SentinelIcon size={30} />
+        </span>
+      ),
+    },
+    {
+      key: 'ring',
+      icon: (
+        <>
+          <Ring color={PRIMARY_AVATAR_COLOR} />
+          <Ring color={blue.color} />
+        </>
+      ),
+    },
+    { key: 'groupRing', icon: <Ring color={teal.color} double /> },
+  ];
+  return (
+    <ul className="symbols-legend">
+      {rows.map((r) => (
+        <li key={r.key}>
+          <span className="symbols-icon">{r.icon}</span>
+          <span>{t(`info.symbols.${r.key}`)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

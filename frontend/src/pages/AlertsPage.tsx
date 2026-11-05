@@ -2,37 +2,37 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type Rea
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError, API_URL } from '../api/client';
+import { ApiError } from '../api/client';
 import {
-  ALERT_QUESTION_KINDS,
-  askQuestion,
   claimLead,
   closeAlert,
   getAlert,
   getMyParticipation,
   leaveAlert,
   listAlerts,
+  markFound,
   raiseAlert,
-  requestCircle,
   requestCircleChat,
   updateAlertLabel,
   updateAlertStatus,
   type AlertDetail,
-  type AlertParticipant,
-  type AlertQuestionKind,
   type AlertSummary,
   type AlertType,
+  type FoundFollowUp,
   type MyAlertSummary,
   type MyParticipation,
 } from '../api/alert';
 import { listCompanions, type Companion } from '../api/sentinel';
 import { listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
 import { Modal } from '../components/Modal';
-import { AlertRepliesSummary } from '../components/AlertRepliesSummary';
 import { AlertReplyPanel } from '../components/AlertReplyPanel';
 import { replyLabel } from '../components/replyLabel';
 import { Tile } from '../components/Tile';
 import { PersonAvatar } from '../components/PersonAvatar';
+import { MessageBubbles } from '../components/MessageBubbles';
+import { EmojiButton } from '../components/EmojiButton';
+import { AlertCircleTiles, AlertRepliesTimeline } from '../components/AlertCircles';
+import { AlertSteps, RoleBanner, WelcomeModal, type GuideRole } from '../components/AlertGuide';
 import { PRIMARY_AVATAR_COLOR, PRIMARY_LEAD_COLOR } from '../theme';
 
 // The 4 ways to raise an alert, one tile each. "For myself" is always
@@ -40,7 +40,11 @@ import { PRIMARY_AVATAR_COLOR, PRIMARY_LEAD_COLOR } from '../theme';
 // travel mode isn't built yet. LITTLEWORRY/EMERGENCY/NOCONTACT/UNKNOWN still
 // exist in the schema but aren't offered from here.
 type RaiseKind = 'self' | 'missing' | 'assistance';
-const RAISE_TYPE: Record<RaiseKind, AlertType> = { self: 'BYCOMPANION', missing: 'MISSING', assistance: 'INCIDENT' };
+const RAISE_TYPE: Record<RaiseKind, AlertType> = {
+  self: 'BYCOMPANION',
+  missing: 'MISSING',
+  assistance: 'INCIDENT',
+};
 
 export function AlertsPage() {
   const { t } = useTranslation();
@@ -324,6 +328,7 @@ export function AlertDetailPanel({
   const { t } = useTranslation();
   const { user, socket } = useAuth();
   const [detail, setDetail] = useState<AlertDetail | null>(null);
+  const [foundOpen, setFoundOpen] = useState(false);
   // Set only when getAlert() 403s (e.g. an outer-circle Sentinel) but the
   // caller does have their own participation to show, as a lighter fallback.
   const [myParticipation, setMyParticipation] = useState<MyParticipation | null>(null);
@@ -413,18 +418,30 @@ export function AlertDetailPanel({
         myParticipation.firstCircleMessagingModeAtAlert !== 'NONE' &&
         myParticipation.alert.alertStatus !== 'RESOLVED';
       const canLeaveLight = myParticipation.status !== 'CLOSED' && myParticipation.alert.alertStatus !== 'RESOLVED';
+      const lightVars = {
+        name: myParticipation.alert.userCompanion.firstName,
+        lead: '',
+        followUp: '',
+      };
       if (view === 'chat') {
         return canChat ? <CircleChatSection alertId={alertId} /> : null;
       }
       return (
         <div className="alert-detail">
-          <p className="alert-role">
-            {myParticipation.status === 'CONTACTED'
-              ? t('alerts.detail.role.asked')
-              : myParticipation.status === 'CLOSED'
-                ? t('alerts.detail.role.left')
-                : t('alerts.detail.role.involved')}
-          </p>
+          {canRespondLight ? (
+            <>
+              <WelcomeModal alertId={alertId} role="asked" vars={lightVars} />
+              <RoleBanner role="asked" vars={lightVars} />
+            </>
+          ) : (
+            <p className="alert-role">
+              {myParticipation.status === 'CONTACTED'
+                ? t('alerts.detail.role.asked')
+                : myParticipation.status === 'CLOSED'
+                  ? t('alerts.detail.role.left')
+                  : t('alerts.detail.role.involved')}
+            </p>
+          )}
           {canRespondLight && (
             <AlertSection title={t('alerts.detail.sections.todo')}>
               <AlertReplyPanel alertId={alertId} questions={myParticipation.questions} onChange={loadDetail} />
@@ -460,6 +477,8 @@ export function AlertDetailPanel({
 
   const senderName = (senderId: string) => {
     if (senderId === user?.id) return t('alerts.detail.me');
+    // The person the alert is about writes in the room too.
+    if (senderId === detail.userCompanion.id) return detail.userCompanion.firstName;
     const participant = detail.participants.find((p) => p.userSentinels.linkAsSentinel.id === senderId);
     return participant?.userSentinels.linkAsSentinel.firstName ?? '…';
   };
@@ -526,6 +545,30 @@ export function AlertDetailPanel({
             ? 'asked'
             : 'involved';
 
+  // The guidance (welcome pop-up, "Your role", steps) while the alert runs.
+  // Once the person is found (CLOSING), the 1st circle's job becomes the
+  // follow-up the responsible Lead decided — stored as the 1st circle's
+  // status note by markFound.
+  const running = detail.alertStatus !== 'RESOLVED';
+  const guideRole: GuideRole | null = !running
+    ? null
+    : isCompanion
+      ? 'companion'
+      : !isFirstCircleSentinel
+        ? null
+        : detail.alertStatus === 'CLOSING'
+          ? 'found'
+          : roleKey === 'activeLead' || roleKey === 'lead'
+            ? roleKey
+            : 'firstCircle';
+  const guideVars = {
+    name: detail.userCompanion.firstName,
+    lead: activeLead?.userSentinels.linkAsSentinel.firstName ?? '',
+    // markFound writes "Personne retrouvée : <follow-up>" — the banner
+    // already says the person was found, so only the follow-up is kept.
+    followUp: (detail.statusByFirstCircle ?? '').replace(/^Personne retrouvée : /, ''),
+  };
+
   // Chat page only: who's in the 1st circle, with photo, role and status in
   // this alert — tapping one opens their person page (alert context).
   const firstCircleRoster = detail.participants.filter((p) => p.circleId === detail.firstCircleId);
@@ -561,6 +604,64 @@ export function AlertDetailPanel({
 
   const conversations = (
     <div className="alert-detail">
+      {view === 'chat' && (
+        <>
+          {/* The responsible Lead (Lead 1 from the start, decided in advance):
+              the whole 1st circle acts together, but "person found + what
+              next" is theirs. Another Lead can take over if they can't. */}
+          <div className="lead-box">
+            <p>
+              {activeLead
+                ? t('alerts.detail.currentLead', {
+                    name: activeLead.userSentinels.linkAsSentinel.firstName,
+                  })
+                : t('alerts.detail.noLeadYet')}
+            </p>
+            <p className="form-hint">{t('alerts.detail.leadExplain')}</p>
+            <div className="row">
+              {activeLead && myParticipant && activeLead.id === myParticipant.id && detail.alertStatus !== 'RESOLVED' && (
+                <button onClick={() => setFoundOpen(true)}>{t('alerts.detail.found.button')}</button>
+              )}
+              {canClaimLead && activeLead?.id !== myParticipant?.id && (
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    if (window.confirm(t('alerts.detail.takeOverConfirm'))) void claimLead(alertId).then(loadDetail);
+                  }}
+                >
+                  {t('alerts.detail.claimLead')}
+                </button>
+              )}
+            </div>
+          </div>
+          {foundOpen && (
+            <FoundModal
+              alertId={alertId}
+              onClose={() => setFoundOpen(false)}
+              onDone={() => {
+                setFoundOpen(false);
+                void loadDetail();
+              }}
+            />
+          )}
+
+          {/* The alert's info, editable by whoever writes it: its name (any
+              1st-circle Sentinel), the launch message, both status notes. The
+              main page only shows the statuses, read-only, in its header. */}
+          <div className="room-info">
+            <StatusNoteField
+              label={t('alerts.detail.labelField')}
+              value={detail.label}
+              placeholder={t('alerts.detail.labelPlaceholder')}
+              meta={labelMeta}
+              onSave={isFirstCircleSentinel ? (label) => updateAlertLabel(alertId, label).then(loadDetail) : undefined}
+            />
+            {companionStatus}
+            {firstCircleStatus}
+            <AlertMessage text={detail.messageAlert} />
+          </div>
+        </>
+      )}
       {roster}
       {detail.conversations.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
@@ -572,27 +673,31 @@ export function AlertDetailPanel({
               any conversation with someone outside the 1st circle is an
               isolated one, labeled with their name. */}
           {detail.conversations.map((conv) => {
-            const outsider = conv.participants.find((p) => !firstCircleSentinelIds.has(p.user.id));
+            // The companion is in the room too: not an outsider.
+            const outsider = conv.participants.find(
+              (p) => !firstCircleSentinelIds.has(p.user.id) && p.user.id !== detail.userCompanion.id,
+            );
             const title = outsider
-              ? t('alerts.detail.circleChat.withSentinel', { name: outsider.user.firstName })
+              ? t('alerts.detail.circleChat.withSentinel', {
+                  name: outsider.user.firstName,
+                })
               : t('alerts.detail.chatTitle');
-            if (isCompanion) {
-              // Never a ConversationParticipant (by design) — read-only,
-              // straight off getAlert() instead of listMessages()/sendMessage(),
-              // which would just 403 them.
+            if (isCompanion && !conv.participants.some((p) => p.user.id === user?.id)) {
+              // The companion writes in every chat of their alert; only an
+              // old one they were never seated in (e.g. in History) stays
+              // read-only — straight off getAlert(), listMessages() would
+              // 403 them.
               return (
                 <div className="alert-chat" key={conv.id}>
                   <h3>{title}</h3>
                   {conv.messages.length === 0 ? (
                     <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
                   ) : (
-                    <ul className="alert-chat-messages">
-                      {conv.messages.map((m) => (
-                        <li key={m.id}>
-                          <strong>{m.sender.firstName}</strong> : {m.body}
-                        </li>
-                      ))}
-                    </ul>
+                    <MessageBubbles
+                      messages={conv.messages.map((m) => ({ ...m, type: 'TEXT' as const, senderId: m.sender.id }))}
+                      myId={user?.id}
+                      nameOf={(id) => conv.messages.find((m) => m.sender.id === id)?.sender.firstName ?? '…'}
+                    />
                   )}
                 </div>
               );
@@ -617,142 +722,69 @@ export function AlertDetailPanel({
   );
   if (view === 'chat') return conversations;
 
-  // The roster grouped by circle, 1st circle first — the "Circles" section.
-  const circleGroups = new Map<string, AlertParticipant[]>();
-  for (const p of [...detail.participants].sort(
-    (a, b) => Number(b.circleId === detail.firstCircleId) - Number(a.circleId === detail.firstCircleId),
-  )) {
-    circleGroups.set(p.circleName, [...(circleGroups.get(p.circleName) ?? []), p]);
-  }
-
   return (
     <div className="alert-detail">
-      <p className="alert-role">{t(`alerts.detail.role.${roleKey}`)}</p>
-      {/* My own answer stays in view, outside the folded sections. */}
+      {running && <AlertSteps status={detail.alertStatus} />}
+      {guideRole ? (
+        <>
+          <WelcomeModal alertId={alertId} role={guideRole} vars={guideVars} />
+          <RoleBanner role={guideRole} vars={guideVars} />
+        </>
+      ) : (
+        <p className="alert-role">{t(`alerts.detail.role.${roleKey}`)}</p>
+      )}
+      {/* The person the alert is about: "all fine, stop the alert" first. */}
+      {isCompanion && running && footer}
+      {/* My own answer stays in view, at the top. */}
       {canRespond && myParticipant && (
         <AlertReplyPanel
           alertId={alertId}
+          name={detail.userCompanion.firstName}
+          alertType={detail.alertType}
           firstCircleResponse={myParticipant.circleId === detail.firstCircleId ? myParticipant.response : undefined}
           questions={myParticipant.questions}
           onChange={loadDetail}
         />
       )}
+      {/* Once a 1st-circle Sentinel has answered: where to find what. */}
+      {running && isFirstCircleSentinel && myParticipant?.response && (
+        <section className="where-card">
+          <h3>{t('alerts.where.title', { name: detail.userCompanion.firstName })}</h3>
+          <ol>
+            <li>
+              <strong>{t('alerts.where.roomTitle')}</strong> {t('alerts.where.room')}
+            </li>
+            <li>
+              <strong>{t('alerts.where.repliesTitle')}</strong> {t('alerts.where.replies')}
+            </li>
+            <li>
+              <strong>{t('alerts.where.circlesTitle')}</strong>{' '}
+              {t('alerts.where.circles', { name: detail.userCompanion.firstName })}
+            </li>
+          </ol>
+          <Link to={`/running-alert/${alertId}/chat`} className="button-link">
+            {t('alerts.where.openRoom')}
+          </Link>
+        </section>
+      )}
 
-      <FoldSection title={t('alerts.detail.sections.info')}>
-        <p>
-          {activeLead
-            ? t('alerts.detail.currentLead', { name: activeLead.userSentinels.linkAsSentinel.firstName })
-            : t('alerts.detail.noLeadYet')}{' '}
-          {canClaimLead && (
-            <button className="ghost" onClick={() => claimLead(alertId).then(loadDetail)}>
-              {t('alerts.detail.claimLead')}
-            </button>
-          )}
-        </p>
-        {/* The name: any 1st-circle Sentinel can set/rename it. */}
-        <StatusNoteField
-          label={t('alerts.detail.labelField')}
-          value={detail.label}
-          placeholder={t('alerts.detail.labelPlaceholder')}
-          meta={labelMeta}
-          onSave={isFirstCircleSentinel ? (label) => updateAlertLabel(alertId, label).then(loadDetail) : undefined}
-        />
-        <AlertMessage text={detail.messageAlert} />
-        {companionStatus}
-        {firstCircleStatus}
-      </FoldSection>
+      <AlertSection title={t('alerts.detail.sections.replies')}>
+        <AlertRepliesTimeline detail={detail} />
+      </AlertSection>
 
-      <FoldSection title={t('alerts.detail.sections.circles')}>
-        {[...circleGroups].map(([circleName, members]) => (
-          <div key={circleName} className="alert-circle-group">
-            <h3>{circleName}</h3>
-            <ul>
-              {members.map((p) => (
-                <li key={p.id}>
-                  {/* Their person page, in this alert's context (name only,
-                      their place in the alert, whether we can write). */}
-                  <Link to={`/people/${p.userSentinels.linkAsSentinel.id}?alert=${alertId}`} className="person-link">
-                    {p.userSentinels.linkAsSentinel.firstName}
-                  </Link>
-                  {p.isLead && <span className="badge">{t('alerts.detail.lead')}</span>}
-                  {activeLead?.id === p.id && (
-                    <span className="badge status-accepted">{t('alerts.detail.activeLeadBadge')}</span>
-                  )}
-                  <span className="badge">{t(`alerts.detail.participantStatus.${p.status}`)}</span>
-                  {p.requestedBy && (
-                    <span style={{ color: 'var(--text-muted)' }}> · {t('alerts.detail.requestedBy', { name: p.requestedBy.firstName })}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-        {canRequestCircle && (
-          <RequestCircleForm
-            alertId={alertId}
-            circles={detail.userCompanion.myCircles}
-            participants={detail.participants}
-            onChange={loadDetail}
-          />
-        )}
-        {canRequestCircle && (
-          <AskQuestionForm
-            alertId={alertId}
-            participants={detail.participants.filter((p) => p.contactedAt && p.circleId !== detail.firstCircleId)}
-            onChange={loadDetail}
-          />
-        )}
-      </FoldSection>
-
-      <FoldSection title={t('alerts.detail.sections.replies')}>
-        <AlertRepliesSummary participants={detail.participants} firstCircleId={detail.firstCircleId} />
-        <ul className="alert-reply-list">
-          {detail.participants
-            .filter((p) => p.response)
-            .map((p) => (
-              <li key={p.id}>
-                <strong>{p.userSentinels.linkAsSentinel.firstName}</strong>
-                <span style={{ color: 'var(--text-muted)' }}> ({p.circleName})</span> — {replyLabel(t, p.response!)}
-              </li>
-            ))}
-        </ul>
-        {detail.timeline.length > 0 && (
-          <>
-            <h3>{t('alerts.detail.timeline.title')}</h3>
-            <ul className="alert-timeline">
-              {detail.timeline.map((e, i) => (
-                <li key={i}>
-                  <span className="badge">{t(`alerts.detail.timeline.event.${e.type}`)}</span>
-                  <strong>{e.actorLabel}</strong>
-                  {e.detail && <span> — {e.type === 'RESPONDED' ? replyLabel(t, e.detail) : e.detail}</span>}
-                  <span style={{ color: 'var(--text-muted)' }}> · {new Date(e.at).toLocaleString()}</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </FoldSection>
+      <AlertSection title={t('alerts.detail.sections.circles')}>
+        <AlertCircleTiles detail={detail} canAct={canRequestCircle} onChange={loadDetail} />
+      </AlertSection>
 
       {error && <p className="form-error">{error}</p>}
 
       {(canLeave || footer) && (
         <div className="alert-exit">
           {canLeave && <LeaveAlertButton alertId={alertId} onChange={loadDetail} />}
-          {footer}
+          {!(isCompanion && running) && footer}
         </div>
       )}
     </div>
-  );
-}
-
-// A section of the alert page that opens when tapped — closed by default,
-// so the page stays short under stress.
-function FoldSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <details className="alert-fold">
-      <summary>{title}</summary>
-      <div className="alert-fold-body">{children}</div>
-    </details>
   );
 }
 
@@ -762,6 +794,67 @@ function AlertSection({ title, children }: { title: string; children: ReactNode 
       <h2>{title}</h2>
       {children}
     </section>
+  );
+}
+
+// Person found + what next: the responsible Lead's decision. "Fine" ends
+// the alert; the other choices keep it open (being closed) with the
+// follow-up shown to everyone, until the 1st circle closes it.
+function FoundModal({ alertId, onClose, onDone }: { alertId: string; onClose: () => void; onDone: () => void }) {
+  const { t } = useTranslation();
+  const [followUp, setFollowUp] = useState<FoundFollowUp>('FINE');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await markFound(alertId, followUp, note.trim() || undefined);
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title={t('alerts.detail.found.title')} onClose={onClose}>
+      <form className="found-form" onSubmit={submit}>
+        <p className="form-hint">{t('alerts.detail.found.intro')}</p>
+        {(['FINE', 'PICKUP', 'REPATRIATION', 'CARE'] as const).map((f) => (
+          <label key={f} className={`found-option${followUp === f ? ' selected' : ''}`}>
+            <input type="radio" name="followUp" value={f} checked={followUp === f} onChange={() => setFollowUp(f)} />
+            <span>
+              <strong>{t(`alerts.detail.found.options.${f}.title`)}</strong>
+              <small>{t(`alerts.detail.found.options.${f}.hint`)}</small>
+            </span>
+          </label>
+        ))}
+        {followUp !== 'FINE' && (
+          <textarea
+            id="found-note"
+            rows={2}
+            maxLength={300}
+            placeholder={t('alerts.detail.found.notePlaceholder')}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        )}
+        {error && <p className="form-error">{error}</p>}
+        <div className="row">
+          <button type="submit" disabled={busy}>
+            {followUp === 'FINE' ? t('alerts.detail.found.submitClose') : t('alerts.detail.found.submit')}
+          </button>
+          <button type="button" className="ghost" onClick={onClose}>
+            {t('common.cancel')}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -868,18 +961,7 @@ function ConversationThread({
       {messages && messages.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
       ) : (
-        <ul className="alert-chat-messages">
-          {messages?.map((m) => (
-            <li key={m.id}>
-              <strong>{m.senderId === user?.id ? t('alerts.detail.me') : resolveSenderName(m.senderId)}</strong> :{' '}
-              {m.type === 'IMAGE' ? (
-                <img src={`${API_URL}/uploads/messages/${m.body}`} alt="" style={{ maxWidth: 200, borderRadius: 8, display: 'block' }} />
-              ) : (
-                m.body
-              )}
-            </li>
-          ))}
-        </ul>
+        <MessageBubbles messages={messages ?? []} myId={user?.id} nameOf={resolveSenderName} />
       )}
       {fullPage ? (
         <form className="conversation-compose" autoComplete="off" onSubmit={submit}>
@@ -925,6 +1007,7 @@ function ConversationThread({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />
+          <EmojiButton onPick={(emoji) => setDraft((d) => d + emoji)} />
           <button
             type="submit"
             className="compose-icon-btn compose-send"
@@ -1060,79 +1143,6 @@ function StatusNoteField({
   );
 }
 
-function QuestionSelect({
-  value,
-  onChange,
-}: {
-  value: AlertQuestionKind;
-  onChange: (kind: AlertQuestionKind) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value as AlertQuestionKind)}>
-      {ALERT_QUESTION_KINDS.map((kind) => (
-        <option key={kind} value={kind}>
-          {t(`alerts.questions.${kind}`)}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-// A further question to outer-circle Sentinels already contacted on this alert.
-function AskQuestionForm({
-  alertId,
-  participants,
-  onChange,
-}: {
-  alertId: string;
-  participants: AlertParticipant[];
-  onChange: () => Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const [questionKind, setQuestionKind] = useState<AlertQuestionKind>('SEEMED_OK');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  if (participants.length === 0) return null;
-
-  const toggle = (id: string) =>
-    setSelectedIds((ids) => (ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id]));
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      await askQuestion(alertId, { questionKind, participantIds: selectedIds });
-      setSelectedIds([]);
-      await onChange();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form className="panel inline-form" onSubmit={submit}>
-      <h3>{t('alerts.detail.askQuestion.title')}</h3>
-      <QuestionSelect value={questionKind} onChange={setQuestionKind} />
-      {participants.map((p) => (
-        <label key={p.id}>
-          <input type="checkbox" checked={selectedIds.includes(p.id)} onChange={() => toggle(p.id)} />{' '}
-          {p.userSentinels.linkAsSentinel.firstName}
-        </label>
-      ))}
-      <button type="submit" disabled={submitting || selectedIds.length === 0}>
-        {t('alerts.detail.askQuestion.submit')}
-      </button>
-      {error && <p className="form-error">{error}</p>}
-    </form>
-  );
-}
-
 // Backend messages the leave flow can hit, shown translated instead of raw.
 const LEAVE_ERRORS: Record<string, string> = {
   'Another Lead must take the lead before you leave this alert': 'alerts.detail.leave.needOtherLead',
@@ -1161,77 +1171,6 @@ function LeaveAlertButton({ alertId, onChange }: { alertId: string; onChange: ()
       </button>
       {error && <p className="form-error">{error}</p>}
     </div>
-  );
-}
-
-function RequestCircleForm({
-  alertId,
-  circles,
-  participants,
-  onChange,
-}: {
-  alertId: string;
-  circles: { id: string; label: string }[];
-  participants: AlertParticipant[];
-  onChange: () => Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const [circleId, setCircleId] = useState(circles[0]?.id ?? '');
-  const [questionKind, setQuestionKind] = useState<AlertQuestionKind>('CAN_VISIT');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Once a circle has at least one contacted member, calling this again is
-  // "contact more" (the next batch of 2), not the original ask.
-  const isRepeatRequest = participants.some(
-    (p) => p.circleId === circleId && p.status !== 'WAITING',
-  );
-
-  if (circles.length === 0) {
-    return (
-      <section className="panel">
-        <h3>{t('alerts.detail.requestCircle.title')}</h3>
-        <div className="empty-state">{t('alerts.detail.requestCircle.noCircles')}</div>
-      </section>
-    );
-  }
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      await requestCircle(alertId, { circleId, questionKind });
-      await onChange();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form className="panel inline-form" onSubmit={submit}>
-      <h3>{t('alerts.detail.requestCircle.title')}</h3>
-      <div className="row wrap">
-        <select value={circleId} onChange={(e) => setCircleId(e.target.value)}>
-          {circles.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-        <QuestionSelect value={questionKind} onChange={setQuestionKind} />
-        <button type="submit" disabled={submitting || !circleId}>
-          {t(
-            isRepeatRequest
-              ? 'alerts.detail.requestCircle.submitMore'
-              : 'alerts.detail.requestCircle.submit',
-          )}
-        </button>
-      </div>
-      {error && <p className="form-error">{error}</p>}
-    </form>
   );
 }
 

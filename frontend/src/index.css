@@ -153,11 +153,6 @@ button, input {
   background: var(--page-gradient) fixed;
 }
 
-/* Every page turns red while an alert needs the viewer (AppShell). */
-.app-shell.alert-mode {
-  --page-gradient: linear-gradient(180deg, #fdeceb 0%, #f4b4b0 100%);
-}
-
 .app-nav {
   width: 250px;
   flex-shrink: 0;
@@ -244,7 +239,6 @@ button, input {
   cursor: pointer;
 }
 
-.app-nav button.user-name:hover,
 .app-nav button.user-name[aria-expanded='true'] {
   border-color: var(--accent);
   color: var(--accent);
@@ -278,10 +272,6 @@ button, input {
   cursor: pointer;
 }
 
-.user-menu a:hover,
-.user-menu button:hover {
-  background: var(--bg-subtle);
-}
 
 .app-nav a {
   display: block;
@@ -291,8 +281,7 @@ button, input {
   text-decoration: none;
 }
 
-.app-nav a.active,
-.app-nav a:hover {
+.app-nav a.active {
   background: var(--bg-subtle);
 }
 
@@ -339,10 +328,6 @@ button, input {
   border-radius: 6px;
 }
 
-.bell-btn:hover {
-  background: var(--bg-subtle);
-  color: var(--text);
-}
 
 .notification-count {
   position: absolute;
@@ -400,9 +385,6 @@ button, input {
   border-bottom: none;
 }
 
-.notification-item:hover {
-  background: var(--bg-subtle);
-}
 
 .notification-item.unread {
   color: var(--text);
@@ -539,7 +521,6 @@ button, input {
   transition: transform 0.15s, box-shadow 0.15s;
 }
 
-.tile-link:hover .tile,
 .tile-link:focus-visible .tile {
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
@@ -622,8 +603,7 @@ button, input {
 }
 
 /* "Satin / mother-of-pearl" tiles (tile-materials option 2c): soft sheen from
-   the top-left corner, thin light-blue frame; both turn to light reds in
-   alert mode (see .alert-mode below). */
+   the top-left corner, thin light-blue frame. */
 .tile.tile-dash {
   display: flex;
   flex-direction: column;
@@ -637,12 +617,6 @@ button, input {
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-.alert-mode .tile.tile-dash {
-  background: radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%);
-  border-color: #eab0ab;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 14px rgba(120, 30, 30, 0.13);
 }
 
 /* Preview area: fills the rest of the tile; whatever doesn't fit is cut. */
@@ -672,6 +646,14 @@ button, input {
   display: none;
 }
 
+/* Except a group circle: no member names there, so its own name instead. */
+.circles-preview .circle-ring-center.group {
+  display: flex;
+  padding: 0 28px;
+  font-size: 0.85rem;
+  line-height: 1.15;
+}
+
 .circles-preview .preview-ring.primary {
   left: -20px;
   top: 25px;
@@ -680,6 +662,12 @@ button, input {
 .circles-preview .preview-ring.other {
   right: -30px;
   top: 90px;
+}
+
+/* A third circle peeking in under the 1st one, cut by the tile's edge. */
+.circles-preview .preview-ring.third {
+  left: -10px;
+  top: 225px;
 }
 
 /* Up to 3 companions per row, like the Companions page on a phone. */
@@ -740,7 +728,6 @@ button, input {
   opacity: 0.9;
 }
 
-.raise-alert-btn:hover,
 .raise-alert-btn:focus-visible {
   filter: brightness(1.08);
 }
@@ -781,9 +768,6 @@ button, input {
   font-weight: 600;
 }
 
-.alert-type-card:hover {
-  border-color: var(--accent);
-}
 
 .alert-type-card.selected {
   border-color: var(--accent);
@@ -1024,7 +1008,10 @@ button, input {
 /* Full-bleed page wrapper (cancels .app-content padding): spacing only, the background is the app-wide gradient (.app-shell) */
 .page-bleed{margin:-2rem -2rem 0; padding:2rem 2rem 3rem; min-height:calc(100vh - 4rem);}
 @media (max-width:640px){
-  .page-bleed{margin:-1rem -1rem 0; padding:1rem 1rem 2rem;}
+  /* Fills exactly the visible space between the 64px top bar and the room
+     kept for the bottom nav (.app-content's 5.5rem bottom padding) — a
+     plain 100vh made every such page scroll a little even when short. */
+  .page-bleed{margin:-1rem -1rem 0; padding:1rem 1rem 2rem; min-height:calc(100dvh - 64px - 5.5rem);}
 }
 
 /* My Circles — ring overview (CircleRing.tsx) */
@@ -1325,7 +1312,6 @@ button, input {
 .info-intro{margin:0 0 1.25rem; font-size:1.05rem; color:var(--text);}
 .about-tiles{display:flex; flex-direction:column; gap:0.6rem;}
 .about-tile{border-radius:var(--radius); border:1.5px solid #a9c9ea; background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #f1f6fb 45%, #e3ecf5 100%); box-shadow:inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 14px rgba(30,60,100,0.13); overflow:hidden;}
-.alert-mode .about-tile{border-color:#eab0ab; background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%);}
 .app-content button.about-tile-head,.about-tile-head.static{display:flex; align-items:center; gap:0.75rem; width:100%; margin:0; padding:0.8rem 1rem; background:none; border:none; border-radius:0; color:var(--text); font:inherit; text-align:left;}
 .app-content button.about-tile-head{cursor:pointer;}
 .about-tile-icon{flex-shrink:0; color:var(--accent);}
@@ -1342,14 +1328,15 @@ button, input {
 /* Person page (friend profile) */
 .person-page{max-width:720px;}
 .app-content button.link-button{margin:0; padding:0; background:none; border:none; color:var(--accent); font:inherit; cursor:pointer;}
-.person-head{display:flex; align-items:center; gap:2rem; margin:1rem 0 1.5rem;} /* room for the avatar's corner badge */
+.person-head{display:flex; align-items:center; gap:1rem; margin:1rem 0 0.5rem;} /* photo only, no corner badge */
 .person-head-text{display:flex; flex-direction:column; gap:0.2rem; min-width:0;}
 .person-head-text h1{margin:0; font-size:1.6rem; line-height:1.2;}
 .person-head-text .button-link.person-message{align-self:flex-start; margin-top:0.5rem;}
 .person-section{padding-left:1rem;}
 .person-role-hint{margin:0 0 0.75rem; color:var(--text-muted);}
-.person-status{margin:0; font-style:italic; color:var(--text-muted);}
-.conversation-status{margin:0.1rem 0 0; font-size:0.85rem; font-style:italic; color:var(--text-muted);}
+.person-status{margin:0 0 0.5rem; font-size:0.95rem; font-style:italic; color:var(--text);}
+.person-page > .button-link.person-message{display:inline-block; margin:0 0 1.25rem;}
+.conversation-status{margin:-0.4rem 0 0; font-size:0.9rem; font-style:italic; color:var(--text);}
 .settings-field-hint{margin:-0.25rem 0 0.75rem;}
 .person-alert-facts{margin:0; padding-left:1.1rem; display:flex; flex-direction:column; gap:0.35rem;}
 a.person-link{font-weight:700;}
@@ -1361,6 +1348,17 @@ a.person-link{font-weight:700;}
 .alert-roster-person{display:flex; flex-direction:column; align-items:center; gap:0.2rem; min-width:4.5rem; color:inherit; text-decoration:none; text-align:center;}
 .alert-roster-name{font-weight:700; font-size:0.85rem;}
 .alert-roster-role{font-size:0.75rem; color:var(--text-muted);}
+
+/* Running alert: the responsible Lead box and the "person found" choice. */
+.lead-box{display:flex; flex-direction:column; gap:0.4rem; padding:0.75rem 0.9rem; margin-bottom:0.75rem; border-radius:var(--radius); border:1.5px solid #eab0ab; background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%);}
+.lead-box p{margin:0;}
+.lead-box > p:first-child{font-weight:700; font-family:var(--font-brand); font-size:1.1rem;}
+.found-form{display:flex; flex-direction:column; gap:0.5rem;}
+.found-option{display:flex; align-items:flex-start; gap:0.6rem; padding:0.6rem 0.75rem; border:1.5px solid var(--border); border-radius:var(--radius); cursor:pointer;}
+.found-option.selected{border-color:var(--danger); background:#fdf1f0;}
+.found-option span{display:flex; flex-direction:column;}
+.found-option small{color:var(--text-muted);}
+.found-form textarea{font:inherit; padding:0.5rem 0.6rem; border:1px solid var(--border); border-radius:6px;}
 
 /* Give feedback page */
 .feedback-page{max-width:680px;}
@@ -1463,7 +1461,6 @@ a.person-link{font-weight:700;}
   text-align: center;
 }
 
-.app-content a.companion-card:hover,
 .app-content a.companion-card:focus-visible {
   background: rgba(91, 91, 214, 0.08);
 }
@@ -1556,7 +1553,6 @@ a.person-link{font-weight:700;}
   cursor: pointer;
 }
 
-.app-content button.invitation-line:hover,
 .app-content button.invitation-line:focus-visible {
   background: rgba(91, 91, 214, 0.08);
 }
@@ -1656,7 +1652,6 @@ a.person-link{font-weight:700;}
 .conversation-list-title{margin:0; padding:0.6rem 1rem 0.3rem; font-size:0.8rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
 .app-content button.conversation-row{display:flex; flex-direction:row; align-items:center; gap:0.75rem; width:100%; padding:0.75rem 1rem; background:none; color:var(--text); border-radius:0; border-bottom:1px solid var(--border); text-align:left; font:inherit; font-weight:400;}
 .app-content button.conversation-row:last-child{border-bottom:none;}
-.app-content button.conversation-row:hover{background:var(--bg-subtle);}
 .conversation-name{display:flex; align-items:center; gap:0.4rem;}
 .conversation-preview{max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--text-muted); font-size:0.9rem;}
 .app-content button.conversation-row.unread{background:var(--accent-subtle);}
@@ -1666,7 +1661,7 @@ a.person-link{font-weight:700;}
 /* Conversation page: who the other person is + any running alert, fixed at
    the top (.sticky-header); the messages scroll underneath. */
 .conversation-header{display:flex; flex-direction:column; gap:0.75rem; border-bottom:1px solid var(--border);}
-.conversation-contact{display:flex; align-items:center; gap:1.75rem;} /* room for the avatar's corner badge */
+.conversation-contact{display:flex; align-items:center; gap:1rem;} /* no corner badge here (photoRing) */
 a.conversation-contact{color:inherit; text-decoration:none;}
 .conversation-contact h1{margin:0; font-size:1.5rem; line-height:1.2;}
 .conversation-contact-details{display:flex; flex-wrap:wrap; gap:0.1rem 1rem; margin:0.15rem 0; color:var(--text-muted); font-size:0.85rem;}
@@ -1690,7 +1685,6 @@ a.conversation-contact{color:inherit; text-decoration:none;}
 /* "+" menu: opens upward, above the composer fixed at the bottom. */
 .compose-attach-menu{position:absolute; bottom:calc(100% + 0.4rem); left:0; z-index:20; display:flex; flex-direction:column; min-width:9rem; padding:0.3rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow);}
 .app-content .compose-attach-menu button{display:flex; align-items:center; gap:0.5rem; width:100%; margin:0; padding:0.5rem 0.6rem; background:none; color:var(--text); border:none; border-radius:6px; text-align:left; font:inherit; font-weight:400;}
-.app-content .compose-attach-menu button:hover{background:var(--bg-subtle);}
 
 .app-content a.button-link.member-panel-message{margin:0 0 0.5rem;}
 
@@ -1699,7 +1693,6 @@ a.conversation-contact{color:inherit; text-decoration:none;}
 .history-list{display:flex; flex-direction:column; padding:0;}
 .app-content a.history-row{display:flex; flex-direction:column; gap:0.2rem; padding:0.75rem 1rem; color:var(--text); text-decoration:none; border-bottom:1px solid var(--border);}
 .app-content a.history-row:last-child{border-bottom:none;}
-.app-content a.history-row:hover{background:var(--bg-subtle);}
 .history-label{font-weight:700;}
 .history-meta{color:var(--text-muted); font-size:0.9rem;}
 
@@ -1753,3 +1746,409 @@ a.conversation-contact{color:inherit; text-decoration:none;}
 .alert-fold-body{padding:0 1rem 1rem;}
 .alert-circle-group h3{margin:0.6rem 0 0.3rem; font-size:1rem;}
 .alert-circle-group ul,.alert-reply-list{margin:0; padding-left:1.1rem;}
+
+/* Alert guidance (components/AlertGuide.tsx): where the alert stands,
+   "Your role" banner, welcome pop-up. */
+.alert-steps{display:flex; gap:3px; list-style:none; margin:0.75rem 0 0; padding:0;}
+.alert-steps li{flex:1; text-align:center; font-size:0.72rem; line-height:1.15; color:var(--text-muted);}
+.alert-steps li i{display:block; height:6px; border-radius:3px; background:#e9cfcd; margin-bottom:4px;}
+.alert-steps li.done i{background:#b3261e;}
+.alert-steps li.now i{background:#b3261e; box-shadow:0 0 0 2px #fff, 0 0 0 3.5px #b3261e;}
+.alert-steps li.now{color:#b3261e; font-weight:700;}
+.role-banner{margin:0.75rem 0; padding:0.7rem 0.9rem; border-radius:var(--radius); background:#b3261e; color:#fff;}
+.role-banner strong{display:block; font-family:var(--font-brand); font-size:1.1rem;}
+.role-banner ol{margin:0.3rem 0 0; padding-left:1.2rem; display:flex; flex-direction:column; gap:0.2rem;}
+.welcome-modal{display:flex; flex-direction:column; gap:0.6rem; max-width:24rem;}
+.welcome-tag{font-size:0.75rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:#b3261e;}
+.welcome-modal ol{margin:0; padding-left:1.2rem; display:flex; flex-direction:column; gap:0.35rem;}
+.welcome-modal button{align-self:stretch;}
+.running-alert-status{margin:0.2rem 0 0;}
+.room-info{display:flex; flex-direction:column; gap:0.2rem; margin-bottom:0.75rem;}
+.room-info p{margin:0;}
+
+/* 1st-circle reply (AlertReplyPanel) */
+.reply-question{margin:0 0 0.4rem; font-family:var(--font-brand);}
+.app-content button.reply-confirm{width:100%; margin-top:0.5rem; background:#b3261e; border-color:#b3261e; color:#fff; border-radius:999px;}
+.reply-final{font-size:1.1rem;}
+
+/* After answering: where to find what (AlertsPage) */
+.where-card{margin:0.75rem 0; padding:0.75rem 0.9rem; border-radius:var(--radius); border:1.5px solid #eab0ab; background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%); display:flex; flex-direction:column; gap:0.5rem;}
+.where-card h3{margin:0;}
+.where-card ol{margin:0; padding-left:1.2rem; display:flex; flex-direction:column; gap:0.35rem;}
+
+/* Other circles during an alert (components/AlertCircles.tsx) */
+.alert-circle-tiles{display:flex; flex-direction:column; gap:0.6rem;}
+.alert-circle-tile{padding:0.65rem 0.85rem; border-radius:var(--radius); border:1.5px solid #eab0ab; background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%); display:flex; flex-direction:column; gap:0.4rem;}
+.alert-circle-tile p{margin:0;}
+.alert-circle-tile-head{display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem;}
+.alert-circle-tile-head h3{margin:0;}
+.alert-circle-tile .chip{font-size:0.75rem; font-weight:700; padding:0.05rem 0.55rem; border-radius:999px; background:#eef1f4; color:#55606b; white-space:nowrap;}
+.alert-circle-tile .chip.on{background:#fde3e1; color:#b3261e;}
+.alert-circle-people{list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:0.3rem 0.8rem;}
+.alert-circle-people a{display:inline-flex; align-items:center; gap:0.3rem; color:inherit; text-decoration:none;}
+.dot{display:inline-block; width:0.6rem; height:0.6rem; border-radius:50%; background:#c9ced4;}
+.dot.answered{background:#1a7f37;} .dot.waiting{background:#e0a100;} .dot.left{background:#9aa3ab; opacity:0.5;}
+.alert-circle-form{display:flex; flex-wrap:wrap; gap:0.4rem;}
+.alert-dot-legend{margin:0;}
+
+/* Replies: summary + timeline (components/AlertCircles.tsx) */
+.alert-replies{display:flex; flex-direction:column; gap:0.7rem;}
+.alert-replies-summary h3{margin:0.3rem 0 0.2rem; font-size:1rem;}
+.reply-chips{display:flex; flex-wrap:wrap; gap:0.3rem;}
+.reply-chip{font-size:0.8rem; font-weight:700; padding:0.1rem 0.55rem; border-radius:999px; background:#fff; border:1px solid #e2c2bf;}
+.reply-chip.g{color:#1a7f37; border-color:#9fd3ad;} .reply-chip.y{color:#9a6b00; border-color:#ecd08a;} .reply-chip.m{color:var(--text-muted);}
+.seg{display:flex; border:1.5px solid #e2c2bf; border-radius:999px; overflow:hidden; align-self:flex-start;}
+.app-content .seg button{border:0; border-radius:0; background:#fff; color:inherit; padding:0.25rem 0.9rem; font-weight:700;}
+.app-content .seg button.on{background:#b3261e; color:#fff;}
+.alert-tl{list-style:none; margin:0; padding:0 0 0 1rem; border-left:2px solid #e9cfcd; display:flex; flex-direction:column; gap:0.55rem;}
+.alert-tl li{position:relative;}
+.alert-tl li::before{content:""; position:absolute; left:-1.42rem; top:0.35rem; width:0.6rem; height:0.6rem; border-radius:50%; background:#b3261e; border:2px solid #fdeceb;}
+.alert-tl li.reply::before{background:#1a7f37;}
+.alert-tl time{font-size:0.8rem; color:var(--text-muted); font-variant-numeric:tabular-nums; margin-right:0.35rem;}
+.alert-tl .ans{font-weight:700; color:#1a7f37;}
+.alert-tl small{display:block; color:var(--text-muted);}
+
+/* Hover effects only where there is a real pointer: on a phone, :hover
+   sticks after a tap (a tile stays lifted, a row stays grey). */
+@media (hover: hover) {
+  .app-nav button.user-name:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .user-menu a:hover,
+  .user-menu button:hover {
+    background: var(--bg-subtle);
+  }
+
+  .app-nav a:hover {
+    background: var(--bg-subtle);
+  }
+
+  .bell-btn:hover {
+    background: var(--bg-subtle);
+    color: var(--text);
+  }
+
+  .notification-item:hover {
+    background: var(--bg-subtle);
+  }
+
+  .tile-link:hover .tile {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .raise-alert-btn:hover {
+    filter: brightness(1.08);
+  }
+
+  .alert-type-card:hover {
+    border-color: var(--accent);
+  }
+
+  .app-content a.companion-card:hover {
+    background: rgba(91, 91, 214, 0.08);
+  }
+
+  .app-content button.invitation-line:hover {
+    background: rgba(91, 91, 214, 0.08);
+  }
+
+  .app-content button.conversation-row:hover {background:var(--bg-subtle);}
+
+  .app-content .compose-attach-menu button:hover {background:var(--bg-subtle);}
+
+  .app-content a.history-row:hover {background:var(--bg-subtle);}
+}
+
+/* No grey/blue flash on tap (mobile browsers). */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Message bubbles (components/MessageBubbles.tsx), WhatsApp-like: mine on
+   the right in dark blue, the others' on the left in white. */
+.app-content ol.bubbles{list-style:none; margin:0; padding:0.25rem 0.5rem; display:flex; flex-direction:column; gap:2px;}
+.bubble-row{display:flex; flex-direction:column;}
+.bubble-day{align-self:center; font-size:0.75rem; color:#55606b; background:rgba(255,255,255,0.8); border-radius:8px; padding:0.05rem 0.6rem; margin:0.5rem 0 0.4rem;}
+.bubble{position:relative; max-width:78%; padding:0.35rem 0.6rem 0.3rem; border-radius:10px; box-shadow:0 1px 1px rgba(0,0,0,0.1); overflow-wrap:anywhere; white-space:pre-wrap;}
+.bubble time{float:right; font-size:0.7rem; margin:0.45rem 0 -0.2rem 0.6rem;}
+.bubble-name{display:block; font-size:0.8rem; font-weight:700; margin-bottom:1px;}
+.bubble.mine{align-self:flex-end; background:#134356; color:#fff;}
+.bubble.mine time{color:#bdd0d6;}
+.bubble.theirs{align-self:flex-start; background:#fff; color:#1d2a38;}
+.bubble.theirs time{color:#7a8794;}
+.bubble.tail{margin-top:0.35rem;}
+.bubble.mine.tail{border-top-right-radius:0;}
+.bubble.theirs.tail{border-top-left-radius:0;}
+.bubble.tail::before{content:""; position:absolute; top:0; width:8px; height:10px;}
+.bubble.mine.tail::before{right:-7px; background:#134356; clip-path:polygon(0 0, 100% 0, 0 100%);}
+.bubble.theirs.tail::before{left:-7px; background:#fff; clip-path:polygon(0 0, 100% 0, 100% 100%);}
+.bubble-image{display:block; max-width:220px; max-height:260px; border-radius:6px;}
+.app-content button.compose-icon-btn.compose-send{background:#134356; border-color:#134356;}
+
+/* Smiley picker (components/EmojiButton.tsx) */
+.emoji-menu{position:absolute; bottom:calc(100% + 0.4rem); right:0; z-index:20; display:grid; grid-template-columns:repeat(8, 2.2rem); gap:2px; padding:0.35rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow);}
+.app-content .emoji-menu button{margin:0; padding:0; width:2.2rem; height:2.2rem; font-size:1.3rem; line-height:1; background:none; border:none; border-radius:6px;}
+@media (max-width: 640px){ .emoji-menu{grid-template-columns:repeat(6, 2.2rem);} }
+
+/* Info page: symbols and colors legend */
+.symbols-legend{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:0.7rem;}
+.symbols-legend li{display:flex; align-items:center; gap:0.8rem;}
+.symbols-icon{flex:none; width:5.2rem; display:flex; align-items:center; gap:0.2rem;}
+.symbols-icon > span{display:inline-flex;}
+
+/* Conversation header: frosted glass over the page, a thin line below;
+   each existing relation as a small icon + one short line. */
+/* The page's own gradient under the white veil: same look as the glass,
+   but the messages scrolling up disappear behind it instead of showing. */
+.sticky-header.conversation-header{background:linear-gradient(rgba(255,255,255,0.45), rgba(255,255,255,0.45)), var(--page-gradient) fixed; border-bottom:1px solid rgba(19,67,86,0.18);}
+.conversation-relations{display:flex; flex-wrap:wrap; gap:0.15rem 0.9rem; font-size:0.85rem;}
+.conversation-rel{display:inline-flex; align-items:center; gap:0.3rem;}
+.conversation-rel > span{color:var(--text);}
+
+/* Person page: the little figure before each relation section title. */
+.person-section-icon{display:inline-flex; flex-direction:column; flex:none; align-items:center; gap:0.2rem; min-width:3.5rem;}
+.person-section-icon .circle-chip{margin-left:0; font-size:0.7rem; padding:0 0.4rem; max-width:6.5rem; overflow:hidden; text-overflow:ellipsis;}
+.about-tile-title .about-tile-plain{display:block; font-family:inherit; font-size:0.95rem; font-weight:700;}
+.person-role-short{margin:0 0 0.3rem; font-weight:700;}
+
+/* ==========================================================================
+   Night mode (data-theme="dark" on <html>, set by themeMode.ts).
+   "Bleu nuit" palette agreed on the night-mode mockup: background from a
+   very dark blue to black, tiles tinted with the bubbles' petrol, alerts
+   frankly red. Tokens first, then the few rules with their own colors.
+   ========================================================================== */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --text: #e4ecf3;
+  --text-muted: #9fb0c0;
+  --bg: #0f1c29;
+  --bg-subtle: #172a3b;
+  --border: #29405a;
+  --accent: #7cc4c8;
+  --accent-subtle: #163640;
+  --danger: #e0574a;
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --companion-color: #9d8cf0;
+}
+:root[data-theme='dark'] .app-shell {
+  --page-gradient: linear-gradient(180deg, #0f2236 0%, #081420 55%, #030507 100%);
+}
+:root[data-theme='dark'] body { background: #030507; }
+
+/* Buttons: petrol with white text (the light --accent is for links/text).
+   :where() keeps these at the base rules' weight, so every custom button
+   (circle rings, rows, tiles…) keeps its own look. */
+:where(:root[data-theme='dark']) .app-content button,
+:where(:root[data-theme='dark']) .app-content a.button-link { background: #1d6178; color: #fff; }
+:where(:root[data-theme='dark']) .app-content button.ghost { background: none; color: var(--text-muted); }
+
+/* Satin tiles in petrol. */
+:root[data-theme='dark'] .tile.tile-dash,
+:root[data-theme='dark'] .about-tile,
+:root[data-theme='dark'] .app-content button.feedback-kind {
+  background: radial-gradient(120% 90% at 0% 0%, #1f5366 0%, #18414f 50%, #133542 100%);
+  border-color: #2b6378;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+}
+:root[data-theme='dark'] .about-tile-more { border-top-color: rgba(255, 255, 255, 0.12); }
+
+/* Alerts: frankly red, white text. */
+/* Every Raise Alert tile (for myself, someone missing, assistance, soon),
+   like in day mode where they all share the same red satin. */
+:root[data-theme='dark'] .tile.tile-running,
+:root[data-theme='dark'] .raise-grid .tile,
+:root[data-theme='dark'] .role-banner {
+  background: radial-gradient(120% 90% at 0% 0%, #c0392b 0%, #a52d24 55%, #8c241d 100%);
+  border-color: #e0574a;
+  color: #fff;
+}
+:root[data-theme='dark'] .raise-grid .tile * { color: #fff; }
+:root[data-theme='dark'] .raise-grid .tile { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+:root[data-theme='dark'] .raise-grid .tile .badge { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.4); }
+/* Alert-page cards: deep red, light text. */
+:root[data-theme='dark'] .lead-box,
+:root[data-theme='dark'] .where-card,
+:root[data-theme='dark'] .alert-circle-tile {
+  background: radial-gradient(120% 90% at 0% 0%, #4a2328 0%, #3a1c22 55%, #2e171c 100%);
+  border-color: #7a3a3a;
+  color: var(--text);
+}
+:root[data-theme='dark'] .found-option.selected { background: #3a1c22; }
+:root[data-theme='dark'] .alert-steps li i { background: #4a2a2e; }
+:root[data-theme='dark'] .alert-steps li.done i,
+:root[data-theme='dark'] .alert-steps li.now i { background: #e0574a; }
+:root[data-theme='dark'] .alert-steps li.now i { box-shadow: 0 0 0 2px #0f1c29, 0 0 0 3.5px #e0574a; }
+:root[data-theme='dark'] .alert-steps li.now,
+:root[data-theme='dark'] .welcome-tag { color: #ff8a7d; }
+:root[data-theme='dark'] .alert-circle-tile .chip { background: #23384c; color: var(--text-muted); }
+:root[data-theme='dark'] .alert-circle-tile .chip.on { background: #5a2226; color: #ffb3aa; }
+:root[data-theme='dark'] .reply-chip,
+:root[data-theme='dark'] .app-content .seg button { background: var(--bg); }
+:root[data-theme='dark'] .app-content .seg button.on { background: #c0392b; }
+:root[data-theme='dark'] .alert-tl { border-left-color: #4a2a2e; }
+:root[data-theme='dark'] .alert-tl li::before { border-color: #0f1c29; }
+:root[data-theme='dark'] .alert-tl .ans,
+:root[data-theme='dark'] .reply-chip.g,
+:root[data-theme='dark'] .badge.status-accepted { color: #5fd38a; }
+
+/* Circles: the white message badge goes dark. */
+:root[data-theme='dark'] .circle-msg-badge { background: #0f1c29; }
+:root[data-theme='dark'] .person-avatar-badge .companion-icon path { fill: #172a3b; }
+
+/* Messages: my bubbles stay petrol (a touch lighter), theirs dark blue-grey. */
+:root[data-theme='dark'] .bubble.mine,
+:root[data-theme='dark'] .bubble.mine.tail::before,
+:root[data-theme='dark'] .app-content button.compose-icon-btn.compose-send { background: #1d6178; border-color: #1d6178; }
+:root[data-theme='dark'] .bubble.theirs,
+:root[data-theme='dark'] .bubble.theirs.tail::before { background: #22364b; color: var(--text); }
+:root[data-theme='dark'] .bubble.theirs time { color: #93a5b6; }
+:root[data-theme='dark'] .bubble-day { background: rgba(15, 28, 41, 0.8); color: var(--text-muted); }
+:root[data-theme='dark'] .sticky-header.conversation-header {
+  background: linear-gradient(rgba(15, 28, 41, 0.6), rgba(15, 28, 41, 0.6)), var(--page-gradient) fixed;
+  border-bottom-color: var(--border);
+}
+
+/* Settings page: tiles like the Info page (SettingsPage.tsx). The panels
+   reused inside a tile drop their own frame and title (the tile has them). */
+.settings-tile-body{display:flex; flex-direction:column; gap:0.75rem; padding-left:1rem;}
+.settings-tile-body > .panel{margin:0; padding:0; border:none; background:none; box-shadow:none;}
+.settings-tile-body > .panel > h2{display:none;}
+.settings-tile-body label{font-weight:700;}
+.settings-tile-body p{margin:0.1rem 0 0;}
+.settings-apart{margin-top:0.6rem;} /* same gap as between the other tiles */
+.about-tile.settings-quiet{background:var(--bg); border-color:var(--border);}
+.about-tile.settings-danger .about-tile-icon,
+.about-tile.settings-danger .about-tile-title{color:var(--danger);}
+.settings-pay{display:flex; flex-wrap:wrap; align-items:center; gap:0.6rem;}
+.settings-dev{border-top:1px dashed var(--border); padding-top:0.6rem;}
+.settings-dev h3{margin:0 0 0.2rem; font-size:0.95rem;}
+.settings-logout{margin-top:1.5rem;}
+:root[data-theme='dark'] .about-tile.settings-quiet{background:var(--bg); border-color:var(--border);}
+.circle-chip{display:inline-block; margin-left:0.35rem; padding:0 0.55rem; border:1.5px solid var(--border); border-radius:999px; font-size:0.8rem; font-weight:700; line-height:1.4; white-space:nowrap;}
+
+/* Circle page: the two messaging settings, spelled out (CirclesPage). */
+.circle-detail > .circle-detail-head{width:100%; max-width:520px; margin-bottom:-1rem;}
+.circle-messaging{margin-top:1.25rem; display:flex; flex-direction:column; gap:0.75rem;}
+.circle-messaging h3{margin:0;}
+.circle-messaging-row{display:flex; align-items:flex-start; gap:0.6rem; cursor:pointer;}
+.circle-messaging-row input{margin-top:0.25rem; flex:none; width:1.1rem; height:1.1rem;}
+.circle-messaging-row span{display:flex; flex-direction:column; gap:0.15rem;}
+.circle-messaging-row small{color:var(--text-muted); font-size:0.85rem;}
+/* Circle page: the circle's name as the page title, at the very top. */
+.circle-detail{margin-top:1rem;}
+.circle-detail > .circle-detail-head h2{font-size:2rem;}
+.delete-circle-warning{font-weight:700; color:var(--danger);}
+.circle-ring-actions{display:flex; justify-content:space-between; align-items:center; gap:0.75rem; width:100%; max-width:340px;}
+.app-content .circle-ring-actions button{margin:0;}
+
+/* Safety-net bar: while not ready, hover/tap explains the minimum. */
+.security-score.explainable{position:relative;}
+.app-content button.security-score-toggle{all:unset; display:block; width:100%; cursor:pointer;}
+.app-content button.security-score-toggle:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:6px;}
+.security-score-help{display:block; margin-top:0.3rem; font-size:0.85rem; color:var(--text-muted);}
+.security-score-popup{position:absolute; z-index:30; top:calc(100% + 0.4rem); left:0; right:0; max-width:24rem; padding:0.75rem 0.9rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); font-size:0.92rem;}
+.security-score-popup ul{list-style:none; margin:0.4rem 0; padding:0; display:flex; flex-direction:column; gap:0.25rem;}
+.security-score-popup li.done{color:#1a7f37;}
+.security-score-popup li.todo{color:var(--danger); font-weight:700;}
+.security-score-popup p{margin:0; color:var(--text-muted); font-size:0.85rem;}
+.person-end-actions{display:flex; flex-wrap:wrap; justify-content:space-between; gap:0.75rem; margin-top:1.5rem;}
+.app-content .person-end-actions button{margin:0;}
+
+/* My Circles: Sentinels in the reserve circle, below the rings. */
+.reserve-section{margin-top:2rem;}
+.reserve-section h2{margin:0 0 0.2rem;}
+.reserve-list{list-style:none; margin:0.75rem 0 0; padding:0; display:flex; flex-wrap:wrap; gap:0.9rem 1.2rem;}
+.reserve-list a{display:flex; flex-direction:column; align-items:center; gap:0.25rem; color:var(--text); text-decoration:none; font-size:0.9rem; font-weight:700;}
+
+/* Single circle page only: more air around the title and under the ring's
+   buttons, so neither feels squeezed. */
+.circle-detail{margin-top:1.75rem; margin-bottom:1.5rem;}
+.circle-detail > .circle-detail-head{margin-bottom:0.75rem;}
+.circle-detail-ring{gap:1.75rem;}
+.circle-ring-actions{margin-top:1.5rem;}
+.member-placement{display:flex; flex-direction:column; align-items:flex-start; gap:0.6rem;}
+.remove-link-confirm{padding:0.6rem 0.75rem; border:1px solid var(--danger); border-radius:var(--radius);}
+.remove-link-confirm p{margin:0 0 0.5rem;}
+
+/* Buttons on the satin tiles (person page, Settings, Info): the plain
+   "ghost" look disappeared on the sheen — give them a real button body:
+   solid fill, visible border, a little lift. */
+.app-content .about-tile button.ghost,
+.app-content .about-tile a.button-link {
+  background: var(--bg);
+  border: 1.5px solid #7fa7cf;
+  color: var(--text);
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  box-shadow: 0 1px 3px rgba(20, 50, 80, 0.15);
+}
+.app-content .about-tile button.ghost.danger {
+  background: var(--bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.app-content .about-tile button:not(.ghost):not(.about-tile-head):not(.security-score-toggle) {
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  box-shadow: 0 1px 3px rgba(20, 50, 80, 0.2);
+}
+/* Same for the two buttons under the person page's tiles. */
+.app-content .person-end-actions button.ghost.danger {
+  background: var(--bg);
+  border-width: 1.5px;
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(20, 50, 80, 0.15);
+}
+:root[data-theme='dark'] .app-content .about-tile button.ghost { border-color: #4f86a0; }
+
+/* Person page: pick the circle to move into, as colored pills. */
+.circle-pick{display:flex; flex-wrap:wrap; gap:0.45rem; margin:0.2rem 0 0.5rem;}
+.app-content .about-tile button.circle-pick-pill,
+.app-content button.circle-pick-pill{display:inline-flex; align-items:center; gap:0.4rem; margin:0; padding:0.35rem 0.85rem; border:2px solid var(--border); border-radius:999px; background:var(--bg); color:var(--text); font-weight:700; box-shadow:0 1px 3px rgba(20,50,80,0.12);}
+.app-content .about-tile button.circle-pick-pill.on,
+.app-content button.circle-pick-pill.on{color:#fff;}
+.circle-pick-dot{width:0.6rem; height:0.6rem; border-radius:50%;}
+
+/* Person page: every action button looks the same — the calm blue
+   outline of "Put in the reserve circle" — no red, no petrol fills. */
+/* (Only the buttons in the tiles' sections — the confirmation windows keep
+   their own buttons.) */
+.app-content .person-page .member-panel-section button,
+.app-content .person-page .person-end-actions button {
+  background: var(--bg);
+  border: 1.5px solid #7fa7cf;
+  color: var(--text);
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  box-shadow: 0 1px 3px rgba(20, 50, 80, 0.15);
+}
+:root[data-theme='dark'] .app-content .person-page .member-panel-section button,
+:root[data-theme='dark'] .app-content .person-page .person-end-actions button { border-color: #4f86a0; }
+
+/* "Move to another circle": the list of circles in its small window. */
+.circle-pick-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:0.4rem; min-width:16rem;}
+.app-content .circle-pick-list button{all:unset; box-sizing:border-box; display:flex; align-items:center; gap:0.6rem; width:100%; padding:0.65rem 0.8rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); font-weight:700; cursor:pointer;}
+.app-content .circle-pick-list button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.circle-pick-arrow{margin-left:auto; color:var(--text-muted); font-size:1.2rem;}
+@media (hover: hover){ .app-content .circle-pick-list button:hover{background:var(--bg-subtle);} }
+/* Same blue for the former red ones (outranks the satin-tile danger rule). */
+.app-content .person-page .about-tile .member-panel-section button.ghost.danger,
+.app-content .person-page .person-end-actions button.ghost.danger {
+  background: var(--bg);
+  border-color: #7fa7cf;
+  color: var(--text);
+}
+:root[data-theme='dark'] .app-content .person-page .about-tile .member-panel-section button.ghost.danger,
+:root[data-theme='dark'] .app-content .person-page .person-end-actions button.ghost.danger { border-color: #4f86a0; }
+.request-sent{margin:0.4rem 0 0; color:#1a7f37; font-weight:600;}
+.request-preview{margin:0.5rem 0 0.8rem; padding:0.6rem 0.8rem; border-left:3px solid #134356; background:var(--bg-subtle); border-radius:6px; font-style:italic;}
+.tile.tile-running p.running-ask{font-size:1.05rem; font-weight:700;}
+.tile.tile-running p.running-open{margin-top:0.4rem; font-weight:600; opacity:0.9;}

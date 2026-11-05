@@ -48,6 +48,7 @@ import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
 import { UpdateAlertStatusDto } from './dto/update-alert-status.dto';
 import { UpdateAlertLabelDto } from './dto/update-alert-label.dto';
+import { MarkFoundDto, type FoundFollowUp } from './dto/mark-found.dto';
 import { assertNotDeceased } from '../user/user-status.util';
 
 const ALERT_TYPE_LABELS: Record<AlertType, string> = {
@@ -87,6 +88,14 @@ function withReplyOptions<T extends { kind: string }>(question: T) {
     replyOptions: repliesFor(question.kind as AlertQuestionKind),
   };
 }
+
+// Written as the 1st circle's status note when the responsible Lead marks
+// the person found with a follow-up still to organize (FINE closes instead).
+const FOUND_FOLLOW_UP_NOTES: Record<Exclude<FoundFollowUp, 'FINE'>, string> = {
+  PICKUP: 'Personne retrouvée : il faut aller la chercher',
+  REPATRIATION: 'Personne retrouvée : rapatriement à organiser',
+  CARE: 'Personne retrouvée : a besoin de soins',
+};
 
 const OUTER_CIRCLE_BATCH_SIZE = 2;
 const OUTER_CIRCLE_STALE_HOURS = 4;
@@ -185,6 +194,13 @@ export class AlertService {
         },
       });
 
+      // The responsible Lead from the start: Lead 1 (lowest slot), decided
+      // in advance by the companion — never a choice made during the alert.
+      // Any other Lead can still take over later (claimLead).
+      const responsibleLinkId = links
+        .filter((link) => link.leadSlot !== null)
+        .sort((a, b) => a.leadSlot!.localeCompare(b.leadSlot!))[0]?.id;
+
       for (const link of links) {
         await tx.alertParticipant.create({
           data: {
@@ -195,6 +211,7 @@ export class AlertService {
             canMessageOwnCircleAtAlert: link.canMessageOwnCircle,
             firstCircleMessagingModeAtAlert: link.firstCircleMessagingMode,
             isLead: link.leadSlot !== null,
+            leadAssignedAt: link.id === responsibleLinkId ? new Date() : null,
             requestedById: callerId,
             alertId: created.id,
             userSentinelsId: link.id,
@@ -202,19 +219,21 @@ export class AlertService {
         });
       }
 
-      // The 1st circle's own group chat, scoped to this alert — its
-      // Sentinels only (not the companion, who's notified directly instead;
-      // see plan.txt §4 "Messagerie Me <-> Sentinels"), and only those whose
-      // link has canMessageOwnCircle — a Sentinel excluded this way still
-      // gets an AlertParticipant row and the SMS notification above, just
-      // not a seat in the live chat.
+      // The 1st circle's own group chat ("1st circle room"), scoped to this
+      // alert: its Sentinels whose link has canMessageOwnCircle (one
+      // excluded this way still gets an AlertParticipant row and the SMS
+      // above, just not a seat in the live chat) — and the person the
+      // alert is about, who can write there too (Sylvie's call, 2026-11).
       await tx.conversation.create({
         data: {
           alertId: created.id,
           participants: {
-            create: links
-              .filter((link) => link.canMessageOwnCircle)
-              .map((link) => ({ userId: link.linkAsSentinel.id })),
+            create: [
+              ...links
+                .filter((link) => link.canMessageOwnCircle)
+                .map((link) => ({ userId: link.linkAsSentinel.id })),
+              { userId: dto.companionId },
+            ],
           },
         },
       });
@@ -315,6 +334,62 @@ export class AlertService {
       actorId: callerId,
     });
     return updatedAlert;
+  }
+
+  // Person found: the responsible (active) Lead's decision — the one call
+  // reserved to them; everything else is open to the whole 1st circle.
+  // FINE ends the alert. Otherwise it moves to CLOSING with the follow-up
+  // written as the 1st circle's status note, and stays open until someone
+  // in the 1st circle closes it once that's done.
+  async markFound(callerId: string, alertId: string, dto: MarkFoundDto) {
+    const alert = await this.prisma.alert.findUnique({
+      where: { id: alertId },
+      include: {
+        participants: {
+          where: { isLead: true },
+          select: {
+            leadAssignedAt: true,
+            userSentinels: { select: { userSentinelId: true } },
+          },
+        },
+      },
+    });
+    if (!alert) throw new NotFoundException('Alert not found');
+    if (alert.alertStatus === AlertStatus.RESOLVED) {
+      throw new ConflictException('This alert is already closed');
+    }
+    const active = alert.participants
+      .filter((p) => p.leadAssignedAt)
+      .sort(
+        (a, b) => b.leadAssignedAt!.getTime() - a.leadAssignedAt!.getTime(),
+      )[0];
+    if (!active || active.userSentinels.userSentinelId !== callerId) {
+      throw new ForbiddenException(
+        'Only the responsible Lead can mark the person found — take over the lead first',
+      );
+    }
+
+    if (dto.followUp === 'FINE') return this.closeAlert(callerId, alertId);
+
+    const note = dto.note?.trim();
+    const now = new Date();
+    const updated = await this.prisma.alert.update({
+      where: { id: alertId },
+      data: {
+        alertStatus: AlertStatus.CLOSING,
+        closingAt: now,
+        statusByFirstCircle: note
+          ? `${FOUND_FOLLOW_UP_NOTES[dto.followUp]} — ${note}`
+          : FOUND_FOLLOW_UP_NOTES[dto.followUp],
+        statusUpdatedById: callerId,
+        statusUpdatedAt: now,
+      },
+    });
+    await this.notifyAlertParticipants(alertId, {
+      type: NotificationType.ALERT_RESPONSE,
+      actorId: callerId,
+    });
+    return updated;
   }
 
   // Any Lead Sentinel can claim active leadership of an alert at any time,
@@ -448,10 +523,12 @@ export class AlertService {
         // opened an isolated chat (getOrCreateCircleChat). `participants`
         // lets the caller tell them apart (any participant outside the
         // 1st circle marks it as an isolated chat, not the main one).
-        // Messages are embedded here too so the companion (who isn't a
-        // ConversationParticipant, by design) can still read the full
-        // history as part of the alert detail, without being able to send.
+        // Messages are embedded here too so the companion can read every
+        // conversation of their alert (they only write in the 1st circle
+        // room, not in the isolated chats). Oldest first: the room is
+        // always the first one, created with the alert.
         conversations: {
+          orderBy: { createdAt: 'asc' },
           select: {
             id: true,
             closedAt: true,
@@ -478,6 +555,29 @@ export class AlertService {
       alert.userCompanionId,
       alert.firstCircleId,
     );
+
+    // The companion writes in every conversation of their alert (the 1st
+    // circle room and each isolated chat). Conversations opened before
+    // that rule: seat them the first time they open their running alert.
+    if (
+      callerId === alert.userCompanionId &&
+      alert.alertStatus !== AlertStatus.RESOLVED
+    ) {
+      for (const conv of alert.conversations ?? []) {
+        if (
+          conv.closedAt ||
+          conv.participants.some((p) => p.user.id === callerId)
+        ) {
+          continue;
+        }
+        await this.prisma.conversationParticipant.create({
+          data: { conversationId: conv.id, userId: callerId },
+        });
+        conv.participants.push({
+          user: { id: callerId, firstName: alert.userCompanion.firstName },
+        });
+      }
+    }
 
     return { ...alert, timeline: this.buildAlertTimeline(alert) };
   }
@@ -847,6 +947,8 @@ export class AlertService {
             ...firstCircleRoster.map((p) => ({
               userId: p.userSentinels.userSentinelId,
             })),
+            // The person the alert is about writes here too.
+            { userId: alert.userCompanionId },
           ],
         },
       },
@@ -888,6 +990,12 @@ export class AlertService {
     const question = participant.questions[0];
     if (!isFirstCircle && !question) {
       throw new BadRequestException('Unknown question');
+    }
+    // "I'm going" is a commitment the 1st circle counts on: once sent it
+    // can't be taken back. "Later" / "Unavailable" stay open (later can
+    // still become going).
+    if (isFirstCircle && participant.response === 'GOING') {
+      throw new ConflictException('You already said you are going');
     }
     const kind = isFirstCircle ? null : (question.kind as AlertQuestionKind);
     const reply = parseAppReply(dto.reply, kind);

@@ -166,6 +166,8 @@ export const updateMembership = (
     firstCircleMessagingMode?: MessagingMode;
     canMessageMe?: boolean;
     callOrder?: number;
+    // Lead order in the 1st circle (Lead 1 = responsible when an alert starts).
+    leadSlot?: LeadSlot;
   },
 ) => apiPatch<Membership>(`/sentinel/memberships/${id}`, data);
 
@@ -269,3 +271,11 @@ export const leaveGroup = (rootId: string) =>
 
 export const deleteGroup = (rootId: string) =>
   apiDelete<{ deleted: true }>(`/sentinel/groups/${rootId}`);
+
+// From someone's page: end every link with them (both directions), or block
+// them for good (both directions, never re-invitable).
+export const endRelationship = (userId: string) =>
+  apiPost<{ ended: number }>(`/sentinel/people/${userId}/end`, {});
+
+export const blockRelationship = (userId: string) =>
+  apiPost<{ ended: number }>(`/sentinel/people/${userId}/block`, {});

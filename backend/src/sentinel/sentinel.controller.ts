@@ -228,6 +228,26 @@ export class SentinelController {
     return this.sentinel.blockMembership(user.userId, id);
   }
 
+  // ---- A whole relationship, both directions (person page) -----------------
+
+  // Ends every link with this person, whichever way it goes.
+  @Post('people/:userId/end')
+  endRelationship(
+    @CurrentUser() user: { userId: string },
+    @Param('userId') otherUserId: string,
+  ) {
+    return this.sentinel.endRelationship(user.userId, otherUserId, false);
+  }
+
+  // Same, but permanent: neither can ever invite the other again.
+  @Post('people/:userId/block')
+  blockRelationship(
+    @CurrentUser() user: { userId: string },
+    @Param('userId') otherUserId: string,
+  ) {
+    return this.sentinel.endRelationship(user.userId, otherUserId, true);
+  }
+
   // ---- Companions (people I watch over) -------------------------------------
 
   @Get('companions')

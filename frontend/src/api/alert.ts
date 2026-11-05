@@ -26,12 +26,16 @@ export interface AlertQuestion {
   kind: AlertQuestionKind;
   response: string | null;
   answeredAt: string | null;
+  createdAt: string;
+  askedById: string;
 }
 
 export interface AlertSummary {
   id: string;
   createdAt: string;
   launchedAt: string | null;
+  // Set when the responsible Lead marked the person found (CLOSING).
+  closingAt: string | null;
   closedAt: string | null;
   label: string;
   messageAlert: string;
@@ -78,6 +82,8 @@ export interface AlertParticipant {
   // is the current lead — see claimLead below.
   leadAssignedAt: string | null;
   contactedAt: string | null;
+  // When they last answered (their own 1st-circle answer, or a question).
+  answeredAt: string | null;
   circleId: string;
   circleName: string;
   response: string | null;
@@ -130,6 +136,12 @@ export const raiseAlert = (data: { companionId: string; alertType: AlertType; re
 export const closeAlert = (id: string) => apiPost<AlertSummary>(`/alert/${id}/close`, {});
 
 export const claimLead = (id: string) => apiPost<AlertDetail>(`/alert/${id}/claim-lead`, {});
+
+// Person found + what next — the responsible Lead only. FINE closes the
+// alert; the others keep it open (CLOSING) with the follow-up as the note.
+export type FoundFollowUp = 'FINE' | 'PICKUP' | 'REPATRIATION' | 'CARE';
+export const markFound = (id: string, followUp: FoundFollowUp, note?: string) =>
+  apiPost<AlertSummary>(`/alert/${id}/found`, { followUp, ...(note ? { note } : {}) });
 
 // "I can't help anymore": the caller's participation becomes CLOSED. A Lead
 // can only leave once another Lead has taken the lead after them.

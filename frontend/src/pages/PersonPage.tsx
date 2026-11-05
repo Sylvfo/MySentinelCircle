@@ -1,13 +1,26 @@
 import { useEffect, useState } from 'react';
+
+type EndKind = 'end' | 'block';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { getAlert, type AlertDetail } from '../api/alert';
 import { useAuth } from '../auth/AuthContext';
-import { listCircles, listCompanions, type Circle, type Companion } from '../api/sentinel';
+import {
+  blockRelationship,
+  endRelationship,
+  listCircles,
+  listCompanions,
+  type Circle,
+  type Companion,
+} from '../api/sentinel';
+import { Modal } from '../components/Modal';
 import { PersonAvatar } from '../components/PersonAvatar';
 import { SentinelActions } from '../components/SentinelActions';
 import { CompanionActions } from '../components/CompanionActions';
+import { CircleChip } from '../components/CircleChip';
+import { SentinelIcon } from '../components/SentinelIcon';
+import { CompanionIcon } from '../components/CompanionIcon';
 import { avatarPathOf, myCompanionColor, mySentinelColor, publicStatusOf } from '../relations';
 import { companionColor, companionGold } from '../theme';
 
@@ -34,6 +47,8 @@ export function PersonPage() {
   const [circles, setCircles] = useState<Circle[]>([]);
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [loading, setLoading] = useState(true);
+  // Ending / blocking the whole relationship, waiting for confirmation.
+  const [confirming, setConfirming] = useState<EndKind | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<SectionKey>>(
     () =>
@@ -136,6 +151,18 @@ export function PersonPage() {
     from === 'companion' ? ['alert', 'companion', 'sentinel'] : ['alert', 'sentinel', 'companion'];
   const sections = order.filter((k) => (k === 'alert' ? inAlert : k === 'sentinel' ? !!membership : !!companion));
 
+  const sentinelIconColor = membership ? (mySentinelColor(circles, userId) ?? 'var(--text-muted)') : undefined;
+  const companionIconColor = companion
+    ? (myCompanionColor(companions, userId) ??
+      companionGold(!!companion.leadSlot, companion.circle.isPrimary) ??
+      companionColor(userId))
+    : undefined;
+
+  // Same wording as the conversation header: just "Sentinel"; the circle
+  // (Lead, 1st circle or its name) is the pill after it (CircleChip).
+  const sentinelRoleLabel = t('conversation.roleCircle');
+  const companionRoleLabel = t('conversation.roleCircle');
+
   const toggle = (key: SectionKey) =>
     setOpen((current) => {
       const next = new Set(current);
@@ -167,25 +194,59 @@ export function PersonPage() {
               : null
           }
           size={96}
+          // The relations have their own figures below: photo only.
+          photoRing="#134356"
         />
+        {/* Laid out like a conversation's header: name, then who they are
+            to me (one line per direction, with its little figure), then
+            their contact details. */}
         <div className="person-head-text">
           <h1>
             {person.firstName} {person.lastName}
           </h1>
-          {publicStatus && <p className="person-status">{publicStatus}</p>}
+          {(membership || companion) && (
+            <div className="conversation-relations">
+              {membership && (
+                <span className="conversation-rel" style={{ color: sentinelIconColor }}>
+                  <SentinelIcon size={16} />
+                  <span>{t('conversation.theyForMe', { name, role: sentinelRoleLabel })}</span>
+                  <CircleChip
+                    relation={{ isLead: !!membership.leadSlot, isFirstCircle, circle: circle?.label ?? '' }}
+                    color={sentinelIconColor}
+                  />
+                </span>
+              )}
+              {companion && (
+                <span className="conversation-rel">
+                  <CompanionIcon size={17} color={companionIconColor} />
+                  <span>{t('conversation.meForThem', { name, role: companionRoleLabel })}</span>
+                  <CircleChip
+                    relation={{
+                      isLead: !!companion.leadSlot,
+                      isFirstCircle: companion.circle.isPrimary,
+                      circle: companion.circle.label,
+                    }}
+                    color={companionIconColor}
+                  />
+                </span>
+              )}
+            </div>
+          )}
           {/* No direct link: first name only, no way to contact them. */}
           <div className="conversation-contact-details">
             {person.userName && <span>@{person.userName}</span>}
             {person.phone && <span>{person.phone}</span>}
             {person.email && <span>{person.email}</span>}
           </div>
-          {canMessage && (
-            <Link to={`/messages/${userId}`} className="button-link person-message">
-              {t('companions.sendMessage', { name })}
-            </Link>
-          )}
         </div>
       </div>
+      {/* Their status under the photo, across the whole width. */}
+      {publicStatus && <p className="person-status">{publicStatus}</p>}
+      {canMessage && (
+        <Link to={`/messages/${userId}`} className="button-link person-message">
+          {t('companions.sendMessage', { name })}
+        </Link>
+      )}
 
       <div className="about-tiles">
         {sections.map((key) => {
@@ -199,25 +260,54 @@ export function PersonPage() {
                 aria-controls={`person-${key}`}
                 onClick={() => toggle(key)}
               >
+                {/* The same little figures as everywhere else: filled = they
+                    watch over me, outline = I watch over them. */}
+                {/* Which circle: the pill right under the figure. */}
+                {key === 'sentinel' && membership && (
+                  <span className="person-section-icon" style={{ color: sentinelIconColor }}>
+                    <SentinelIcon size={34} />
+                    <CircleChip
+                      relation={{ isLead: !!membership.leadSlot, isFirstCircle, circle: circle?.label ?? '' }}
+                      color={sentinelIconColor}
+                    />
+                  </span>
+                )}
+                {key === 'companion' && companion && (
+                  <span className="person-section-icon">
+                    <CompanionIcon size={36} color={companionIconColor} />
+                    <CircleChip
+                      relation={{
+                        isLead: !!companion.leadSlot,
+                        isFirstCircle: companion.circle.isPrimary,
+                        circle: companion.circle.label,
+                      }}
+                      color={companionIconColor}
+                    />
+                  </span>
+                )}
                 <span className="about-tile-title">
                   {key === 'alert'
                     ? t('person.alert.title', { label: alert?.label })
                     : key === 'sentinel'
-                      ? t('person.theyWatchYou', { name })
-                      : t('person.youWatchThem', { name })}
-                  <small>
-                    {key === 'alert'
-                      ? isAlertSubject
+                      ? t('conversation.theyForMe', { name, role: sentinelRoleLabel })
+                      : t('conversation.meForThem', { name, role: companionRoleLabel })}
+                  {/* What that means in plain words, then the role detail. */}
+                  {key !== 'alert' && (
+                    <span className="about-tile-plain">
+                      {key === 'sentinel' ? t('person.theyWatchYou', { name }) : t('person.youWatchThem', { name })}
+                    </span>
+                  )}
+                  {key === 'alert' && (
+                    <small>
+                      {isAlertSubject
                         ? t('person.alert.isSubject', { name })
                         : t(participant?.isLead ? 'person.alert.inCircleLead' : 'person.alert.inCircle', {
                             name,
                             circle: participant?.circleName,
                             who: alert?.userCompanion.firstName,
-                          })
-                      : key === 'sentinel'
-                        ? t(`person.sentinelRole.${sentinelRole}`, { circle: circle?.label })
-                        : t(`companions.groups.${companionGroup}`)}
-                  </small>
+                          })}
+                    </small>
+                  )}
                 </span>
                 <svg className="about-tile-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
                   <polyline points="6 9 12 15 18 9" fill="none" stroke="currentColor" strokeWidth="2" />
@@ -246,6 +336,7 @@ export function PersonPage() {
                     </ul>
                   ) : key === 'sentinel' && membership && circle ? (
                     <>
+                      {/* The role in short, shown once the tile is open. */}
                       <p className="person-role-hint">{t(`person.sentinelHint.${sentinelRole}`)}</p>
                       <SentinelActions
                         key={membership.id}
@@ -268,6 +359,44 @@ export function PersonPage() {
           );
         })}
       </div>
+
+      {/* The whole relationship, both directions at once — each asks first. */}
+      {linked && (
+        <div className="person-end-actions">
+          <button type="button" className="ghost danger" onClick={() => setConfirming('end')}>
+            {t('person.end.button', { name })}
+          </button>
+          <button type="button" className="ghost danger" onClick={() => setConfirming('block')}>
+            {t('person.block.button', { name })}
+          </button>
+        </div>
+      )}
+      {confirming && (
+        <Modal title={t(`person.${confirming}.title`, { name })} onClose={() => setConfirming(null)}>
+          <p className="delete-circle-warning">⚠️ {t(`person.${confirming}.warning`, { name })}</p>
+          <p>{t(`person.${confirming}.explain`, { name })}</p>
+          <div className="row">
+            <button
+              className="danger"
+              onClick={async () => {
+                const kind = confirming;
+                setConfirming(null);
+                try {
+                  await (kind === 'block' ? blockRelationship(userId) : endRelationship(userId));
+                  navigate('/dashboard', { replace: true });
+                } catch (err) {
+                  setError(err instanceof ApiError ? err.message : String(err));
+                }
+              }}
+            >
+              {t(`person.${confirming}.confirm`)}
+            </button>
+            <button className="ghost" onClick={() => setConfirming(null)}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

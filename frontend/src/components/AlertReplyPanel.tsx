@@ -6,7 +6,9 @@ import {
   QUESTION_REPLY_CODES,
   respondToAlert,
   type AlertQuestion,
+  type AlertType,
 } from '../api/alert';
+import { firstCircleAskKey } from '../alertAsk';
 import { Tile } from './Tile';
 import { replyLabel } from './replyLabel';
 
@@ -67,15 +69,58 @@ function FreeReply({ current, onSubmit }: { current: string | null; onSubmit: (t
   );
 }
 
+// The 1st circle's own answer: pick, then confirm — nothing is sent on
+// the first tap. "I'm going" is final once sent (the others count on it);
+// "Later" / "Unavailable" can still be changed.
+function FirstCircleReply({
+  name,
+  alertType,
+  current,
+  onSend,
+}: {
+  name: string;
+  alertType?: AlertType;
+  current: string | null;
+  onSend: (code: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [choice, setChoice] = useState<string | null>(null);
+
+  if (current === 'GOING') {
+    return <p className="reply-saved reply-final">✓ {t('alerts.detail.respond.sent', { reply: replyLabel(t, current) })}</p>;
+  }
+  return (
+    <>
+      <h3 className="reply-question">{t(`alerts.ask.${firstCircleAskKey(alertType)}`, { name })}</h3>
+      <p className="form-hint">{t('alerts.ask.whatItMeans', { name })}</p>
+      {current && <p className="reply-saved">✓ {t('alerts.detail.respond.sent', { reply: replyLabel(t, current) })}</p>}
+      <ReplyChoices codes={FIRST_CIRCLE_REPLY_CODES} current={choice ?? current} onSelect={setChoice} />
+      {choice && choice !== current && (
+        <>
+          <button className="reply-confirm" onClick={() => onSend(choice)}>
+            {t('alerts.detail.respond.confirm', { reply: replyLabel(t, choice) })}
+          </button>
+          {choice === 'GOING' && <p className="form-hint">{t('alerts.detail.respond.goingIsFinal')}</p>}
+        </>
+      )}
+    </>
+  );
+}
+
 // The 1st circle answers the alert itself; an outer circle answers each
-// question it received. Changing an answer is allowed while the alert is open.
+// question it received (those answers can change while the alert is open).
 export function AlertReplyPanel({
   alertId,
+  name = '',
+  alertType,
   firstCircleResponse,
   questions,
   onChange,
 }: {
   alertId: string;
+  // Who the alert is about, and what kind of alert, for the 1st circle's question.
+  name?: string;
+  alertType?: AlertType;
   // undefined when the viewer isn't in the 1st circle.
   firstCircleResponse?: string | null;
   questions: AlertQuestion[];
@@ -94,11 +139,7 @@ export function AlertReplyPanel({
   return (
     <Tile>
       {firstCircleResponse !== undefined && (
-        <>
-          <p>{t('alerts.detail.respond.prompt')}</p>
-          <ReplyChoices codes={FIRST_CIRCLE_REPLY_CODES} current={firstCircleResponse} onSelect={(code) => reply(code)} />
-          <SavedReply current={firstCircleResponse} />
-        </>
+        <FirstCircleReply name={name} alertType={alertType} current={firstCircleResponse} onSend={(code) => reply(code)} />
       )}
       {questions.map((question) => (
         <div key={question.id}>

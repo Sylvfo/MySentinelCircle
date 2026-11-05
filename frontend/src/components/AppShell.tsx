@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
-import { alertNeedsMe, listAlerts } from '../api/alert';
 import { NotificationBell } from './NotificationBell';
 import { BottomNav } from './BottomNav';
 import { useUnreadCounts, useUnreadCountsRefresher } from '../unreadCounts';
@@ -22,33 +20,13 @@ const NAV_ITEMS = [
 ];
 
 export function AppShell() {
-  const { user, socket } = useAuth();
+  const { user } = useAuth();
   const { t } = useTranslation();
   // One refresher for every unread badge (bell, Messages tabs).
   useUnreadCountsRefresher();
   const { messages: unreadMessages, support: unreadSupport } = useUnreadCounts();
-  const { pathname } = useLocation();
-  const [alertMode, setAlertMode] = useState(false);
-
-  // Red background on every page while an alert needs this viewer. Rechecked
-  // on navigation and on every live alert change; a failed check just keeps
-  // the last known mode.
-  useEffect(() => {
-    if (!user) return;
-    const check = () => {
-      listAlerts()
-        .then((alerts) => setAlertMode(alerts.some((a) => alertNeedsMe(a, user.id))))
-        .catch(() => {});
-    };
-    check();
-    socket?.on('alert:changed', check);
-    return () => {
-      socket?.off('alert:changed', check);
-    };
-  }, [user, socket, pathname]);
-
   return (
-    <div className={`app-shell${alertMode ? ' alert-mode' : ''}`}>
+    <div className="app-shell">
       <nav className="app-nav">
         <Link to="/dashboard" className="brand">
           <img src={logo} alt="" />

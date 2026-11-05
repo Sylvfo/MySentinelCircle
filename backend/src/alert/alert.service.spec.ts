@@ -54,6 +54,7 @@ describe('AlertService', () => {
       updateMany: jest.Mock;
       findFirst: jest.Mock;
     };
+    conversationParticipant: { create: jest.Mock };
     notification: { count: jest.Mock };
     user: { findUnique: jest.Mock; findFirst: jest.Mock };
     $transaction: jest.Mock;
@@ -116,6 +117,7 @@ describe('AlertService', () => {
         updateMany: jest.fn(),
         findFirst: jest.fn(),
       },
+      conversationParticipant: { create: jest.fn() },
       notification: { count: jest.fn() },
       user: { findUnique: jest.fn(), findFirst: jest.fn() },
       $transaction: jest.fn((arg: unknown) =>
@@ -201,6 +203,8 @@ describe('AlertService', () => {
           canMessageOwnCircleAtAlert: true,
           firstCircleMessagingModeAtAlert: MessagingMode.GROUP,
           isLead: true,
+          // Lead 1 is the responsible Lead from the start — not a choice.
+          leadAssignedAt: expect.any(Date),
           requestedById: 'alice-id', // the companion raised it themself
           alertId: 'alert-1',
           userSentinelsId: 'link-1',
@@ -209,6 +213,7 @@ describe('AlertService', () => {
       expect(prisma.alertParticipant.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           isLead: false,
+          leadAssignedAt: null,
           userSentinelsId: 'link-2',
         }),
       });
@@ -219,7 +224,11 @@ describe('AlertService', () => {
         data: {
           alertId: 'alert-1',
           participants: {
-            create: [{ userId: 'sentinel-1' }, { userId: 'sentinel-2' }],
+            create: [
+              { userId: 'sentinel-1' },
+              { userId: 'sentinel-2' },
+              { userId: 'alice-id' }, // the companion writes in the room too
+            ],
           },
         },
       });
@@ -656,6 +665,85 @@ describe('AlertService', () => {
       await expect(
         service.closeAlert('alice-id', 'missing-alert'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('markFound', () => {
+    const alertWithLeads = (overrides: Record<string, unknown> = {}) => ({
+      id: 'alert-1',
+      alertStatus: AlertStatus.ACTIVE,
+      participants: [
+        {
+          leadAssignedAt: new Date('2026-01-01T10:00:00Z'),
+          userSentinels: { userSentinelId: 'bob-id' },
+        },
+        {
+          leadAssignedAt: new Date('2026-01-01T11:00:00Z'), // took over later
+          userSentinels: { userSentinelId: 'cleo-id' },
+        },
+        { leadAssignedAt: null, userSentinels: { userSentinelId: 'dan-id' } },
+      ],
+      ...overrides,
+    });
+
+    it('lets only the responsible (latest) Lead decide', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(alertWithLeads());
+
+      await expect(
+        service.markFound('bob-id', 'alert-1', { followUp: 'PICKUP' }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.alert.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps the alert open (CLOSING) with the follow-up as the 1st circle note', async () => {
+      prisma.alert.findUnique
+        .mockResolvedValueOnce(alertWithLeads())
+        .mockResolvedValueOnce({
+          userCompanionId: 'alice-id',
+          participants: [],
+        }); // notifyAlertParticipants
+      prisma.alert.update.mockResolvedValueOnce({
+        id: 'alert-1',
+        alertStatus: AlertStatus.CLOSING,
+      });
+
+      await service.markFound('cleo-id', 'alert-1', {
+        followUp: 'PICKUP',
+        note: 'Gare de Lausanne',
+      });
+
+      expect(prisma.alert.update).toHaveBeenCalledWith({
+        where: { id: 'alert-1' },
+        data: expect.objectContaining({
+          alertStatus: AlertStatus.CLOSING,
+          closingAt: expect.any(Date),
+          statusByFirstCircle:
+            'Personne retrouvée : il faut aller la chercher — Gare de Lausanne',
+          statusUpdatedById: 'cleo-id',
+        }),
+      });
+    });
+
+    it('closes the alert when the person is fine', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(alertWithLeads());
+      const close = jest
+        .spyOn(service, 'closeAlert')
+        .mockResolvedValueOnce({ id: 'alert-1' } as never);
+
+      await service.markFound('cleo-id', 'alert-1', { followUp: 'FINE' });
+
+      expect(close).toHaveBeenCalledWith('cleo-id', 'alert-1');
+      expect(prisma.alert.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses an alert that is already closed', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(
+        alertWithLeads({ alertStatus: AlertStatus.RESOLVED }),
+      );
+
+      await expect(
+        service.markFound('cleo-id', 'alert-1', { followUp: 'CARE' }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
@@ -1312,6 +1400,7 @@ describe('AlertService', () => {
               { userId: 'neighbor-1' },
               { userId: 'sentinel-1' },
               { userId: 'sentinel-2' },
+              { userId: 'alice-id' }, // the companion writes here too
             ],
           },
         },
@@ -1395,6 +1484,46 @@ describe('AlertService', () => {
   });
 
   describe('respond', () => {
+    it("refuses to change a 1st-circle reply once it is I'm going", async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce({
+        circleId: 'first-1',
+        alert: { firstCircleId: 'first-1' },
+        questions: [],
+        id: 'participant-1',
+        response: 'GOING',
+      });
+
+      await expect(
+        service.respond('sentinel-1', 'alert-1', { reply: 'LATER' }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.alertParticipant.update).not.toHaveBeenCalled();
+    });
+
+    it('lets a 1st-circle Later reply become Going', async () => {
+      prisma.alertParticipant.findFirst.mockResolvedValueOnce({
+        circleId: 'first-1',
+        alert: { firstCircleId: 'first-1' },
+        questions: [],
+        id: 'participant-1',
+        response: 'LATER',
+      });
+      prisma.alertParticipant.update.mockResolvedValueOnce({
+        id: 'participant-1',
+        response: 'GOING',
+      });
+      prisma.alert.findUnique.mockResolvedValueOnce({
+        userCompanionId: 'alice-id',
+        participants: [],
+      });
+
+      await service.respond('sentinel-1', 'alert-1', { reply: 'GOING' });
+
+      expect(prisma.alertParticipant.update).toHaveBeenCalledWith({
+        where: { id: 'participant-1' },
+        data: expect.objectContaining({ response: 'GOING' }),
+      });
+    });
+
     it('records an in-app reply of the 1st circle', async () => {
       prisma.alertParticipant.findFirst.mockResolvedValueOnce({
         circleId: 'first-1',
@@ -1973,6 +2102,49 @@ describe('AlertService', () => {
           }),
         }),
       );
+    });
+
+    it('seats the companion in the 1st circle room of their running alert', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce({
+        ...loadedAlert,
+        alertStatus: AlertStatus.LAUNCHED,
+        userCompanion: { id: 'alice-id', firstName: 'Alice' },
+        conversations: [
+          {
+            id: 'room-1',
+            closedAt: null,
+            participants: [{ user: { id: 'sentinel-1', firstName: 'Bob' } }],
+          },
+        ],
+      });
+
+      const result = await service.getAlert('alice-id', 'alert-1');
+
+      expect(prisma.conversationParticipant.create).toHaveBeenCalledWith({
+        data: { conversationId: 'room-1', userId: 'alice-id' },
+      });
+      expect(result.conversations[0].participants).toContainEqual({
+        user: { id: 'alice-id', firstName: 'Alice' },
+      });
+    });
+
+    it('does not seat the companion again when already in the room', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce({
+        ...loadedAlert,
+        alertStatus: AlertStatus.LAUNCHED,
+        userCompanion: { id: 'alice-id', firstName: 'Alice' },
+        conversations: [
+          {
+            id: 'room-1',
+            closedAt: null,
+            participants: [{ user: { id: 'alice-id', firstName: 'Alice' } }],
+          },
+        ],
+      });
+
+      await service.getAlert('alice-id', 'alert-1');
+
+      expect(prisma.conversationParticipant.create).not.toHaveBeenCalled();
     });
 
     it('returns the alert for an accepted 1st-circle Sentinel', async () => {

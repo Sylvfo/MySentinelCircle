@@ -44,6 +44,8 @@ import { CreateGroupDto } from './dto/create-group.dto';
 import { InviteToGroupDto } from './dto/invite-to-group.dto';
 
 const ACTIVE_STATUSES: LinkStatus[] = [LinkStatus.PENDING, LinkStatus.ACCEPTED];
+// A 1st circle handles an alert together, live: kept small (Sylvie's call).
+const FIRST_CIRCLE_MAX = 6;
 const LEAD_SLOTS: LeadSlot[] = [
   LeadSlot.LEAD_1,
   LeadSlot.LEAD_2,
@@ -95,8 +97,9 @@ export class SentinelService {
   async listCircles(userId: string) {
     await this.ensurePrimaryCircle(userId);
     await this.ensureReserveCircle(userId);
+    // Deleted circles are only CLOSED (never hard-deleted): leave them out.
     const circles = await this.prisma.circle.findMany({
-      where: { userCompanionId: userId },
+      where: { userCompanionId: userId, status: CircleStatus.ACTIVE },
       orderBy: { createdAt: 'asc' },
       include: {
         userSentinels: {
@@ -615,6 +618,10 @@ export class SentinelService {
       throw new BadRequestException(
         'A 1st-circle Sentinel must already have an account',
       );
+    }
+
+    if (circle.circleType === CircleType.FIRST) {
+      await this.assertFirstCircleHasRoom(circle.id);
     }
 
     const sentinelUser = await this.findOrCreateUserByPhone(phone, dto.name);
@@ -1322,6 +1329,8 @@ export class SentinelService {
       );
     }
 
+    if (dto.leadSlot) return this.setLeadOrder(link, dto.leadSlot);
+
     let circleId = link.circleId;
     let targetIsFirst = link.circle.circleType === CircleType.FIRST;
     if (dto.circleId && dto.circleId !== link.circleId) {
@@ -1343,6 +1352,7 @@ export class SentinelService {
       // this same call (sentinelType/requestedAsLead) are ignored here.
       const companion = await this.getUser(userId);
       if (targetIsFirst) {
+        await this.assertFirstCircleHasRoom(target.id);
         await this.notifications.create({
           userId: link.userSentinelId,
           type: NotificationType.CIRCLE_MOVE_PROPOSED,
@@ -1443,16 +1453,61 @@ export class SentinelService {
     return { blocked: true };
   }
 
+  // ---- A whole relationship, both directions (person page) -----------------
+  //
+  // Two people can be linked both ways (one LinkSentinels row per direction:
+  // they watch over me, I watch over them). From someone's page, "end the
+  // link" and "block" act on both at once. Nothing is hard-deleted: ending
+  // marks the rows REMOVED (reactivatable by a new invite), blocking marks
+  // them BLOCKED (permanent — createOrReactivateLink refuses them). The
+  // last-Lead guard is checked on both rows before anything changes, so a
+  // refusal never leaves one direction ended and not the other.
+  async endRelationship(userId: string, otherUserId: string, block: boolean) {
+    const live = block
+      ? { not: LinkStatus.BLOCKED }
+      : { in: [LinkStatus.PENDING, LinkStatus.ACCEPTED] };
+    const links = await this.prisma.linkSentinels.findMany({
+      where: {
+        status: live,
+        OR: [
+          { userCompanionId: userId, userSentinelId: otherUserId },
+          { userCompanionId: otherUserId, userSentinelId: userId },
+        ],
+      },
+      include: LINK_WITH_PARTIES,
+    });
+    if (links.length === 0) {
+      throw new NotFoundException('No link with this person');
+    }
+    for (const link of links) {
+      if (link.status === LinkStatus.ACCEPTED) {
+        await this.assertLeadPreserved(link);
+      }
+    }
+    for (const link of links) {
+      const iAmTheirSentinel = link.userSentinelId === userId;
+      if (!block && iAmTheirSentinel && link.status === LinkStatus.ACCEPTED) {
+        // Same as leaving from the app: they're told I left.
+        await this.leaveLink(link, false);
+      } else {
+        await this.prisma.linkSentinels.update({
+          where: { id: link.id },
+          data: { status: block ? LinkStatus.BLOCKED : LinkStatus.REMOVED },
+        });
+      }
+    }
+    return { ended: links.length, blocked: block };
+  }
+
   // ---- Messaging permission (permanent Me<->Sentinel channel) ---------------
 
-  // Resolves whether the permanent Me<->Sentinel channel is open between
-  // these two — most specific non-null setting wins: LinkSentinels
-  // .canMessageMe > Circle.canMessageMe > User.allowMessagingByDefault.
-  // Direction-agnostic: whichever of the two is "Me" in the underlying
-  // LinkSentinels row drives the resolution. The 1st circle is always
-  // reachable, no override possible there. Not an accepted Sentinel of
-  // each other at all -> false. Separate from canMessageOwnCircle/
-  // firstCircleMessagingMode, which only govern alert-time reach.
+  // Whether the permanent Me<->Sentinel channel is open between these two:
+  // always, as long as one is an accepted Sentinel of the other (either
+  // direction) — Sylvie's call (2026-11), matching plan.txt §4: "Me" can
+  // always reach each of their Sentinels 1:1. The old canMessageMe /
+  // allowMessagingByDefault overrides are no longer consulted (their
+  // columns stay in the schema, unused). There is no circle-wide chat
+  // outside of an alert.
   async canSendDirectMessage(
     userAId: string,
     userBId: string,
@@ -1465,16 +1520,9 @@ export class SentinelService {
           { userCompanionId: userBId, userSentinelId: userAId },
         ],
       },
-      include: {
-        circle: { select: { circleType: true, canMessageMe: true } },
-        userCompanion: { select: { allowMessagingByDefault: true } },
-      },
+      select: { id: true },
     });
-    if (!link) return false;
-    if (link.circle.circleType === CircleType.FIRST) return true;
-    if (link.canMessageMe !== null) return link.canMessageMe;
-    if (link.circle.canMessageMe !== null) return link.circle.canMessageMe;
-    return link.userCompanion.allowMessagingByDefault;
+    return link !== null;
   }
 
   // Counts Sentinels who can actually be reached and are currently active:
@@ -1645,6 +1693,8 @@ export class SentinelService {
     link: LinkWithParties,
     accept: boolean,
   ) {
+    // Proposals aren't counted in the circle, so it may have filled up since.
+    if (accept) await this.assertFirstCircleHasRoom(link.proposedCircleId!);
     const updated = await this.prisma.linkSentinels.update({
       where: { id: link.id },
       data: accept
@@ -1745,6 +1795,64 @@ export class SentinelService {
   // - explicit === undefined: bootstrap — the first Sentinel of a 1st circle
   //   with no Lead yet becomes one automatically.
   // - explicit === true: assign the next free slot, or reject if all 3 taken.
+  // A 1st circle stays small — it handles an alert together, live — so at
+  // most FIRST_CIRCLE_MAX people (accepted or invited). Throws when full.
+  private async assertFirstCircleHasRoom(circleId: string) {
+    const count = await this.prisma.linkSentinels.count({
+      where: { circleId, status: { in: ACTIVE_STATUSES } },
+    });
+    if (count >= FIRST_CIRCLE_MAX) {
+      throw new ConflictException(
+        `A 1st circle can have at most ${FIRST_CIRCLE_MAX} people — add them to another circle`,
+      );
+    }
+  }
+
+  // Lead order: give this 1st-circle Lead the requested slot, swapping with
+  // whoever holds it (in one transaction; null first because of the
+  // [circleId, leadSlot] unique constraint).
+  private async setLeadOrder(
+    link: {
+      id: string;
+      circleId: string;
+      leadSlot: LeadSlot | null;
+      circle: { circleType: CircleType };
+    },
+    slot: LeadSlot,
+  ) {
+    if (link.circle.circleType !== CircleType.FIRST || !link.leadSlot) {
+      throw new BadRequestException('Only a 1st-circle Lead has a Lead order');
+    }
+    if (link.leadSlot === slot) return link;
+    const holder = await this.prisma.linkSentinels.findFirst({
+      where: {
+        circleId: link.circleId,
+        leadSlot: slot,
+        status: { in: ACTIVE_STATUSES },
+      },
+      select: { id: true },
+    });
+    const results = await this.prisma.$transaction([
+      this.prisma.linkSentinels.update({
+        where: { id: link.id },
+        data: { leadSlot: null },
+      }),
+      ...(holder
+        ? [
+            this.prisma.linkSentinels.update({
+              where: { id: holder.id },
+              data: { leadSlot: link.leadSlot },
+            }),
+          ]
+        : []),
+      this.prisma.linkSentinels.update({
+        where: { id: link.id },
+        data: { leadSlot: slot },
+      }),
+    ]);
+    return results[results.length - 1];
+  }
+
   private async resolveLeadSlot(
     circle: { id: string; circleType: CircleType },
     explicit: boolean | undefined,

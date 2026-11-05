@@ -111,7 +111,7 @@ export function smsHelpSms(): string {
 export function alertRaisedSms(companionFullName: string): string {
   return (
     `${APP} : alerte pour ${companionFullName}, dont vous etes Sentinel.\n` +
-    `Connectez-vous pour voir les details et repondre : ${LOGIN_LINK}`
+    `Pouvez-vous vous en occuper maintenant ? Repondez dans l'app : ${LOGIN_LINK}`
   );
 }
 

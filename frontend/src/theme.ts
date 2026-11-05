@@ -39,10 +39,10 @@ export function circleColor(index: number): string {
 export function companionColor(id: string): string {
   let hash = 0;
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  // Wide spread so two companions rarely look alike: 215 = blue … 270 =
-  // violet … 330 = red-violet. Lightness varies a little too (independent
-  // bits of the hash), for extra contrast between neighbouring hues.
-  const hue = 215 + (hash % 116);
+  // Spread so two companions rarely look alike: 215 = blue … 285 = violet,
+  // stopping before pink. Lightness varies a little too (independent bits
+  // of the hash), for extra contrast between neighbouring hues.
+  const hue = 215 + (hash % 71);
   const lightness = 44 + ((hash >>> 8) % 3) * 6; // 44 / 50 / 56 %
   return `hsl(${hue} 62% ${lightness}%)`;
 }

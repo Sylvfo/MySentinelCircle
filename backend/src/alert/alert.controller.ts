@@ -1,3 +1,4 @@
+import { MarkFoundDto } from './dto/mark-found.dto';
 import {
   Body,
   Controller,
@@ -38,6 +39,16 @@ export class AlertController {
   @Post(':id/claim-lead')
   claimLead(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
     return this.alert.claimLead(user.userId, id);
+  }
+
+  // Person found + what next — the responsible Lead only.
+  @Post(':id/found')
+  markFound(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: MarkFoundDto,
+  ) {
+    return this.alert.markFound(user.userId, id, dto);
   }
 
   @Post(':id/leave')
