@@ -6,9 +6,16 @@ import { ApiError, API_URL } from '../api/client';
 import { listCircles, listCompanions } from '../api/sentinel';
 import { listAlerts, type MyAlertSummary } from '../api/alert';
 import { NOTIFICATIONS_CHANGED } from '../api/notification';
-import { getDirectConversation, listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
+import {
+  getDirectConversation,
+  listMessages,
+  listMyConversations,
+  sendImageMessage,
+  sendMessage,
+  type Message,
+} from '../api/messaging';
 import { PersonAvatar } from '../components/PersonAvatar';
-import { avatarPathOf, myCompanionColor, mySentinelColor } from '../relations';
+import { avatarPathOf, myCompanionColor, mySentinelColor, publicStatusOf } from '../relations';
 
 // Everything known about the other person, from both directions of the
 // relationship: they can be my Sentinel, someone I watch over, or both.
@@ -26,6 +33,7 @@ interface ContactInfo {
   sentinelColor: string | null;
   companionColor: string | null;
   avatarPath: string | null;
+  publicStatus: string | null;
 }
 
 // /messages/:userId — the 1:1 conversation with one person. The header
@@ -57,7 +65,7 @@ export function ConversationPage() {
     setLoading(true);
     setError(null);
     Promise.all([listCircles(), listCompanions(), listAlerts()])
-      .then(([circles, companions, myAlerts]) => {
+      .then(async ([circles, companions, myAlerts]) => {
         let sentinel: { firstName: string; lastName?: string | null; phone: string } | null = null;
         let asMySentinel: ContactInfo['asMySentinel'] = null;
         for (const c of circles) {
@@ -84,7 +92,27 @@ export function ConversationPage() {
             sentinelColor: mySentinelColor(circles, userId),
             companionColor: myCompanionColor(companions, userId),
             avatarPath: avatarPathOf(circles, companions, userId),
+            publicStatus: publicStatusOf(circles, companions, userId),
           });
+        } else {
+          // Not in my circles: someone writing to the feedback inbox. Only
+          // their first name is known, from the conversation list.
+          const conv = (await listMyConversations()).find((c) => c.otherUserId === userId);
+          if (conv) {
+            setInfo({
+              firstName: conv.otherFirstName,
+              lastName: null,
+              userName: null,
+              phone: null,
+              email: null,
+              asMySentinel: null,
+              asMyCompanion: null,
+              sentinelColor: null,
+              companionColor: null,
+              avatarPath: null,
+              publicStatus: null,
+            });
+          }
         }
         // Running alerts that concern this conversation: about them, or my own.
         setAlerts(
@@ -114,6 +142,14 @@ export function ConversationPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, conversationId]);
+
+  // Newest message in view: the page opens at the bottom, and follows new
+  // messages (sent or received).
+  useEffect(() => {
+    // Whole page to the very bottom: its bottom padding keeps the last
+    // message above the fixed composer.
+    window.scrollTo({ top: document.documentElement.scrollHeight });
+  }, [messages.length]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -157,46 +193,44 @@ export function ConversationPage() {
   return (
     <div className="page-bleed sticky-header-page conversation-page">
       <div className="sticky-header conversation-header">
-        <Link to="/messages">{t('conversation.back')}</Link>
+        {/* No back link: the Messages icon of the bottom bar does that. */}
         {info && (
-          <div className="conversation-contact">
+          // Photo + name open the person's page (contact details are there).
+          <Link to={`/people/${userId}?from=messages`} className="conversation-contact">
             <PersonAvatar
               userId={userId}
               avatarPath={info.avatarPath}
               sentinelColor={info.sentinelColor}
               companionColor={info.companionColor}
-              size={52}
+              size={64}
             />
             <div>
               <h1>
                 {info.firstName} {info.lastName}
               </h1>
-              <div className="conversation-contact-details">
-                {info.userName && <span>@{info.userName}</span>}
-                {info.phone && <span>{info.phone}</span>}
-                {info.email && <span>{info.email}</span>}
-              </div>
-              {/* Both directions, once each, including "no link". */}
-              <div className="conversation-relations">
-                <p className={info.asMySentinel ? '' : 'none'}>
-                  {info.asMySentinel
-                    ? t('conversation.theyForMe', { name, role: roleLabel(info.asMySentinel) })
-                    : t('conversation.theyNotForMe', { name })}
-                </p>
-                <p className={info.asMyCompanion ? '' : 'none'}>
-                  {info.asMyCompanion
-                    ? t('conversation.meForThem', { name, role: roleLabel(info.asMyCompanion) })
-                    : t('conversation.meNotForThem', { name })}
-                </p>
-              </div>
+              {info.publicStatus && <p className="conversation-status">{info.publicStatus}</p>}
+              {/* One line per direction. No link at all only happens for
+                  the feedback inbox's correspondents: no lines then. */}
+              {(info.asMySentinel || info.asMyCompanion) && (
+                <div className="conversation-relations">
+                  <p>
+                    {info.asMySentinel
+                      ? t('conversation.theyForMe', { name, role: roleLabel(info.asMySentinel) })
+                      : t('conversation.theyNotForMe', { name })}
+                  </p>
+                  <p>
+                    {info.asMyCompanion
+                      ? t('conversation.meForThem', { name, role: roleLabel(info.asMyCompanion) })
+                      : t('conversation.meNotForThem', { name })}
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
+          </Link>
         )}
+        {/* Only when there is one: no alert is the normal case. */}
         {!loading &&
-          (alerts.length === 0 ? (
-            <p className="conversation-alert-none">{t('conversation.noAlert')}</p>
-          ) : (
-            alerts.map((a) => (
+          alerts.map((a) => (
               <div key={a.id} className="conversation-alert">
                 <strong>
                   {a.userCompanionId === user?.id
@@ -208,7 +242,6 @@ export function ConversationPage() {
                 )}
                 <Link to="/running-alert">{t('conversation.seeAlert')}</Link>
               </div>
-            ))
           ))}
       </div>
 
@@ -218,9 +251,32 @@ export function ConversationPage() {
         <p className="form-error">{error}</p>
       ) : (
         <>
-          {/* Messaging-app composer, on top (newest messages are listed
-              first, just below): "+" menu (photo now, GPS position later),
-              rounded text field, paper-plane send button. */}
+          {messages.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
+          ) : (
+            <ul className="alert-chat-messages">
+              {/* Oldest at the top, newest at the bottom next to the
+                  composer, like any messaging app. */}
+              {messages.map((m) => (
+                <li key={m.id}>
+                  <strong>{m.senderId === user?.id ? t('alerts.detail.me') : name}</strong> :{' '}
+                  {m.type === 'IMAGE' ? (
+                    <img
+                      src={`${API_URL}/uploads/messages/${m.body}`}
+                      alt=""
+                      style={{ maxWidth: 200, borderRadius: 8, display: 'block' }}
+                    />
+                  ) : (
+                    m.body
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {error && <p className="form-error">{error}</p>}
+          {/* Messaging-app composer, fixed at the bottom of the screen
+              (above the mobile bottom bar), like WhatsApp: "+" menu (photo
+              now, GPS position later), text field, paper-plane send. */}
           <form className="conversation-compose" autoComplete="off" onSubmit={submit}>
             <div className="compose-attach">
               <button
@@ -283,28 +339,6 @@ export function ConversationPage() {
               onChange={submitImage}
             />
           </form>
-          {error && <p className="form-error">{error}</p>}
-          {messages.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
-          ) : (
-            <ul className="alert-chat-messages">
-              {/* Newest first, right under the composer. */}
-              {[...messages].reverse().map((m) => (
-                <li key={m.id}>
-                  <strong>{m.senderId === user?.id ? t('alerts.detail.me') : name}</strong> :{' '}
-                  {m.type === 'IMAGE' ? (
-                    <img
-                      src={`${API_URL}/uploads/messages/${m.body}`}
-                      alt=""
-                      style={{ maxWidth: 200, borderRadius: 8, display: 'block' }}
-                    />
-                  ) : (
-                    m.body
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
         </>
       )}
     </div>

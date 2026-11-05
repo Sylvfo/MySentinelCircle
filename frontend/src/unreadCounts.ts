@@ -6,10 +6,11 @@ import { NOTIFICATIONS_CHANGED, getUnreadCount } from './api/notification';
 // Unread counts shared by every badge (the bell, the Messages tab in the
 // bottom bar and in the side nav): one request feeds them all, instead of
 // one per badge — the API rate limit is per IP, shared app-wide.
-// `count` = everything but messages (the bell), `messages` = new messages.
-type UnreadCounts = { count: number; messages: number };
+// `count` = everything but messages (the bell), `messages` = new messages,
+// `support` = replies in my feedback thread (About tab).
+type UnreadCounts = { count: number; messages: number; support: number };
 
-let state: UnreadCounts = { count: 0, messages: 0 };
+let state: UnreadCounts = { count: 0, messages: 0, support: 0 };
 const listeners = new Set<() => void>();
 
 export function refreshUnreadCounts() {

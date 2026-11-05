@@ -429,7 +429,12 @@ export class AlertService {
           include: {
             userSentinels: {
               include: {
-                linkAsSentinel: { select: { id: true, firstName: true } },
+                // avatarPath: cache key for their photo on the alert chat's
+                // roster (GET /user/:id/avatar lets 1st-circle co-members
+                // see each other's photo).
+                linkAsSentinel: {
+                  select: { id: true, firstName: true, avatarPath: true },
+                },
               },
             },
             // Who triggered contacting this Sentinel (raiseAlert's 1st-circle

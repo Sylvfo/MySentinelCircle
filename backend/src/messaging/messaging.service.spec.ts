@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { NotificationType } from '@prisma/client';
 import { MessagingService } from './messaging.service';
@@ -10,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SentinelService } from '../sentinel/sentinel.service';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
 import { NotificationService } from '../notification/notification.service';
+import { SupportService } from '../support/support.service';
 
 describe('MessagingService', () => {
   let service: MessagingService;
@@ -25,6 +27,7 @@ describe('MessagingService', () => {
     markTargetRead: jest.Mock;
     getUnreadCountsByTarget: jest.Mock;
   };
+  let support: { getSupportUserId: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -39,6 +42,8 @@ describe('MessagingService', () => {
       markTargetRead: jest.fn(),
       getUnreadCountsByTarget: jest.fn().mockResolvedValue({}),
     };
+    // No feedback inbox configured unless a test says otherwise.
+    support = { getSupportUserId: jest.fn().mockResolvedValue(null) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -47,6 +52,7 @@ describe('MessagingService', () => {
         { provide: SentinelService, useValue: sentinel },
         { provide: REALTIME_NOTIFIER, useValue: notifier },
         { provide: NotificationService, useValue: notifications },
+        { provide: SupportService, useValue: support },
       ],
     }).compile();
 
@@ -395,12 +401,14 @@ describe('MessagingService', () => {
         {
           conversationId: 'conv-1',
           otherUserId: 'user-2',
+          otherFirstName: 'Dana',
           lastMessage: { body: 'salut', type: 'TEXT', createdAt: '2026-01-01' },
           unreadCount: 2,
         },
         {
           conversationId: 'conv-2',
           otherUserId: 'user-3',
+          otherFirstName: 'Eli',
           lastMessage: null,
           unreadCount: 0,
         },
@@ -415,6 +423,84 @@ describe('MessagingService', () => {
       const result = await service.listMyConversations('user-1');
 
       expect(result).toEqual([]);
+    });
+  });
+  describe('feedback inbox (support account)', () => {
+    const supportThread = {
+      conversation: {
+        id: 'conv-support',
+        participants: [{ userId: 'support', user: { firstName: 'Team' } }],
+        messages: [],
+      },
+    };
+    const normalThread = {
+      conversation: {
+        id: 'conv-1',
+        participants: [{ userId: 'user-2', user: { firstName: 'Dana' } }],
+        messages: [],
+      },
+    };
+
+    it('opens my feedback thread without any Sentinel link check', async () => {
+      support.getSupportUserId.mockResolvedValue('support');
+      prisma.conversation.findFirst.mockResolvedValueOnce(null);
+      prisma.conversation.create.mockResolvedValueOnce({
+        id: 'conv-support',
+        closedAt: null,
+      });
+
+      await expect(
+        service.getOrCreateSupportConversation('user-1'),
+      ).resolves.toEqual({ id: 'conv-support', closedAt: null });
+      expect(sentinel.canSendDirectMessage).not.toHaveBeenCalled();
+    });
+
+    it('is not available when no support account is configured', async () => {
+      await expect(
+        service.getOrCreateSupportConversation('user-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lets the support account open a thread with anyone', async () => {
+      support.getSupportUserId.mockResolvedValue('support');
+      prisma.conversation.findFirst.mockResolvedValueOnce({
+        id: 'conv-support',
+        closedAt: null,
+      });
+
+      await service.getOrCreateDirectConversation('support', 'user-1');
+
+      expect(sentinel.canSendDirectMessage).not.toHaveBeenCalled();
+    });
+
+    it('hides my feedback thread from my Messages list', async () => {
+      support.getSupportUserId.mockResolvedValue('support');
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        supportThread,
+        normalThread,
+      ]);
+
+      const result = await service.listMyConversations('user-1');
+
+      expect(result.map((c) => c.conversationId)).toEqual(['conv-1']);
+    });
+
+    it("shows every feedback thread in the support account's own list", async () => {
+      support.getSupportUserId.mockResolvedValue('support');
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        {
+          conversation: {
+            id: 'conv-support',
+            participants: [{ userId: 'user-1', user: { firstName: 'Léa' } }],
+            messages: [],
+          },
+        },
+      ]);
+
+      const result = await service.listMyConversations('support');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].otherFirstName).toBe('Léa');
     });
   });
 });

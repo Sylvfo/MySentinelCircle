@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { MessageType, NotificationType, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +13,7 @@ import { SendMessageDto } from './dto/send-message.dto';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
 import type { RealtimeNotifier } from '../realtime/realtime-notifier.interface';
 import { NotificationService } from '../notification/notification.service';
+import { SupportService } from '../support/support.service';
 
 @Injectable()
 export class MessagingService {
@@ -20,6 +22,7 @@ export class MessagingService {
     private readonly sentinel: SentinelService,
     @Inject(REALTIME_NOTIFIER) private readonly notifier: RealtimeNotifier,
     private readonly notifications: NotificationService,
+    private readonly support: SupportService,
   ) {}
 
   // The permanent Me<->Sentinel channel — "created lazily... only when the
@@ -31,16 +34,38 @@ export class MessagingService {
     if (callerId === targetUserId) {
       throw new BadRequestException('Cannot message yourself');
     }
-    const allowed = await this.sentinel.canSendDirectMessage(
-      callerId,
-      targetUserId,
-    );
+    const allowed =
+      (await this.isSupportPair(callerId, targetUserId)) ||
+      (await this.sentinel.canSendDirectMessage(callerId, targetUserId));
     if (!allowed) {
       throw new ForbiddenException(
         'Messaging is not currently allowed between you two',
       );
     }
+    return this.findOrCreateDirect(callerId, targetUserId);
+  }
 
+  // The caller's conversation with the feedback inbox (see SupportService),
+  // found or created — open to every account, no Sentinel link needed.
+  async getOrCreateSupportConversation(callerId: string) {
+    const supportId = await this.support.getSupportUserId();
+    if (!supportId) {
+      throw new NotFoundException('Feedback is not available');
+    }
+    if (supportId === callerId) {
+      throw new BadRequestException('The feedback inbox has no own thread');
+    }
+    return this.findOrCreateDirect(callerId, supportId);
+  }
+
+  // Either side is the feedback inbox: allowed whatever the circles say —
+  // anyone may write to it, and it may answer anyone who wrote.
+  private async isSupportPair(a: string, b: string) {
+    const supportId = await this.support.getSupportUserId();
+    return supportId !== null && (a === supportId || b === supportId);
+  }
+
+  private async findOrCreateDirect(callerId: string, targetUserId: string) {
     const existing = await this.prisma.conversation.findFirst({
       where: {
         alertId: null,
@@ -186,14 +211,27 @@ export class MessagingService {
       conversationIds,
     );
 
+    // A user's feedback thread lives on the feedback page, not in Messages
+    // (the support account itself, though, sees all of them here).
+    const supportId = await this.support.getSupportUserId();
+
     return participations
       .filter((p) => p.conversation.participants.length > 0)
+      .filter(
+        (p) =>
+          supportId === null ||
+          userId === supportId ||
+          p.conversation.participants[0].userId !== supportId,
+      )
       .map((p) => {
         const other = p.conversation.participants[0];
         const lastMessage = p.conversation.messages[0] ?? null;
         return {
           conversationId: p.conversation.id,
           otherUserId: other.userId,
+          // For people outside my circles (the support account's inbox):
+          // the list has no other way to name them.
+          otherFirstName: other.user.firstName,
           lastMessage,
           unreadCount: unreadCounts[p.conversation.id] ?? 0,
         };
@@ -209,10 +247,9 @@ export class MessagingService {
       select: { userId: true },
     });
     if (!other) return; // defensive — shouldn't happen for a direct conversation
-    const allowed = await this.sentinel.canSendDirectMessage(
-      userId,
-      other.userId,
-    );
+    const allowed =
+      (await this.isSupportPair(userId, other.userId)) ||
+      (await this.sentinel.canSendDirectMessage(userId, other.userId));
     if (!allowed) {
       throw new ForbiddenException(
         'Messaging is not currently allowed between you two',

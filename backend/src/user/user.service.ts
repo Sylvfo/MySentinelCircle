@@ -517,9 +517,11 @@ export class UserService {
     return toProfileDto(updated);
   }
 
-  // A profile photo is private: only its owner and the people linked to them
-  // (an ACCEPTED LinkSentinels in either direction) can see it. Everyone
-  // else gets the same 404 as "no photo", so its existence isn't revealed.
+  // A profile photo is private: only its owner, the people linked to them
+  // (an ACCEPTED LinkSentinels in either direction), and their co-members of
+  // a 1st circle (both ACCEPTED in the same companion's FIRST circle — they
+  // handle alerts together) can see it. Everyone else gets the same 404 as
+  // "no photo", so its existence isn't revealed.
   async getAvatarFile(callerId: string, targetId: string): Promise<string> {
     if (callerId !== targetId) {
       const link = await this.prisma.linkSentinels.findFirst({
@@ -528,6 +530,18 @@ export class UserService {
           OR: [
             { userSentinelId: callerId, circle: { userCompanionId: targetId } },
             { userSentinelId: targetId, circle: { userCompanionId: callerId } },
+            {
+              userSentinelId: targetId,
+              circle: {
+                circleType: CircleType.FIRST,
+                userSentinels: {
+                  some: {
+                    userSentinelId: callerId,
+                    status: LinkStatus.ACCEPTED,
+                  },
+                },
+              },
+            },
           ],
         },
         select: { id: true },

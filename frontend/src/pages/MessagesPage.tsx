@@ -51,6 +51,21 @@ export function MessagesPage() {
         unreadCount: conv?.unreadCount ?? 0,
       };
     });
+    // Conversations with people outside my circles — in practice only the
+    // feedback inbox account's, whose Messages hold everyone's feedback.
+    const inRoster = new Set(rosterRef.current.map((c) => c.userId));
+    for (const conv of conversations) {
+      if (inRoster.has(conv.otherUserId)) continue;
+      enriched.push({
+        userId: conv.otherUserId,
+        name: conv.otherFirstName,
+        sentinelColor: null,
+        companionColor: null,
+        avatarPath: null,
+        lastMessage: conv.lastMessage,
+        unreadCount: conv.unreadCount,
+      });
+    }
     // Most recently active first; contacts never messaged yet stay at
     // the end, in their original order (stable sort).
     enriched.sort((a, b) => {

@@ -130,6 +130,7 @@ export function SettingsPage() {
           onSaved={reload}
           onError={setError}
         />
+        <p className="form-hint settings-field-hint">{t('settings.publicStatusHint')}</p>
         <EditableToggle
           label={t('settings.allowMessagingByDefault')}
           value={me.allowMessagingByDefault}

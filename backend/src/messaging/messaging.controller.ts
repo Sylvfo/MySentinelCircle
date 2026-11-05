@@ -39,6 +39,12 @@ export class MessagingController {
 
   // The permanent Me<->Sentinel channel — finds or lazily creates the 1:1
   // Conversation with :userId. Send/list afterward reuse the routes below.
+  // The caller's own feedback thread (Give feedback page).
+  @Get('support')
+  support(@CurrentUser() user: { userId: string }) {
+    return this.messaging.getOrCreateSupportConversation(user.userId);
+  }
+
   @Get('direct/:userId')
   direct(
     @CurrentUser() user: { userId: string },

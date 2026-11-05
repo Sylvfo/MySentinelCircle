@@ -63,7 +63,8 @@ export function RunningAlertPage({ chat = false }: { chat?: boolean }) {
     }
     if (chat) {
       return (
-        <div>
+        // conversation-page: fixed composer + bottom room, as in Messages.
+        <div className="conversation-page">
           <Link to={`/running-alert/${a.id}`}>{t('runningAlertPage.backToAlert')}</Link>
           <h1>{t('runningAlertPage.chatTitle')}</h1>
           <p style={{ color: 'var(--text-muted)' }}>{a.label}</p>

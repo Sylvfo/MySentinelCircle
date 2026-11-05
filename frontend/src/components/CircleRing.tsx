@@ -9,6 +9,7 @@ import {
   circlePalette,
 } from '../theme';
 import { SentinelIcon } from './SentinelIcon';
+import { useAvatarUrl } from '../avatars';
 
 function MessageBadge({ on }: { on: boolean }) {
   return (
@@ -31,6 +32,32 @@ function MessageBadge({ on }: { on: boolean }) {
   );
 }
 
+// One avatar's face: their profile photo (ring in the avatar's color, small
+// Sentinel badge) when `withPhoto` and they have one — same principle as
+// PersonAvatar on the Companions page — otherwise the plain silhouette.
+function AvatarFace({
+  userId,
+  avatarPath,
+  color,
+  withPhoto,
+}: {
+  userId: string;
+  avatarPath: string | null | undefined;
+  color: string;
+  withPhoto: boolean;
+}) {
+  const url = useAvatarUrl(userId, withPhoto ? avatarPath : null);
+  if (!url) return <SentinelIcon />;
+  return (
+    <>
+      <img src={url} alt="" className="circle-avatar-photo" style={{ borderColor: color }} />
+      <span className="circle-avatar-sentinel-badge" style={{ color }} aria-hidden="true">
+        <SentinelIcon />
+      </span>
+    </>
+  );
+}
+
 // Thick colored ring + avatars around the rim. With `onOpen` it's a button
 // (My Circles overview: click to open the circle's detail); without, a plain
 // picture (the detail view's big ring). Visual-only: every real action
@@ -48,6 +75,7 @@ export function CircleRing({
   inAlertUserIds,
   isGroup,
   strongRing,
+  showPhotos,
 }: {
   label: string;
   members: Membership[];
@@ -67,6 +95,8 @@ export function CircleRing({
   // Light backgrounds (Dashboard's satin tiles): the pale ring tint would
   // vanish, so draw the ring in a see-through shade of the avatars' color.
   strongRing?: boolean;
+  // A circle's own page: show profile photos instead of silhouettes.
+  showPhotos?: boolean;
 }) {
   const { t } = useTranslation();
   const palette = isPrimary ? { color: PRIMARY_AVATAR_COLOR, ring: PRIMARY_RING_COLOR } : circlePalette(colorIndex);
@@ -117,7 +147,12 @@ export function CircleRing({
             className={`circle-avatar${selectedMemberId === m.id ? ' selected' : ''}`}
             style={{ left: x, top: y, width: avatarSize, height: avatarSize, color }}
           >
-            <SentinelIcon />
+            <AvatarFace
+              userId={m.linkAsSentinel.id}
+              avatarPath={m.linkAsSentinel.avatarPath}
+              color={color}
+              withPhoto={!!showPhotos}
+            />
             <MessageBadge on={canMessage} />
             {showNames ? (
               <span className="circle-avatar-caption">

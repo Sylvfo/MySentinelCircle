@@ -1016,7 +1016,7 @@ describe('UserService', () => {
       expect(prisma.linkSentinels.findFirst).not.toHaveBeenCalled();
     });
 
-    it('serves the photo of someone linked to me, checking both directions', async () => {
+    it('serves the photo of someone linked to me (either direction) or sharing a 1st circle with me', async () => {
       prisma.linkSentinels.findFirst.mockResolvedValue({ id: 'link-1' });
       prisma.user.findUnique.mockResolvedValue({ avatarPath: 'abc.jpg' });
 
@@ -1029,6 +1029,15 @@ describe('UserService', () => {
           OR: [
             { userSentinelId: 'me', circle: { userCompanionId: 'lea' } },
             { userSentinelId: 'lea', circle: { userCompanionId: 'me' } },
+            {
+              userSentinelId: 'lea',
+              circle: {
+                circleType: 'FIRST',
+                userSentinels: {
+                  some: { userSentinelId: 'me', status: 'ACCEPTED' },
+                },
+              },
+            },
           ],
         },
         select: { id: true },

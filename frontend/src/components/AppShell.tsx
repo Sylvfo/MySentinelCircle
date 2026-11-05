@@ -26,7 +26,7 @@ export function AppShell() {
   const { t } = useTranslation();
   // One refresher for every unread badge (bell, Messages tabs).
   useUnreadCountsRefresher();
-  const { messages: unreadMessages } = useUnreadCounts();
+  const { messages: unreadMessages, support: unreadSupport } = useUnreadCounts();
   const { pathname } = useLocation();
   const [alertMode, setAlertMode] = useState(false);
 
@@ -69,6 +69,9 @@ export function AppShell() {
               {t(item.key)}
               {item.to === '/messages' && unreadMessages > 0 && (
                 <span className="notification-count inline messages">{unreadMessages}</span>
+              )}
+              {item.to === '/info' && unreadSupport > 0 && (
+                <span className="notification-count inline">{unreadSupport}</span>
               )}
             </NavLink>
           ))}

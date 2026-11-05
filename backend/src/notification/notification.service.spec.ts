@@ -131,14 +131,18 @@ describe('NotificationService', () => {
       });
     });
 
-    it("splits the caller's unread count into messages and everything else", async () => {
-      prisma.notification.count
-        .mockResolvedValueOnce(3)
-        .mockResolvedValueOnce(5);
+    it('counts unread messages per conversation, not per message', async () => {
+      prisma.notification.count.mockResolvedValueOnce(3);
+      // distinct targetId: one row per conversation with something unread
+      prisma.notification.findMany.mockResolvedValueOnce([
+        { targetId: 'conv-mathis' },
+        { targetId: 'conv-lea' },
+      ]);
 
-      await expect(service.getUnreadCounts('user-1')).resolves.toEqual({
+      await expect(service.getUnreadCounts('user-1', null)).resolves.toEqual({
         count: 3,
-        messages: 5,
+        messages: 2,
+        support: 0,
       });
       expect(prisma.notification.count).toHaveBeenCalledWith({
         where: {
@@ -147,13 +151,27 @@ describe('NotificationService', () => {
           type: { not: NotificationType.NEW_MESSAGE },
         },
       });
-      expect(prisma.notification.count).toHaveBeenCalledWith({
+      expect(prisma.notification.findMany).toHaveBeenCalledWith({
         where: {
           userId: 'user-1',
           readAt: null,
           type: NotificationType.NEW_MESSAGE,
         },
+        distinct: ['targetId'],
+        select: { targetId: true },
       });
+    });
+
+    it('counts my feedback thread apart from my Messages', async () => {
+      prisma.notification.count.mockResolvedValueOnce(0);
+      prisma.notification.findMany.mockResolvedValueOnce([
+        { targetId: 'conv-support' },
+        { targetId: 'conv-lea' },
+      ]);
+
+      await expect(
+        service.getUnreadCounts('user-1', 'conv-support'),
+      ).resolves.toEqual({ count: 0, messages: 1, support: 1 });
     });
   });
 });

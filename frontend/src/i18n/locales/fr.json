@@ -156,7 +156,7 @@
       "random": "Aléatoire"
     },
     "backToCircles": "← Retour à Mes cercles",
-    "tapHint": "Appuie sur une Sentinel pour modifier ses réglages.",
+    "tapHint": "Appuie sur une Sentinelle pour ouvrir sa fiche.",
     "addFromOtherCircle": "Ajouter une Sentinel d'un autre cercle",
     "moveHere": "Déplacer ici",
     "addSentinel": "Ajouter une Sentinel",
@@ -247,6 +247,11 @@
       "lead": "Tu es sa Sentinelle Lead",
       "firstCircle": "Tu es dans son 1er cercle",
       "others": "Tu es sa Sentinelle"
+    },
+    "groupHints": {
+      "lead": "Tu es responsable de cette personne en cas de problème : tu coordonnes l'alerte et les autres Sentinelles.",
+      "firstCircle": "En cas de problème, tu fais partie du groupe qui gère l'alerte.",
+      "others": "En cas de problème, son 1er cercle peut te demander de l'aide : répondre à une question, aller voir…"
     }
   },
   "alerts": {
@@ -381,7 +386,8 @@
         "title": "Réponses",
         "noAnswer": "sans réponse",
         "firstCircle": "1er cercle"
-      }
+      },
+      "roster": "1er cercle"
     },
     "backToTiles": "← Retour",
     "seeRunningAlert": "Voir l'alerte en cours",
@@ -456,8 +462,8 @@
     "empty": "Aucune alerte en cours.",
     "backToList": "← Retour aux alertes en cours",
     "since": "depuis le {{when}}",
-    "openChat": "💬 Chat du 1er cercle",
-    "chatTitle": "Chat du 1er cercle",
+    "openChat": "Salon du 1er cercle",
+    "chatTitle": "Salon du 1er cercle",
     "backToAlert": "← Retour à l'alerte"
   },
   "messages": {
@@ -479,16 +485,15 @@
   },
   "conversation": {
     "back": "← Retour aux messages",
-    "noAlert": "Aucune alerte en cours.",
     "myAlert": "Ton alerte est en cours : {{label}}",
     "alertAbout": "Alerte en cours pour {{name}} : {{label}}",
     "lastNews": "Dernière nouvelle : {{status}}",
     "seeAlert": "Voir l'alerte",
     "attach": "Ajouter",
     "attachPhoto": "Photo",
-    "theyForMe": "{{name}} veille sur toi · {{role}}",
+    "theyForMe": "{{name}} veille sur toi ({{role}})",
     "theyNotForMe": "{{name}} ne fait pas partie de tes Sentinelles",
-    "meForThem": "Tu veilles sur {{name}} · {{role}}",
+    "meForThem": "Tu veilles sur {{name}} ({{role}})",
     "meNotForThem": "Tu ne veilles pas sur {{name}}",
     "roleLead": "Sentinelle Lead",
     "roleFirstCircle": "1er cercle",
@@ -584,7 +589,8 @@
     "avatarHint": "Seules tes Sentinelles et les personnes sur qui tu veilles peuvent la voir.",
     "avatarAdd": "Ajouter une photo",
     "avatarChange": "Changer de photo",
-    "avatarRemove": "Supprimer"
+    "avatarRemove": "Supprimer",
+    "publicStatusHint": "Visible par tes Sentinelles, les personnes sur qui tu veilles, et les autres membres de leurs 1ers cercles dont tu fais partie."
   },
   "welcome": {
     "title": "Bienvenue",
@@ -629,38 +635,78 @@
   },
   "info": {
     "title": "À propos de MySentinelCircle",
-    "what": {
-      "title": "C'est quoi ?",
-      "body": [
-        "MySentinelCircle est un filet de sécurité mutuel. Tu choisis les personnes en qui tu as confiance, tes Sentinels, et tu les ranges en cercles autour de toi : ton 1er cercle, le plus proche, puis d'autres cercles (famille, travail, voisin·e·s…).",
-        "Si quelque chose t'inquiète, ou si quelqu'un s'inquiète pour toi, une alerte peut être lancée. Ton 1er cercle est prévenu en premier. S'il ne peut pas résoudre la situation, il peut demander de l'aide à tes autres cercles, étape par étape.",
-        "Ça marche dans les deux sens : tu peux aussi être Sentinel pour les personnes qui comptent sur toi."
-      ]
+    "intro": "Un filet de sécurité mutuel : tu choisis les personnes en qui tu as confiance et tu les ranges en cercles autour de toi. Si quelque chose ne va pas, elles sont alertées, les plus proches en premier.",
+    "learnMore": "En savoir plus",
+    "sections": {
+      "what": {
+        "title": "C'est quoi ?",
+        "summary": [
+          "Un filet de sécurité fait des personnes en qui tu as confiance : tes Sentinelles.",
+          "Elles sont rangées en cercles autour de toi, ton 1er cercle étant le plus proche.",
+          "Ça marche dans les deux sens : tu peux aussi veiller sur les personnes qui comptent sur toi."
+        ],
+        "details": [
+          "Tes cercles peuvent être ta famille, ton travail, tes voisin.e.s… Ton 1er cercle est toujours alerté en premier.",
+          "Si quelque chose t'inquiète, ou si quelqu'un s'inquiète pour toi, une alerte peut être lancée. Si ton 1er cercle ne peut pas résoudre la situation, il peut demander de l'aide à tes autres cercles, étape par étape.",
+          "Les personnes sur qui tu veilles sont tes companions : tu les retrouves sur la page My Companions."
+        ]
+      },
+      "how": {
+        "title": "Comment ça marche ?",
+        "summary": [
+          "Tu invites des personnes à être tes Sentinelles ; personne ne le devient sans accepter.",
+          "Ton 1er cercle a besoin d'au moins un.e Lead, qui coordonne pendant une alerte.",
+          "Une Sentinelle sans l'app peut quand même aider : les alertes et les réponses passent aussi par SMS."
+        ],
+        "details": [
+          "Sans Lead dans ton 1er cercle, tu ne peux pas encore lancer d'alerte.",
+          "Tu peux déplacer une Sentinelle d'un cercle à un autre, en faire un.e Lead, ou la retirer.",
+          "Tu échanges avec tes Sentinelles et tes companions sur la page Messages."
+        ]
+      },
+      "alert": {
+        "title": "Pendant une alerte",
+        "summary": [
+          "Ton 1er cercle est prévenu tout de suite, dans l'app et par SMS.",
+          "Toute l'app passe en rouge pour les personnes concernées, pour que personne ne la rate.",
+          "Un.e Lead peut prendre la main et coordonner les autres."
+        ],
+        "details": [
+          "Le 1er cercle a son propre chat pour l'alerte ; il se ferme quand l'alerte se termine et reste lisible dans l'Historique.",
+          "Si besoin, le 1er cercle peut demander de l'aide à tes autres cercles. Ils ne voient que la question qu'on leur pose.",
+          "Une fois terminée, l'alerte passe dans l'Historique."
+        ]
+      },
+      "privacy": {
+        "title": "Confidentialité",
+        "summary": [
+          "Seul.e.s toi et ton 1er cercle voyez tous les détails d'une alerte.",
+          "Ta photo de profil n'est visible que par les personnes liées à toi.",
+          "C'est toi qui décides qui peut t'écrire."
+        ],
+        "details": [
+          "Pendant une alerte, un autre cercle ne voit que la question qu'on lui pose.",
+          "Tes Sentinelles ne voient que ce qu'il faut pour veiller sur toi.",
+          "Tu peux supprimer ton compte à tout moment depuis les Paramètres. Ton nom, ton numéro, ton email, ta photo et tes cercles sont effacés tout de suite ; les messages et l'historique des alertes restent lisibles par les autres, signés Compte supprimé."
+        ]
+      },
+      "security": {
+        "title": "Sécurité",
+        "summary": [
+          "Les mots de passe et les codes SMS ne sont jamais stockés tels quels : seulement sous une forme brouillée impossible à inverser (hachage).",
+          "Les actions sensibles te demandent de confirmer à nouveau ton identité."
+        ],
+        "details": [
+          "Après 5 tentatives de connexion ratées, le compte est bloqué temporairement.",
+          "Changer d'email ou de téléphone, ou supprimer ton compte, te demande de confirmer à nouveau ton identité.",
+          "Le nombre de requêtes par minute est limité, pour freiner les attaques automatisées."
+        ]
+      }
     },
-    "how": {
-      "title": "Comment ça marche",
-      "items": [
-        "Personne ne devient ta Sentinel sans avoir accepté ton invitation.",
-        "Ton 1er cercle a au moins un·e Lead, qui coordonne pendant une alerte.",
-        "Les alertes et les réponses passent aussi par SMS : une Sentinel sans l'app peut quand même aider."
-      ]
-    },
-    "privacy": {
-      "title": "Confidentialité",
-      "items": [
-        "Seul·e·s toi et ton 1er cercle voyez tous les détails d'une alerte. Un autre cercle ne voit que la question qu'on lui pose.",
-        "Tes Sentinels ne voient que ce qu'il faut pour veiller sur toi ; c'est toi qui décides qui peut t'écrire.",
-        "Tu peux supprimer ton compte à tout moment depuis les Paramètres. Ton nom, ton numéro, ton email, ta photo et tes cercles sont effacés tout de suite ; les messages et l'historique des alertes restent lisibles par les autres, signés « Compte supprimé »."
-      ]
-    },
-    "security": {
-      "title": "Sécurité",
-      "items": [
-        "Les mots de passe et les codes SMS ne sont jamais stockés tels quels : seulement sous une forme brouillée impossible à inverser (hachage).",
-        "Après 5 tentatives de connexion ratées, le compte est bloqué temporairement.",
-        "Les actions sensibles (changer d'email ou de téléphone, supprimer ton compte) te demandent de confirmer à nouveau ton identité.",
-        "Le nombre de requêtes par minute est limité, pour freiner les attaques automatisées."
-      ]
+    "feedback": {
+      "title": "Donner mon avis",
+      "hint": "Un bug, quelque chose de pas clair, quelque chose qui ne te plaît pas, une idée…",
+      "newReply": "L'équipe t'a répondu ({{count}} nouveau)"
     }
   },
   "sentinelHome": {
@@ -668,5 +714,54 @@
     "createAccount": "Créer un compte",
     "sendCode": "Recevoir un code",
     "hasPassword": "J'ai un mot de passe"
+  },
+  "feedback": {
+    "back": "← Retour à À propos",
+    "title": "Donner mon avis",
+    "intro": "Dis-nous ce que tu aimes, une situation où l'app t'a servi, ce qui ne marche pas, ce qui n'est pas clair, ou tes idées. L'équipe lit tout et te répond ici.",
+    "kindLabel": "De quoi s'agit-il ?",
+    "kinds": {
+      "love": "J'adore",
+      "story": "Mon histoire",
+      "bug": "Bug",
+      "confusing": "Je ne comprends pas",
+      "dislike": "Je n'aime pas",
+      "idea": "Idée"
+    },
+    "placeholder": "Ton message…",
+    "send": "Envoyer",
+    "thanks": "Merci, c'est envoyé !",
+    "history": "Tes échanges avec l'équipe",
+    "team": "Équipe",
+    "unavailable": "L'envoi d'avis n'est pas disponible pour le moment."
+  },
+  "person": {
+    "back": "← Retour",
+    "theyWatchYou": "{{name}} veille sur toi",
+    "youWatchThem": "Tu veilles sur {{name}}",
+    "sentinelRole": {
+      "lead": "Sentinelle Lead · {{circle}}",
+      "firstCircle": "1er cercle · {{circle}}",
+      "other": "Sentinelle · cercle « {{circle}} »",
+      "pending": "Invitation envoyée · {{circle}}"
+    },
+    "sentinelHint": {
+      "lead": "Si tu as un problème, cette personne coordonne l'alerte et les autres Sentinelles.",
+      "firstCircle": "Si tu as un problème, cette personne fait partie du groupe qui gère l'alerte.",
+      "other": "Si tu as un problème, ton 1er cercle peut demander de l'aide à cette personne : répondre à une question, aller voir…",
+      "pending": "Cette personne n'a pas encore accepté ton invitation."
+    },
+    "alert": {
+      "title": "Dans l'alerte « {{label}} »",
+      "isSubject": "{{name}} est la personne concernée par l'alerte",
+      "inCircle": "{{name}} est dans le cercle « {{circle}} » de {{who}}",
+      "inCircleLead": "{{name}} est dans le cercle « {{circle}} » de {{who}} · Lead",
+      "linked": "Vous êtes aussi lié.e.s directement (voir plus bas).",
+      "notLinked": "Pas de lien direct entre toi et {{name}}.",
+      "canWriteInChat": "Vous pouvez vous écrire dans le chat de l'alerte.",
+      "openChat": "Ouvrir le chat",
+      "canWriteDirect": "Vous pouvez vous écrire directement (bouton Écrire en haut).",
+      "cannotWrite": "Pas de message possible entre vous."
+    }
   }
 }

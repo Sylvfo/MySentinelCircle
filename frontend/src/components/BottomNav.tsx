@@ -11,7 +11,7 @@ import logo from '../assets/logo.png';
 // Settings from the menu under your name (UserMenu).
 export function BottomNav() {
   const { t } = useTranslation();
-  const { messages: unreadMessages } = useUnreadCounts();
+  const { messages: unreadMessages, support: unreadSupport } = useUnreadCounts();
 
   return (
     <nav className="bottom-nav">
@@ -21,6 +21,8 @@ export function BottomNav() {
           <line x1="12" y1="16" x2="12" y2="11" />
           <line x1="12" y1="8" x2="12.01" y2="8" />
         </svg>
+        {/* Replies to my feedback (its thread lives on About, not Messages). */}
+        {unreadSupport > 0 && <span className="notification-count">{unreadSupport}</span>}
       </NavLink>
       <NavLink to="/history" className={({ isActive }) => (isActive ? 'active' : '')} aria-label={t('nav.history')}>
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">

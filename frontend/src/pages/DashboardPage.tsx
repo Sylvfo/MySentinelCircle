@@ -20,7 +20,8 @@ export function DashboardPage() {
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [runningAlertName, setRunningAlertName] = useState<string | null>(null);
+  // alertId -> first name of the person each running alert is about.
+  const [aboutNames, setAboutNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     Promise.all([listAlerts(), listCircles(), listCompanions()])
@@ -37,7 +38,7 @@ export function DashboardPage() {
   // an active alert needs this viewer to act (see alertNeedsMe). The red
   // background itself is app-wide, set by AppShell.
   const activeAlerts = alerts.filter((a) => alertNeedsMe(a, user?.id));
-  const runningAlert = activeAlerts[0] ?? null;
+  const activeIds = activeAlerts.map((a) => a.id).join(',');
   // "People watching over you" counts Sentinels, not circles — sum of
   // accepted members across every real circle (the system reserve circle
   // isn't a real one to count).
@@ -55,57 +56,54 @@ export function DashboardPage() {
   // same way AlertsPage's detail panel does (an outer-circle Sentinel can
   // get a 403 from getAlert and needs the lighter getMyParticipation view).
   useEffect(() => {
-    const resolveName = async () => {
-      if (!runningAlert) {
-        setRunningAlertName(null);
-        return;
-      }
-      if (runningAlert.userCompanionId === user?.id) {
-        setRunningAlertName(user?.firstName ?? null);
-        return;
-      }
+    const nameOf = async (alertId: string, companionId: string): Promise<string | null> => {
+      if (companionId === user?.id) return user?.firstName ?? null;
       try {
-        const detail = await getAlert(runningAlert.id);
-        setRunningAlertName(detail.userCompanion.firstName);
+        return (await getAlert(alertId)).userCompanion.firstName;
       } catch {
         try {
-          const participation = await getMyParticipation(runningAlert.id);
-          setRunningAlertName(participation.alert.userCompanion.firstName);
+          return (await getMyParticipation(alertId)).alert.userCompanion.firstName;
         } catch {
-          setRunningAlertName(null);
+          return null;
         }
       }
     };
-    void resolveName();
+    void Promise.all(
+      activeAlerts.map(async (a) => [a.id, await nameOf(a.id, a.userCompanionId)] as const),
+    ).then((pairs) => {
+      const names: Record<string, string> = {};
+      for (const [id, n] of pairs) if (n) names[id] = n;
+      setAboutNames(names);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runningAlert?.id, user?.id]);
+  }, [activeIds, user?.id]);
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
 
   return (
     // has-alert: the Running Alert tile takes the room, My Circles / My
     // Companions shrink to compact headers, Raise Alert stays reachable.
-    <div className={`dashboard${runningAlert ? ' has-alert' : ''}`}>
+    <div className={`dashboard${activeAlerts.length > 0 ? ' has-alert' : ''}`}>
       <header className="dashboard-greeting">
         <h1>{t('dashboard.greeting.hello', { name: user?.firstName ?? '' })}</h1>
       </header>
 
       {error && <p className="form-error">{error}</p>}
 
-      {/* Every tile is a link as a whole — no separate "Open" button. */}
-      {runningAlert && (
-        <Link to="/running-alert" className="tile-link">
+      {/* Every tile is a link as a whole — no separate "Open" button. One
+          Running Alert tile per alert in progress, one under the other. */}
+      {activeAlerts.map((a) => (
+        <Link key={a.id} to={`/running-alert/${a.id}`} className="tile-link">
           <Tile className="alert-active tile-running" title={t('dashboard.runningAlert.title')}>
-            <p className="form-hint">{t('dashboard.runningAlert.activeCount', { count: activeAlerts.length })}</p>
             <p>
-              <strong>{t('dashboard.runningAlert.about')}</strong> {runningAlertName ?? runningAlert.label}
+              <strong>{t('dashboard.runningAlert.about')}</strong> {aboutNames[a.id] ?? a.label}
             </p>
             <p>
               <strong>{t('dashboard.runningAlert.whatToDo')}</strong> {t('dashboard.runningAlert.whatToDoHint')}
             </p>
           </Tile>
         </Link>
-      )}
+      ))}
 
       <div className="tile-grid">
         <Link to="/circles" className="tile-link">

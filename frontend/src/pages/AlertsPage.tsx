@@ -32,6 +32,8 @@ import { AlertRepliesSummary } from '../components/AlertRepliesSummary';
 import { AlertReplyPanel } from '../components/AlertReplyPanel';
 import { replyLabel } from '../components/replyLabel';
 import { Tile } from '../components/Tile';
+import { PersonAvatar } from '../components/PersonAvatar';
+import { PRIMARY_AVATAR_COLOR, PRIMARY_LEAD_COLOR } from '../theme';
 
 // The 4 ways to raise an alert, one tile each. "For myself" is always
 // BYCOMPANION; the two "for someone I watch over" tiles map to one type each;
@@ -82,17 +84,17 @@ export function AlertsPage() {
         </Link>
         <Link to="/alerts/missing" className="tile-link">
           <Tile title={t('alerts.tiles.missing.title')}>
-            <p style={{ color: 'var(--text-muted)' }}>{t('alerts.tiles.missing.hint')}</p>
+            <p>{t('alerts.tiles.missing.hint')}</p>
           </Tile>
         </Link>
         <Link to="/alerts/assistance" className="tile-link">
           <Tile title={t('alerts.tiles.assistance.title')}>
-            <p style={{ color: 'var(--text-muted)' }}>{t('alerts.tiles.assistance.hint')}</p>
+            <p>{t('alerts.tiles.assistance.hint')}</p>
           </Tile>
         </Link>
         {/* Not built yet — shown so people know it's coming, not clickable. */}
         <Tile className="tile-soon" title={t('alerts.tiles.travel.title')}>
-          <p style={{ color: 'var(--text-muted)' }}>{t('alerts.tiles.travel.hint')}</p>
+          <p>{t('alerts.tiles.travel.hint')}</p>
           <span className="badge">{t('alerts.tiles.soon')}</span>
         </Tile>
       </div>
@@ -524,8 +526,42 @@ export function AlertDetailPanel({
             ? 'asked'
             : 'involved';
 
+  // Chat page only: who's in the 1st circle, with photo, role and status in
+  // this alert — tapping one opens their person page (alert context).
+  const firstCircleRoster = detail.participants.filter((p) => p.circleId === detail.firstCircleId);
+  const roster = view === 'chat' && firstCircleRoster.length > 0 && (
+    <div className="alert-roster" aria-label={t('alerts.detail.roster')}>
+      {firstCircleRoster.map((p) => (
+        <Link
+          key={p.id}
+          to={`/people/${p.userSentinels.linkAsSentinel.id}?alert=${alertId}`}
+          className="alert-roster-person"
+        >
+          <PersonAvatar
+            userId={p.userSentinels.linkAsSentinel.id}
+            avatarPath={p.userSentinels.linkAsSentinel.avatarPath}
+            sentinelColor={p.isLead ? PRIMARY_LEAD_COLOR : PRIMARY_AVATAR_COLOR}
+            companionColor={null}
+            size={44}
+          />
+          <span className="alert-roster-name">
+            {p.userSentinels.linkAsSentinel.id === user?.id ? t('alerts.detail.me') : p.userSentinels.linkAsSentinel.firstName}
+          </span>
+          <span className="alert-roster-role">
+            {activeLead?.id === p.id
+              ? t('alerts.detail.activeLeadBadge')
+              : p.isLead
+                ? t('alerts.detail.lead')
+                : t(`alerts.detail.participantStatus.${p.status}`)}
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+
   const conversations = (
     <div className="alert-detail">
+      {roster}
       {detail.conversations.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
       ) : (
@@ -561,7 +597,18 @@ export function AlertDetailPanel({
                 </div>
               );
             }
-            return <ConversationThread key={conv.id} conversationId={conv.id} title={title} resolveSenderName={senderName} />;
+            // The main 1st-circle chat on the chat page reads like any
+            // conversation (composer fixed at the bottom); isolated chats
+            // stay inline below it.
+            return (
+              <ConversationThread
+                key={conv.id}
+                conversationId={conv.id}
+                title={title}
+                resolveSenderName={senderName}
+                fullPage={view === 'chat' && !outsider}
+              />
+            );
           })}
         </>
       )}
@@ -622,7 +669,11 @@ export function AlertDetailPanel({
             <ul>
               {members.map((p) => (
                 <li key={p.id}>
-                  {p.userSentinels.linkAsSentinel.firstName}
+                  {/* Their person page, in this alert's context (name only,
+                      their place in the alert, whether we can write). */}
+                  <Link to={`/people/${p.userSentinels.linkAsSentinel.id}?alert=${alertId}`} className="person-link">
+                    {p.userSentinels.linkAsSentinel.firstName}
+                  </Link>
                   {p.isLead && <span className="badge">{t('alerts.detail.lead')}</span>}
                   {activeLead?.id === p.id && (
                     <span className="badge status-accepted">{t('alerts.detail.activeLeadBadge')}</span>
@@ -724,10 +775,14 @@ function ConversationThread({
   conversationId,
   title,
   resolveSenderName,
+  fullPage = false,
 }: {
   conversationId: string;
   title: string;
   resolveSenderName: (senderId: string) => string;
+  // The alert's chat page: same layout as a Messages conversation — composer
+  // (+ menu, paper plane) fixed at the bottom, page opening at the bottom.
+  fullPage?: boolean;
 }) {
   const { t } = useTranslation();
   const { user, socket } = useAuth();
@@ -737,6 +792,13 @@ function ConversationThread({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Full page: keep the newest message in view (above the fixed composer).
+  useEffect(() => {
+    if (fullPage && messages) window.scrollTo({ top: document.documentElement.scrollHeight });
+  }, [fullPage, messages?.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reload = async () => {
     try {
@@ -819,17 +881,75 @@ function ConversationThread({
           ))}
         </ul>
       )}
-      <form className="row" onSubmit={submit}>
-        <input
-          placeholder={t('alerts.detail.messagePlaceholder')}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button type="submit" disabled={sending || !draft.trim()}>
-          {t('alerts.detail.send')}
-        </button>
-        <input type="file" accept="image/*" disabled={sending} onChange={submitImage} />
-      </form>
+      {fullPage ? (
+        <form className="conversation-compose" autoComplete="off" onSubmit={submit}>
+          <div className="compose-attach">
+            <button
+              type="button"
+              className="compose-icon-btn"
+              aria-label={t('conversation.attach')}
+              aria-expanded={attachOpen}
+              disabled={sending}
+              onClick={() => setAttachOpen((o) => !o)}
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+            {attachOpen && (
+              <div className="compose-attach-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setAttachOpen(false);
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <circle cx="8.5" cy="10" r="1.6" />
+                    <path d="M21 16 L15.5 11 L6 19" />
+                  </svg>
+                  {t('conversation.attachPhoto')}
+                </button>
+              </div>
+            )}
+          </div>
+          <input
+            id={`thread-draft-${conversationId}`}
+            autoComplete="off"
+            className="compose-input"
+            placeholder={t('alerts.detail.messagePlaceholder')}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button
+            type="submit"
+            className="compose-icon-btn compose-send"
+            aria-label={t('alerts.detail.send')}
+            disabled={sending || !draft.trim()}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M3 11.2 L20.5 3.5 C21.2 3.2 21.8 3.8 21.5 4.5 L13.8 22 C13.5 22.7 12.5 22.6 12.3 21.9 L10.4 14.6 L3.1 12.7 C2.4 12.5 2.3 11.5 3 11.2 Z" />
+            </svg>
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" hidden disabled={sending} onChange={submitImage} />
+        </form>
+      ) : (
+        <form className="row" onSubmit={submit}>
+          <input
+            placeholder={t('alerts.detail.messagePlaceholder')}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button type="submit" disabled={sending || !draft.trim()}>
+            {t('alerts.detail.send')}
+          </button>
+          <input type="file" accept="image/*" disabled={sending} onChange={submitImage} />
+        </form>
+      )}
       {error && <p className="form-error">{error}</p>}
     </div>
   );

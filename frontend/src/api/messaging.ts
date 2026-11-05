@@ -36,9 +36,15 @@ export interface DirectConversation {
 export const getDirectConversation = (userId: string) =>
   apiGet<DirectConversation>(`/messaging/direct/${userId}`);
 
+// My own feedback thread with the team (Give feedback page) — kept out of
+// Messages, see SupportService in the backend.
+export const getSupportConversation = () => apiGet<DirectConversation>('/messaging/support');
+
 export interface ConversationSummary {
   conversationId: string;
   otherUserId: string;
+  // To name people outside my circles (the feedback inbox's own list).
+  otherFirstName: string;
   lastMessage: { body: string; type: MessageType; createdAt: string } | null;
   unreadCount: number;
 }

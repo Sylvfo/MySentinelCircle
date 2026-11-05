@@ -800,7 +800,19 @@ async function main() {
     { role: 'Sentinel, Famille (Thomas)', name: 'Coralie', phone: coralie.phone, email: coralie.email, note: 'accepted, SMS only, no account' },
   ].map((r) => ({ ...r, email: r.email ?? '— (SMS only, no account)' }));
 
+  // ---- The feedback inbox (Give feedback page) — see SupportService. Its
+  // email must match SUPPORT_EMAIL in backend/.env. Nobody sees it as a
+  // contact; logged in as it, you read every feedback in Messages.
+  await upsertAccount({
+    firstName: 'Équipe',
+    lastName: 'MySentinelCircle',
+    phone: '+41790000001',
+    email: 'support@testmsc.ch',
+    userName: 'msc_support',
+  });
+
   await seedDemoAvatars();
+  await seedDemoStatuses();
 
   console.log(`\nSeed complete. Password for every full account: ${SEED_PASSWORD}\n`);
   console.table(rows);
@@ -841,6 +853,39 @@ const DEMO_AVATARS: { phone: string; file: string }[] = [
   { phone: '+41791112255', file: 'maxime.png' },
   { phone: '+41771334477', file: 'damien.png' },
 ];
+
+// Demo public statuses (the line shown under a name on a person page and
+// in a conversation header), for about half the accounts. Same rules as the
+// photos: keyed by phone, only set when the account has none — never
+// overwrites a status changed by hand.
+const DEMO_STATUSES: { phone: string; status: string }[] = [
+  { phone: '+41791112233', status: 'En vacances jusqu\'au 12' },
+  { phone: '+41781667788', status: 'Dispo le soir et le week-end' },
+  { phone: '+41791223355', status: 'Au travail jusqu\'à 18h, je réponds après' },
+  { phone: '+41771445577', status: 'En déplacement à Genève cette semaine' },
+  { phone: '+41791667799', status: 'Ne pas appeler après 22h' },
+  { phone: '+41791990011', status: 'Sans réseau en montagne jusqu\'à dimanche' },
+  { phone: '+41781778800', status: 'Toujours joignable par SMS' },
+  { phone: '+41771889911', status: 'En congé maternité, SMS plutôt qu\'appel' },
+  { phone: '+41761667700', status: 'J\'habite à 5 minutes du centre' },
+  { phone: '+41791778811', status: 'Infirmière, horaires de nuit cette semaine' },
+  { phone: '+41761001144', status: 'En examens, réponses lentes' },
+  { phone: '+41781223366', status: 'Dispo pour aider, j\'ai une voiture' },
+  { phone: '+41771334455', status: 'De retour lundi' },
+  { phone: '+41781445588', status: 'Je parle français, allemand et anglais' },
+];
+
+async function seedDemoStatuses() {
+  let added = 0;
+  for (const { phone, status } of DEMO_STATUSES) {
+    const updated = await prisma.user.updateMany({
+      where: { phone, publicStatus: null },
+      data: { publicStatus: status },
+    });
+    added += updated.count;
+  }
+  console.log(`[seed] Demo public statuses added: ${added}`);
+}
 
 async function seedDemoAvatars() {
   const avatarDir = join(process.cwd(), 'uploads', 'avatars');

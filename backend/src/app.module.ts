@@ -16,6 +16,7 @@ import { SentinelModule } from './sentinel/sentinel.module';
 import { AlertModule } from './alert/alert.module';
 import { OrganizationModule } from './organization/organization.module';
 import { MessagingModule } from './messaging/messaging.module';
+import { SupportModule } from './support/support.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { MessagingModule } from './messaging/messaging.module';
     EmailModule,
     RealtimeModule,
     NotificationModule,
+    SupportModule,
     AuthModule,
     UserModule,
     SentinelModule,

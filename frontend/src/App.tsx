@@ -22,6 +22,8 @@ import { MessagesPage } from './pages/MessagesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { NewCirclePage, NewGroupPage } from './pages/NewCirclePage';
 import { InfoPage } from './pages/InfoPage';
+import { FeedbackPage } from './pages/FeedbackPage';
+import { PersonPage } from './pages/PersonPage';
 import { NewCompanionPage } from './pages/NewCompanionPage';
 
 function App() {
@@ -59,6 +61,8 @@ function App() {
             <Route path="/messages/:userId" element={<ConversationPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/info" element={<InfoPage />} />
+            <Route path="/feedback" element={<FeedbackPage />} />
+            <Route path="/people/:userId" element={<PersonPage />} />
           </Route>
         </Route>
 

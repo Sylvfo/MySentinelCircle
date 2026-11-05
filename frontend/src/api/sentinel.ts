@@ -16,6 +16,8 @@ export interface SentinelRef {
   // Profile photo's file name (listCircles() only) — a cache key for
   // avatars.ts, the photo itself needs GET /user/:id/avatar.
   avatarPath?: string | null;
+  // Their status line, e.g. "On holiday until the 12th" (listCircles() only).
+  publicStatus?: string | null;
 }
 
 export interface Membership {
@@ -109,9 +111,16 @@ export interface Companion {
     lastName: string | null;
     userName: string | null;
     avatarPath: string | null;
+    publicStatus: string | null;
   };
   // The other accepted members of their 1st circle — empty unless I'm in it.
-  firstCircleMembers: { id: string; firstName: string | null; lastName: string | null; isLead: boolean }[];
+  firstCircleMembers: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    publicStatus: string | null;
+    isLead: boolean;
+  }[];
   deathNotice: CompanionDeathNotice;
 }
 

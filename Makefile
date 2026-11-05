@@ -99,6 +99,9 @@ demo: env docker-up
 	@echo "    +41791556677     TestPass1234!   Chloé Morel"
 	@echo "    +41781667788     TestPass1234!   Mathis Perrin"
 	@echo ""
+	@echo "  Feedback inbox (reads every Give feedback message, in Messages):"
+	@echo "    +41790000001     TestPass1234!   Équipe MySentinelCircle"
+	@echo ""
 	@echo "  SMS codes (OTP) are printed in: docker compose logs -f backend"
 	@echo "  Stop: make docker-down"
 

@@ -110,6 +110,8 @@ export class SentinelService {
                 // Photo's file name, only a cache key: the file itself is
                 // served by GET /user/:id/avatar after a link check.
                 avatarPath: true,
+                // Visible to the people linked to them (see listCompanions).
+                publicStatus: true,
               },
             },
           },
@@ -1134,6 +1136,7 @@ export class SentinelService {
                 email: true,
                 phone: true,
                 avatarPath: true,
+                publicStatus: true,
                 status: true,
                 deathReportedAt: true,
                 deathReportedById: true,
@@ -1218,7 +1221,14 @@ export class SentinelService {
             circleId: true,
             leadSlot: true,
             linkAsSentinel: {
-              select: { id: true, firstName: true, lastName: true },
+              // publicStatus: co-members of a 1st circle see each other's
+              // status (as do the companion and its Sentinels).
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                publicStatus: true,
+              },
             },
           },
           orderBy: { createdAt: 'asc' },
@@ -1230,6 +1240,7 @@ export class SentinelService {
         id: string;
         firstName: string | null;
         lastName: string | null;
+        publicStatus: string | null;
         isLead: boolean;
       }[]
     >();
@@ -1279,6 +1290,7 @@ export class SentinelService {
           email: companion.email,
           phone: companion.phone,
           avatarPath: companion.avatarPath,
+          publicStatus: companion.publicStatus,
         },
         firstCircleMembers: isPrimary
           ? (firstCircleMembersByCircle.get(l.circle.id) ?? [])

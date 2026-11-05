@@ -156,7 +156,7 @@
       "random": "Random"
     },
     "backToCircles": "← Back to My Circles",
-    "tapHint": "Tap a Sentinel to change their settings.",
+    "tapHint": "Tap a Sentinel to open their page.",
     "addFromOtherCircle": "Add a Sentinel from another circle",
     "moveHere": "Move here",
     "addSentinel": "Add a Sentinel",
@@ -244,6 +244,11 @@
       "lead": "You're their Lead Sentinel",
       "firstCircle": "You're in their 1st circle",
       "others": "You're their Sentinel"
+    },
+    "groupHints": {
+      "lead": "You're responsible for them if something happens: you coordinate the alert and the other Sentinels.",
+      "firstCircle": "If something happens, you're part of the group that handles the alert.",
+      "others": "If something happens, their 1st circle may ask for your help: answer a question, go and check…"
     }
   },
   "alerts": {
@@ -378,7 +383,8 @@
         "title": "Replies",
         "noAnswer": "no reply",
         "firstCircle": "1st circle"
-      }
+      },
+      "roster": "1st circle"
     },
     "backToTiles": "← Back",
     "seeRunningAlert": "See the running alert",
@@ -389,7 +395,7 @@
         "hint": "I need help: my 1st circle is alerted right away."
       },
       "missing": {
-        "title": "Someone has disappeared",
+        "title": "Someone is missing",
         "hint": "Someone you watch over can't be reached or found."
       },
       "assistance": {
@@ -453,8 +459,8 @@
     "empty": "No alert in progress.",
     "backToList": "← Back to running alerts",
     "since": "since {{when}}",
-    "openChat": "💬 1st circle chat",
-    "chatTitle": "1st circle chat",
+    "openChat": "1st circle room",
+    "chatTitle": "1st circle room",
     "backToAlert": "← Back to the alert"
   },
   "messages": {
@@ -476,16 +482,15 @@
   },
   "conversation": {
     "back": "← Back to messages",
-    "noAlert": "No alert in progress.",
     "myAlert": "Your alert is in progress: {{label}}",
     "alertAbout": "Alert in progress for {{name}}: {{label}}",
     "lastNews": "Latest update: {{status}}",
     "seeAlert": "See the alert",
     "attach": "Add",
     "attachPhoto": "Photo",
-    "theyForMe": "{{name}} watches over you · {{role}}",
+    "theyForMe": "{{name}} watches over you ({{role}})",
     "theyNotForMe": "{{name}} isn't one of your Sentinels",
-    "meForThem": "You watch over {{name}} · {{role}}",
+    "meForThem": "You watch over {{name}} ({{role}})",
     "meNotForThem": "You don't watch over {{name}}",
     "roleLead": "Lead Sentinel",
     "roleFirstCircle": "1st circle",
@@ -581,7 +586,8 @@
     "avatarHint": "Only your Sentinels and the people you watch over can see it.",
     "avatarAdd": "Add a photo",
     "avatarChange": "Change photo",
-    "avatarRemove": "Remove"
+    "avatarRemove": "Remove",
+    "publicStatusHint": "Visible to your Sentinels, the people you watch over, and the other members of their 1st circles you're in."
   },
   "welcome": {
     "title": "Welcome",
@@ -626,38 +632,78 @@
   },
   "info": {
     "title": "About MySentinelCircle",
-    "what": {
-      "title": "What is it?",
-      "body": [
-        "MySentinelCircle is a mutual safety net. You choose the people you trust, your Sentinels, and arrange them in circles around you: your 1st circle, the closest, then other circles (family, work, neighbors…).",
-        "If something worries you, or if someone worries about you, an alert can be raised. Your 1st circle is notified first. If it can't resolve the situation, it can ask your other circles for help, one step at a time.",
-        "It works in both directions: you can also be a Sentinel for the people who count on you."
-      ]
+    "intro": "A mutual safety net: you choose the people you trust and arrange them in circles around you. If something goes wrong, they are alerted, the closest ones first.",
+    "learnMore": "Learn more",
+    "sections": {
+      "what": {
+        "title": "What is it?",
+        "summary": [
+          "A safety net made of the people you trust: your Sentinels.",
+          "They are arranged in circles around you, your 1st circle being the closest.",
+          "It works both ways: you can also watch over the people who count on you."
+        ],
+        "details": [
+          "Your circles can be your family, your work, your neighbours… Your 1st circle is always the first one alerted.",
+          "If something worries you, or if someone worries about you, an alert can be raised. If your 1st circle can't resolve the situation, it can ask your other circles for help, one step at a time.",
+          "The people you watch over are your companions; you find them on the My Companions page."
+        ]
+      },
+      "how": {
+        "title": "How does it work?",
+        "summary": [
+          "You invite people to be your Sentinels; nobody becomes one without accepting.",
+          "Your 1st circle needs at least one Lead, who coordinates during an alert.",
+          "A Sentinel without the app can still help: alerts and replies also go by SMS."
+        ],
+        "details": [
+          "Without a Lead in your 1st circle, you can't raise an alert yet.",
+          "You can move a Sentinel from one circle to another, make them a Lead, or remove them.",
+          "You chat with your Sentinels and companions on the Messages page."
+        ]
+      },
+      "alert": {
+        "title": "During an alert",
+        "summary": [
+          "Your 1st circle is notified right away, in the app and by SMS.",
+          "The whole app turns red for everyone concerned, so nobody misses it.",
+          "A Lead can take the lead and coordinate the others."
+        ],
+        "details": [
+          "The 1st circle has its own chat for the alert; it closes when the alert ends and stays readable in History.",
+          "If needed, the 1st circle can ask your other circles for help. They only see the question they are asked.",
+          "When an alert is over, it moves to History."
+        ]
+      },
+      "privacy": {
+        "title": "Privacy",
+        "summary": [
+          "Only you and your 1st circle see the full details of an alert.",
+          "Your profile photo is only visible to the people linked to you.",
+          "You decide who can message you."
+        ],
+        "details": [
+          "Another circle only sees the question it is asked during an alert.",
+          "Your Sentinels only see what they need to watch over you.",
+          "You can delete your account at any time from Settings. Your name, phone number, email, photo and circles are erased right away; messages and alert history stay readable by others, signed Deleted account."
+        ]
+      },
+      "security": {
+        "title": "Security",
+        "summary": [
+          "Passwords and SMS codes are never stored as such, only in hashed form.",
+          "Sensitive actions ask you to confirm your identity again."
+        ],
+        "details": [
+          "After 5 failed login attempts, the account is temporarily locked.",
+          "Changing your email or phone, or deleting your account, asks you to confirm your identity again.",
+          "The number of requests per minute is limited to slow down automated attacks."
+        ]
+      }
     },
-    "how": {
-      "title": "How it works",
-      "items": [
-        "Nobody becomes your Sentinel without accepting your invitation.",
-        "Your 1st circle has at least one Lead, who coordinates during an alert.",
-        "Alerts and replies go out by SMS too, so a Sentinel without the app can still help."
-      ]
-    },
-    "privacy": {
-      "title": "Privacy",
-      "items": [
-        "Only you and your 1st circle see the full details of an alert. Another circle only sees the question it is asked.",
-        "Your Sentinels only see what they need to watch over you; you decide who can message you.",
-        "You can delete your account at any time from Settings. Your name, phone number, email, photo and circles are erased right away; messages and alert history stay readable by others, signed \"Deleted account\"."
-      ]
-    },
-    "security": {
-      "title": "Security",
-      "items": [
-        "Passwords and SMS codes are never stored as such, only in hashed form.",
-        "After 5 failed login attempts, the account is temporarily locked.",
-        "Sensitive actions (changing your email or phone, deleting your account) ask you to confirm your identity again.",
-        "The number of requests per minute is limited to slow down automated attacks."
-      ]
+    "feedback": {
+      "title": "Give feedback",
+      "hint": "A bug, something unclear, something you don't like, an idea…",
+      "newReply": "The team answered you ({{count}} new)"
     }
   },
   "sentinelHome": {
@@ -665,5 +711,54 @@
     "createAccount": "Create an account",
     "sendCode": "Get a code",
     "hasPassword": "I have a password"
+  },
+  "feedback": {
+    "back": "← Back to About",
+    "title": "Give feedback",
+    "intro": "Tell us what you love, a situation where the app helped you, what doesn't work, what isn't clear, or your ideas. The team reads everything and answers here.",
+    "kindLabel": "What is it about?",
+    "kinds": {
+      "love": "I love this",
+      "story": "My story",
+      "bug": "Bug",
+      "confusing": "I don't understand",
+      "dislike": "I don't like it",
+      "idea": "Idea"
+    },
+    "placeholder": "Your message…",
+    "send": "Send",
+    "thanks": "Thanks, it's sent!",
+    "history": "Your exchanges with the team",
+    "team": "Team",
+    "unavailable": "Feedback isn't available right now."
+  },
+  "person": {
+    "back": "← Back",
+    "theyWatchYou": "{{name}} watches over you",
+    "youWatchThem": "You watch over {{name}}",
+    "sentinelRole": {
+      "lead": "Lead Sentinel · {{circle}}",
+      "firstCircle": "1st circle · {{circle}}",
+      "other": "Sentinel · circle “{{circle}}”",
+      "pending": "Invitation sent · {{circle}}"
+    },
+    "sentinelHint": {
+      "lead": "If something happens to you, this person coordinates the alert and the other Sentinels.",
+      "firstCircle": "If something happens to you, this person is part of the group that handles the alert.",
+      "other": "If something happens to you, your 1st circle may ask this person for help: answer a question, go and check…",
+      "pending": "This person hasn't accepted your invitation yet."
+    },
+    "alert": {
+      "title": "In the alert “{{label}}”",
+      "isSubject": "{{name}} is the person this alert is about",
+      "inCircle": "{{name}} is in {{who}}'s circle “{{circle}}”",
+      "inCircleLead": "{{name}} is in {{who}}'s circle “{{circle}}” · Lead",
+      "linked": "You are also linked directly (see below).",
+      "notLinked": "No direct link between you and {{name}}.",
+      "canWriteInChat": "You can write to each other in the alert's chat.",
+      "openChat": "Open the chat",
+      "canWriteDirect": "You can write to each other directly (Message button above).",
+      "cannotWrite": "No message possible between you two."
+    }
   }
 }

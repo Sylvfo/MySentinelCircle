@@ -35,8 +35,10 @@ export interface NotificationItem {
 export const listNotifications = () => apiGet<NotificationItem[]>('/notification/mine');
 
 // `count` = unread notifications except messages (bell); `messages` =
-// unread new-message notifications (Messages tab badge).
-export const getUnreadCount = () => apiGet<{ count: number; messages: number }>('/notification/unread-count');
+// unread messages (Messages tab badge); `support` = unread replies in my
+// feedback thread (About tab badge — that thread isn't in Messages).
+export const getUnreadCount = () =>
+  apiGet<{ count: number; messages: number; support: number }>('/notification/unread-count');
 
 export const markNotificationRead = (id: string) => apiPost<{ count: number }>(`/notification/${id}/read`, {});
 

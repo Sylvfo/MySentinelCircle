@@ -64,9 +64,13 @@ export class NotificationService {
   }
 
   // Split the same way: `count` feeds the bell (everything but messages),
-  // `messages` feeds the Messages tab's badge.
-  async getUnreadCounts(userId: string) {
-    const [count, messages] = await Promise.all([
+  // `messages` feeds the Messages tab's badge, and `support` — replies in
+  // the caller's feedback thread (supportConversationId, see
+  // SupportService) — the About tab's, since that thread isn't in Messages.
+  // Messages count **conversations** with something unread, not messages:
+  // 3 messages from one person = 1, 2 people writing = 2.
+  async getUnreadCounts(userId: string, supportConversationId: string | null) {
+    const [count, unreadConversations] = await Promise.all([
       this.prisma.notification.count({
         where: {
           userId,
@@ -74,11 +78,21 @@ export class NotificationService {
           type: { not: NotificationType.NEW_MESSAGE },
         },
       }),
-      this.prisma.notification.count({
+      this.prisma.notification.findMany({
         where: { userId, readAt: null, type: NotificationType.NEW_MESSAGE },
+        distinct: ['targetId'],
+        select: { targetId: true },
       }),
     ]);
-    return { count, messages };
+    const support = unreadConversations.filter(
+      (n) =>
+        supportConversationId !== null && n.targetId === supportConversationId,
+    ).length;
+    return {
+      count,
+      messages: unreadConversations.length - support,
+      support,
+    };
   }
 
   markRead(userId: string, id: string) {

@@ -38,3 +38,19 @@ export function avatarPathOf(circles: Circle[], companions: Companion[], userId:
   }
   return null;
 }
+
+// Their status line, as known to me: they're linked to me, or we share a
+// 1st circle of someone I watch over (null = none, or not visible to me).
+export function publicStatusOf(circles: Circle[], companions: Companion[], userId: string): string | null {
+  const comp = companions.find((c) => c.companion.id === userId);
+  if (comp?.companion.publicStatus) return comp.companion.publicStatus;
+  for (const c of circles) {
+    const m = c.userSentinels.find((s) => s.linkAsSentinel.id === userId);
+    if (m?.linkAsSentinel.publicStatus) return m.linkAsSentinel.publicStatus;
+  }
+  for (const c of companions) {
+    const m = c.firstCircleMembers.find((f) => f.id === userId);
+    if (m?.publicStatus) return m.publicStatus;
+  }
+  return null;
+}
