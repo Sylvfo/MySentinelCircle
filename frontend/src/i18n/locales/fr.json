@@ -30,6 +30,7 @@
     "leadSentinel": "Sentinelle référente"
   },
   "nav": {
+    "slogan": "Ensemble pour protéger",
     "dashboard": "Dashboard",
     "circles": "Cercles",
     "companions": "Companions",
@@ -95,12 +96,17 @@
     "activeAlerts": "Alertes en cours",
     "circles": "Mes cercles",
     "circlesHint": "{{count}} personnes qui veillent sur toi",
+    "circlesSubtitle": "Pour me protéger",
+    "companionsSubtitle": "Pour protéger les autres",
     "companions": "Mes companions",
     "companionsHint": "{{count}} personnes sur qui tu veilles",
     "unreadMessages": "Messages non lus",
     "alerts": "Alertes",
     "raiseAlert": "Lancer une alerte",
     "raiseAlertHint": "Pour toi ou une personne que tu protèges",
+    "greeting": {
+      "hello": "Bonjour {{name}}"
+    },
     "placeholder": "Les résumés seront branchés une fois les modules Sentinel/Alert/Messaging codés.",
     "runningAlert": {
       "title": "Alerte en cours",
@@ -224,7 +230,24 @@
     "youAreLead": "Tu es Lead Sentinel pour cette personne",
     "leaveTitle": "Ne plus veiller sur cette personne ?",
     "leaveConfirmButton": "Oui, arrêter",
-    "sendMessage": "Écrire à {{name}}"
+    "sendMessage": "Écrire à {{name}}",
+    "invitationLine": "{{who}} t'invite à être sa Sentinelle",
+    "invitationTitle": "Invitation de {{who}}",
+    "invitationCircle": "Cercle",
+    "invitationRole": "Rôle",
+    "invitationDuties": "Ce que ça implique",
+    "duties": {
+      "LEAD": "Tu es dans le 1er cercle de {{who}} et alerté.e en premier. En tant que Lead, tu peux prendre la main sur une alerte et coordonner les autres Sentinelles.",
+      "FIRSTCIRCLE": "Tu es dans le 1er cercle de {{who}} : tu es alerté.e en premier quand cette personne a besoin d'aide, et tu suis l'alerte avec les autres.",
+      "SENTINEL": "Tu n'es alerté.e que si le 1er cercle de {{who}} élargit une alerte et demande ton aide.",
+      "ONLY_SMS": "Tu es contacté.e uniquement par SMS, quand le 1er cercle de {{who}} demande ton aide.",
+      "UNCOMPLETE": "Tu pourras aider {{who}} une fois ton compte complété."
+    },
+    "groups": {
+      "lead": "Tu es sa Sentinelle Lead",
+      "firstCircle": "Tu es dans son 1er cercle",
+      "others": "Tu es sa Sentinelle"
+    }
   },
   "alerts": {
     "title": "Lancer une alerte",
@@ -442,19 +465,34 @@
     "intro": "Discutez avec vos sentinelles, ou avec les personnes que vous protégez.",
     "empty": "Personne à qui écrire pour l'instant.",
     "noMessageYet": "Aucun message pour l'instant",
-    "photo": "Photo"
+    "photo": "Photo",
+    "searchPlaceholder": "Chercher un nom, ou écrire un nouveau message",
+    "newMessage": "Nouveau message",
+    "startConversation": "Commencer une conversation",
+    "noMatch": "Personne ne correspond à ce nom.",
+    "noConversationYet": "Aucune conversation pour l'instant. Tape un nom ci-dessus pour en commencer une.",
+    "sections": {
+      "contacts": "Avec tes contacts",
+      "alerts": "Pendant une alerte"
+    },
+    "alertChatName": "Alerte · {{who}}"
   },
   "conversation": {
     "back": "← Retour aux messages",
-    "mySentinel": "Ton Sentinel — cercle « {{circle}} »",
-    "myLeadSentinel": "Ton Lead Sentinel — cercle « {{circle}} »",
-    "iWatch": "Tu veilles sur {{name}} — cercle « {{circle}} »",
-    "iAmLead": "Tu es Lead Sentinel de {{name}} — cercle « {{circle}} »",
     "noAlert": "Aucune alerte en cours.",
     "myAlert": "Ton alerte est en cours : {{label}}",
     "alertAbout": "Alerte en cours pour {{name}} : {{label}}",
     "lastNews": "Dernière nouvelle : {{status}}",
-    "seeAlert": "Voir l'alerte"
+    "seeAlert": "Voir l'alerte",
+    "attach": "Ajouter",
+    "attachPhoto": "Photo",
+    "theyForMe": "{{name}} veille sur toi · {{role}}",
+    "theyNotForMe": "{{name}} ne fait pas partie de tes Sentinelles",
+    "meForThem": "Tu veilles sur {{name}} · {{role}}",
+    "meNotForThem": "Tu ne veilles pas sur {{name}}",
+    "roleLead": "Sentinelle Lead",
+    "roleFirstCircle": "1er cercle",
+    "roleCircle": "cercle « {{circle}} »"
   },
   "notifications": {
     "title": "Notifications",
@@ -542,7 +580,11 @@
       "submit": "Supprimer définitivement",
       "ownAlert": "Une alerte te concernant est en cours. Tu pourras supprimer ton compte une fois qu'elle sera terminée.",
       "leadOnAlert": "Tu es Lead sur une alerte en cours. Quitte-la d'abord (un·e autre Lead doit prendre le lead), puis supprime ton compte."
-    }
+    },
+    "avatarHint": "Seules tes Sentinelles et les personnes sur qui tu veilles peuvent la voir.",
+    "avatarAdd": "Ajouter une photo",
+    "avatarChange": "Changer de photo",
+    "avatarRemove": "Supprimer"
   },
   "welcome": {
     "title": "Bienvenue",

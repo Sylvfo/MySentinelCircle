@@ -34,12 +34,24 @@ export function circleColor(index: number): string {
 }
 
 // Each companion's own stable shade between blue and violet, picked from
-// their id so it stays the same from one visit to the next. When I'm their
-// Lead, only the shield turns gold (PRIMARY_AVATAR_COLOR); the person keeps
-// this shade.
+// their id so it stays the same from one visit to the next. When I'm in their
+// 1st circle their outline turns gold instead — see companionGold.
 export function companionColor(id: string): string {
   let hash = 0;
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  const hue = 220 + (hash % 51); // 220 = blue … 270 = violet
-  return `hsl(${hue} 60% 52%)`;
+  // Wide spread so two companions rarely look alike: 215 = blue … 270 =
+  // violet … 330 = red-violet. Lightness varies a little too (independent
+  // bits of the hash), for extra contrast between neighbouring hues.
+  const hue = 215 + (hash % 116);
+  const lightness = 44 + ((hash >>> 8) % 3) * 6; // 44 / 50 / 56 %
+  return `hsl(${hue} 62% ${lightness}%)`;
+}
+
+// Same gold family as the 1st circle on My Circles: gold when I'm in their
+// 1st circle, the darker Lead gold when I'm their Lead; undefined otherwise
+// (the companion keeps their own shade).
+export function companionGold(isLead: boolean, inFirstCircle: boolean): string | undefined {
+  if (isLead) return PRIMARY_LEAD_COLOR;
+  if (inFirstCircle) return PRIMARY_AVATAR_COLOR;
+  return undefined;
 }

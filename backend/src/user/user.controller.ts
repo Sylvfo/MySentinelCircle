@@ -4,18 +4,21 @@ import {
   Controller,
   Delete,
   Get,
+  Param,
   Patch,
   Post,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { mkdirSync } from 'fs';
-import type { Express } from 'express';
+import type { Express, Response } from 'express';
+import { randomUUID } from 'crypto';
 import { UserService, AVATAR_DIR } from './user.service';
 import { AccountDeletionService } from './account-deletion.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -169,9 +172,10 @@ export class UserController {
     FileInterceptor('avatar', {
       storage: diskStorage({
         destination: AVATAR_DIR,
-        filename: (req, file, cb) => {
-          const user = (req as unknown as { user: { userId: string } }).user;
-          cb(null, `${user.userId}${extname(file.originalname)}`);
+        // Random name: unguessable, and a new photo gets a new name, so
+        // nothing stale is served from a cache after a change.
+        filename: (_req, file, cb) => {
+          cb(null, `${randomUUID()}${extname(file.originalname)}`);
         },
       }),
       limits: { fileSize: 5 * 1024 * 1024 },
@@ -192,6 +196,26 @@ export class UserController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.userService.setAvatar(user.userId, file.filename);
+  }
+
+  @Delete('me/avatar')
+  removeAvatar(@CurrentUser() user: { userId: string }) {
+    return this.userService.removeAvatar(user.userId);
+  }
+
+  // Private photo, served only to its owner and the people linked to them
+  // (see UserService.getAvatarFile). No throttle: a list page loads one
+  // small image per person, which would eat the shared per-IP budget.
+  @SkipThrottle()
+  @Get(':id/avatar')
+  async getAvatar(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const file = await this.userService.getAvatarFile(user.userId, id);
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.sendFile(file);
   }
 
   // ---- Death notice (prepared while alive) ----------------------------------

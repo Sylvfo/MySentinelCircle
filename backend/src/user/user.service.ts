@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -498,6 +499,47 @@ export class UserService {
       select: PROFILE_SELECT,
     });
     return toProfileDto(updated);
+  }
+
+  async removeAvatar(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarPath: true },
+    });
+    if (user?.avatarPath) {
+      await unlink(join(AVATAR_DIR, user.avatarPath)).catch(() => {});
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarPath: null },
+      select: PROFILE_SELECT,
+    });
+    return toProfileDto(updated);
+  }
+
+  // A profile photo is private: only its owner and the people linked to them
+  // (an ACCEPTED LinkSentinels in either direction) can see it. Everyone
+  // else gets the same 404 as "no photo", so its existence isn't revealed.
+  async getAvatarFile(callerId: string, targetId: string): Promise<string> {
+    if (callerId !== targetId) {
+      const link = await this.prisma.linkSentinels.findFirst({
+        where: {
+          status: LinkStatus.ACCEPTED,
+          OR: [
+            { userSentinelId: callerId, circle: { userCompanionId: targetId } },
+            { userSentinelId: targetId, circle: { userCompanionId: callerId } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!link) throw new NotFoundException('No photo');
+    }
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetId },
+      select: { avatarPath: true },
+    });
+    if (!target?.avatarPath) throw new NotFoundException('No photo');
+    return join(AVATAR_DIR, target.avatarPath);
   }
 
   // TEMPORARY dev/test affordance — stands in for a real payment provider

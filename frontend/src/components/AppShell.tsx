@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { alertNeedsMe, listAlerts } from '../api/alert';
 import { NotificationBell } from './NotificationBell';
 import { BottomNav } from './BottomNav';
+import { useUnreadCounts, useUnreadCountsRefresher } from '../unreadCounts';
 import { UserMenu } from './UserMenu';
 import logo from '../assets/logo.png';
 
@@ -23,6 +24,9 @@ const NAV_ITEMS = [
 export function AppShell() {
   const { user, socket } = useAuth();
   const { t } = useTranslation();
+  // One refresher for every unread badge (bell, Messages tabs).
+  useUnreadCountsRefresher();
+  const { messages: unreadMessages } = useUnreadCounts();
   const { pathname } = useLocation();
   const [alertMode, setAlertMode] = useState(false);
 
@@ -48,7 +52,10 @@ export function AppShell() {
       <nav className="app-nav">
         <Link to="/dashboard" className="brand">
           <img src={logo} alt="" />
-          <span>MySentinelCircle</span>
+          <span className="brand-text">
+            <span>MySentinelCircle</span>
+            <span className="brand-slogan">{t('nav.slogan')}</span>
+          </span>
         </Link>
         {user && (
           <div className="user-row">
@@ -60,6 +67,9 @@ export function AppShell() {
           {NAV_ITEMS.map((item) => (
             <NavLink key={item.to} to={item.to} className={({ isActive }) => (isActive ? 'active' : '')}>
               {t(item.key)}
+              {item.to === '/messages' && unreadMessages > 0 && (
+                <span className="notification-count inline messages">{unreadMessages}</span>
+              )}
             </NavLink>
           ))}
         </div>

@@ -30,6 +30,7 @@
     "leadSentinel": "Lead Sentinel"
   },
   "nav": {
+    "slogan": "Connected to protect",
     "dashboard": "Dashboard",
     "circles": "Circles",
     "companions": "Companions",
@@ -95,12 +96,17 @@
     "activeAlerts": "Active alerts",
     "circles": "My Circles",
     "circlesHint": "{{count}} people watching over you",
+    "circlesSubtitle": "To protect me",
+    "companionsSubtitle": "To protect others",
     "companions": "My Companions",
     "companionsHint": "{{count}} people you watch over",
     "unreadMessages": "Unread messages",
     "alerts": "Alerts",
     "raiseAlert": "Raise An Alert",
     "raiseAlertHint": "For yourself or someone you protect",
+    "greeting": {
+      "hello": "Hello {{name}}"
+    },
     "placeholder": "Summaries will be wired up once the Sentinel/Alert/Messaging modules are built.",
     "runningAlert": {
       "title": "Running Alert",
@@ -221,7 +227,24 @@
     "youAreLead": "You're their Lead Sentinel",
     "leaveTitle": "Stop watching over this person?",
     "leaveConfirmButton": "Yes, stop",
-    "sendMessage": "Message {{name}}"
+    "sendMessage": "Message {{name}}",
+    "invitationLine": "{{who}} invites you to be their Sentinel",
+    "invitationTitle": "Invitation from {{who}}",
+    "invitationCircle": "Circle",
+    "invitationRole": "Role",
+    "invitationDuties": "What it involves",
+    "duties": {
+      "LEAD": "You're in {{who}}'s 1st circle and alerted first. As a Lead, you can take the lead on an alert and coordinate the other Sentinels.",
+      "FIRSTCIRCLE": "You're in {{who}}'s 1st circle: you're alerted first when they need help, and you follow the alert with the others.",
+      "SENTINEL": "You're alerted only if {{who}}'s 1st circle widens an alert and asks for your help.",
+      "ONLY_SMS": "You're only contacted by SMS, when {{who}}'s 1st circle asks for your help.",
+      "UNCOMPLETE": "You'll be able to help {{who}} once your account is complete."
+    },
+    "groups": {
+      "lead": "You're their Lead Sentinel",
+      "firstCircle": "You're in their 1st circle",
+      "others": "You're their Sentinel"
+    }
   },
   "alerts": {
     "title": "Raise Alert",
@@ -439,19 +462,34 @@
     "intro": "Chat with your Sentinels, or with the people you protect.",
     "empty": "No one to message yet.",
     "noMessageYet": "No messages yet",
-    "photo": "Photo"
+    "photo": "Photo",
+    "searchPlaceholder": "Search a name, or start a new message",
+    "newMessage": "New message",
+    "startConversation": "Start a conversation",
+    "noMatch": "No one matches this name.",
+    "noConversationYet": "No conversation yet. Type a name above to start one.",
+    "sections": {
+      "contacts": "With your contacts",
+      "alerts": "During an alert"
+    },
+    "alertChatName": "Alert · {{who}}"
   },
   "conversation": {
     "back": "← Back to messages",
-    "mySentinel": "Your Sentinel — circle “{{circle}}”",
-    "myLeadSentinel": "Your Lead Sentinel — circle “{{circle}}”",
-    "iWatch": "You watch over {{name}} — circle “{{circle}}”",
-    "iAmLead": "You're {{name}}'s Lead Sentinel — circle “{{circle}}”",
     "noAlert": "No alert in progress.",
     "myAlert": "Your alert is in progress: {{label}}",
     "alertAbout": "Alert in progress for {{name}}: {{label}}",
     "lastNews": "Latest update: {{status}}",
-    "seeAlert": "See the alert"
+    "seeAlert": "See the alert",
+    "attach": "Add",
+    "attachPhoto": "Photo",
+    "theyForMe": "{{name}} watches over you · {{role}}",
+    "theyNotForMe": "{{name}} isn't one of your Sentinels",
+    "meForThem": "You watch over {{name}} · {{role}}",
+    "meNotForThem": "You don't watch over {{name}}",
+    "roleLead": "Lead Sentinel",
+    "roleFirstCircle": "1st circle",
+    "roleCircle": "circle “{{circle}}”"
   },
   "notifications": {
     "title": "Notifications",
@@ -539,7 +577,11 @@
       "submit": "Delete permanently",
       "ownAlert": "An alert about you is in progress. You can delete your account once it is over.",
       "leadOnAlert": "You are a Lead on an alert in progress. Leave it first (another Lead must take the lead), then delete your account."
-    }
+    },
+    "avatarHint": "Only your Sentinels and the people you watch over can see it.",
+    "avatarAdd": "Add a photo",
+    "avatarChange": "Change photo",
+    "avatarRemove": "Remove"
   },
   "welcome": {
     "title": "Welcome",

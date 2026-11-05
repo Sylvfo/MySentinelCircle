@@ -32,8 +32,9 @@ import {
   LeadSlot,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { writeFileSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -799,6 +800,8 @@ async function main() {
     { role: 'Sentinel, Famille (Thomas)', name: 'Coralie', phone: coralie.phone, email: coralie.email, note: 'accepted, SMS only, no account' },
   ].map((r) => ({ ...r, email: r.email ?? '— (SMS only, no account)' }));
 
+  await seedDemoAvatars();
+
   console.log(`\nSeed complete. Password for every full account: ${SEED_PASSWORD}\n`);
   console.table(rows);
 
@@ -814,6 +817,52 @@ async function main() {
     ...rows.map((r) => `| ${r.role} | ${r.name} | ${r.phone} | ${r.email} | ${r.note} |`),
   ].join('\n');
   writeFileSync(join(__dirname, '../test-users.local.md'), md + '\n');
+}
+
+// Demo profile photos (illustrated flowers/portraits, committed under
+// prisma/demo-avatars/), for about half the accounts, so the UI shows both
+// cases. Keyed by phone, like the accounts themselves. Copied under a random
+// name into uploads/avatars/ — same layout as a real upload (see
+// UserController.uploadAvatar) — and only for an account with no photo yet:
+// idempotent, and never overwrites one changed by hand.
+const DEMO_AVATARS: { phone: string; file: string }[] = [
+  { phone: '+41791112233', file: 'lea.png' },
+  { phone: '+41791556677', file: 'chloe.png' },
+  { phone: '+41781667788', file: 'mathis.png' },
+  { phone: '+41791223355', file: 'camille.png' },
+  { phone: '+41771445577', file: 'sarah.png' },
+  { phone: '+41791667799', file: 'laura.png' },
+  { phone: '+41791990011', file: 'zoe.png' },
+  { phone: '+41781778800', file: 'nicolas.png' },
+  { phone: '+41761990022', file: 'julien.png' },
+  { phone: '+41761667700', file: 'romain.png' },
+  { phone: '+41791778811', file: 'oceane.png' },
+  { phone: '+41771990033', file: 'leon.png' },
+  { phone: '+41791112255', file: 'maxime.png' },
+  { phone: '+41771334477', file: 'damien.png' },
+];
+
+async function seedDemoAvatars() {
+  const avatarDir = join(process.cwd(), 'uploads', 'avatars');
+  mkdirSync(avatarDir, { recursive: true });
+  let added = 0;
+  for (const { phone, file } of DEMO_AVATARS) {
+    const source = join(__dirname, 'demo-avatars', file);
+    if (!existsSync(source)) continue;
+    const user = await prisma.user.findUnique({
+      where: { phone },
+      select: { id: true, avatarPath: true },
+    });
+    if (!user || user.avatarPath) continue;
+    const filename = `${randomUUID()}.png`;
+    copyFileSync(source, join(avatarDir, filename));
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { avatarPath: filename },
+    });
+    added++;
+  }
+  console.log(`[seed] Demo profile photos added: ${added}`);
 }
 
 main()

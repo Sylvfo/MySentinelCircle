@@ -1,14 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../auth/AuthContext';
-import {
-  NOTIFICATIONS_CHANGED,
-  getUnreadCount,
-  listNotifications,
-  markNotificationRead,
-  type NotificationItem,
-} from '../api/notification';
+import { listNotifications, markNotificationRead, type NotificationItem } from '../api/notification';
+import { decrementUnreadCount, useUnreadCounts } from '../unreadCounts';
 
 // Maps a notification to the page that already shows the entity it's
 // about. A new message opens its conversation (with the sender); other
@@ -38,40 +32,14 @@ function translationKey(item: NotificationItem): string {
 
 export function NotificationBell() {
   const { t } = useTranslation();
-  const { socket } = useAuth();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [open, setOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  // Shared with the Messages tab badges (refreshed by AppShell); the bell's
+  // own count leaves new messages out — they live on the Messages tab.
+  const { count: unreadCount } = useUnreadCounts();
   const [items, setItems] = useState<NotificationItem[]>([]);
-
-  const reloadCount = () => {
-    getUnreadCount()
-      .then(({ count }) => setUnreadCount(count))
-      .catch(() => {});
-  };
-
-  useEffect(() => {
-    reloadCount();
-  }, [pathname]);
-
-  // Opening a conversation marks its message notifications read
-  // server-side, without going through this bell.
-  useEffect(() => {
-    window.addEventListener(NOTIFICATIONS_CHANGED, reloadCount);
-    return () => window.removeEventListener(NOTIFICATIONS_CHANGED, reloadCount);
-  }, []);
-
-  useEffect(() => {
-    if (!socket) return;
-    socket.on('notification:new', reloadCount);
-    return () => {
-      socket.off('notification:new', reloadCount);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket]);
 
   useEffect(() => {
     if (!open) return;
@@ -97,16 +65,13 @@ export function NotificationBell() {
   const handleItemClick = async (item: NotificationItem) => {
     setOpen(false);
     setItems((list) => list.filter((i) => i.id !== item.id));
-    // A new message isn't marked read here: opening its conversation does
-    // it (for all of that conversation's messages at once), and until then
-    // it must stay unread so the Messages list still shows it in bold.
-    if (item.type !== 'NEW_MESSAGE') {
-      try {
-        await markNotificationRead(item.id);
-        setUnreadCount((count) => Math.max(0, count - 1));
-      } catch {
-        // navigation still proceeds even if marking it read failed
-      }
+    // New messages never reach the bell (filtered server-side), so every
+    // item here is marked read on click.
+    try {
+      await markNotificationRead(item.id);
+      decrementUnreadCount();
+    } catch {
+      // navigation still proceeds even if marking it read failed
     }
     navigate(destinationFor(item));
   };

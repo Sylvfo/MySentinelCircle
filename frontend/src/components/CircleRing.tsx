@@ -8,15 +8,7 @@ import {
   PRIMARY_RING_COLOR,
   circlePalette,
 } from '../theme';
-
-function PersonIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <circle cx="12" cy="5" r="4.7" />
-      <path d="M4 22 L4 15 A8 8 0 0 1 20 15 L20 22 Z" />
-    </svg>
-  );
-}
+import { SentinelIcon } from './SentinelIcon';
 
 function MessageBadge({ on }: { on: boolean }) {
   return (
@@ -55,6 +47,7 @@ export function CircleRing({
   selectedMemberId,
   inAlertUserIds,
   isGroup,
+  strongRing,
 }: {
   label: string;
   members: Membership[];
@@ -71,9 +64,13 @@ export function CircleRing({
   inAlertUserIds?: Set<string>;
   // Group circles get a second, inner line, to tell them apart at a glance.
   isGroup?: boolean;
+  // Light backgrounds (Dashboard's satin tiles): the pale ring tint would
+  // vanish, so draw the ring in a see-through shade of the avatars' color.
+  strongRing?: boolean;
 }) {
   const { t } = useTranslation();
   const palette = isPrimary ? { color: PRIMARY_AVATAR_COLOR, ring: PRIMARY_RING_COLOR } : circlePalette(colorIndex);
+  const ringColor = strongRing ? `color-mix(in srgb, ${palette.color} 40%, transparent)` : palette.ring;
   const RING_BORDER_WIDTH = 5;
   // Exactly the ring stroke's centerline, so an avatar's center sits right
   // on the ring, not floating inside or outside it.
@@ -90,8 +87,8 @@ export function CircleRing({
       style={{ width: size, height: size }}
       aria-label={label}
     >
-      <span className="circle-ring-border" style={{ borderColor: palette.ring }} />
-      {isGroup && <span className="circle-ring-border inner" style={{ borderColor: palette.ring }} />}
+      <span className="circle-ring-border" style={{ borderColor: ringColor }} />
+      {isGroup && <span className="circle-ring-border inner" style={{ borderColor: ringColor }} />}
       <span className="circle-ring-center">{label}</span>
       {members.map((m, i) => {
         const angle = ((-90 + (360 / members.length) * i) * Math.PI) / 180;
@@ -120,7 +117,7 @@ export function CircleRing({
             className={`circle-avatar${selectedMemberId === m.id ? ' selected' : ''}`}
             style={{ left: x, top: y, width: avatarSize, height: avatarSize, color }}
           >
-            <PersonIcon />
+            <SentinelIcon />
             <MessageBadge on={canMessage} />
             {showNames ? (
               <span className="circle-avatar-caption">

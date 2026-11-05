@@ -49,19 +49,36 @@ export class NotificationService {
   }
 
   // Unread only — a notification disappears once read (clicked, or its
-  // conversation opened); there's no history of old ones.
+  // conversation opened); there's no history of old ones. New messages are
+  // left out: they're surfaced on the Messages tab, not in the bell.
   listMine(userId: string) {
     return this.prisma.notification.findMany({
-      where: { userId, readAt: null },
+      where: {
+        userId,
+        readAt: null,
+        type: { not: NotificationType.NEW_MESSAGE },
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
   }
 
-  getUnreadCount(userId: string) {
-    return this.prisma.notification.count({
-      where: { userId, readAt: null },
-    });
+  // Split the same way: `count` feeds the bell (everything but messages),
+  // `messages` feeds the Messages tab's badge.
+  async getUnreadCounts(userId: string) {
+    const [count, messages] = await Promise.all([
+      this.prisma.notification.count({
+        where: {
+          userId,
+          readAt: null,
+          type: { not: NotificationType.NEW_MESSAGE },
+        },
+      }),
+      this.prisma.notification.count({
+        where: { userId, readAt: null, type: NotificationType.NEW_MESSAGE },
+      }),
+    ]);
+    return { count, messages };
   }
 
   markRead(userId: string, id: string) {

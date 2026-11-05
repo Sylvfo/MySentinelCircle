@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch, apiPost, apiPostForm } from './client';
+import { API_URL, ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPostForm, getToken } from './client';
 
 export interface Me {
   id: string;
@@ -41,6 +41,20 @@ export const uploadAvatar = (file: File) => {
   formData.append('avatar', file);
   return apiPostForm<Me>('/user/me/avatar', formData);
 };
+
+export const removeAvatar = () => apiDelete<Me>('/user/me/avatar');
+
+// Profile photos are private (only linked people may see them), so they
+// can't be a plain <img src>: fetched with the token, as a blob — see
+// avatars.ts. Rejects with 404 when there's no photo or no access.
+export async function fetchAvatarBlob(userId: string): Promise<Blob> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}/user/${userId}/avatar`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  return res.blob();
+}
 
 export const stepUpPassword = (password: string) =>
   apiPost<{ message: string }>('/user/me/step-up/password', { password });

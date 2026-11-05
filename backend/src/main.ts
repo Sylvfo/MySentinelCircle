@@ -12,7 +12,12 @@ async function bootstrap() {
     origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
+  // Only message images are public (random, unguessable names). Profile
+  // photos are not: they go through GET /user/:id/avatar, which checks the
+  // caller is linked to that person.
+  app.useStaticAssets(join(process.cwd(), 'uploads', 'messages'), {
+    prefix: '/uploads/messages',
+  });
 
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()

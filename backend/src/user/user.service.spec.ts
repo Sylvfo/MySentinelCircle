@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   ConflictException,
   ForbiddenException,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { UserType, UserStatus } from '@prisma/client';
@@ -17,6 +18,7 @@ describe('UserService', () => {
   let prisma: {
     user: { findUnique: jest.Mock; update: jest.Mock };
     linkSentinels: {
+      findFirst: jest.Mock;
       findMany: jest.Mock;
       count: jest.Mock;
       update: jest.Mock;
@@ -34,6 +36,7 @@ describe('UserService', () => {
     prisma = {
       user: { findUnique: jest.fn(), update: jest.fn() },
       linkSentinels: {
+        findFirst: jest.fn(),
         findMany: jest.fn(),
         count: jest.fn(),
         update: jest.fn(),
@@ -1001,6 +1004,73 @@ describe('UserService', () => {
         where: { id: 'link-1' },
         data: { notifyOnDeath: true, deathPersonalMessage: 'Merci pour tout' },
       });
+    });
+  });
+  describe('getAvatarFile', () => {
+    it('serves my own photo without any link check', async () => {
+      prisma.user.findUnique.mockResolvedValue({ avatarPath: 'abc.jpg' });
+
+      await expect(service.getAvatarFile('me', 'me')).resolves.toMatch(
+        /avatars[\\/]abc\.jpg$/,
+      );
+      expect(prisma.linkSentinels.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('serves the photo of someone linked to me, checking both directions', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValue({ id: 'link-1' });
+      prisma.user.findUnique.mockResolvedValue({ avatarPath: 'abc.jpg' });
+
+      await expect(service.getAvatarFile('me', 'lea')).resolves.toMatch(
+        /abc\.jpg$/,
+      );
+      expect(prisma.linkSentinels.findFirst).toHaveBeenCalledWith({
+        where: {
+          status: 'ACCEPTED',
+          OR: [
+            { userSentinelId: 'me', circle: { userCompanionId: 'lea' } },
+            { userSentinelId: 'lea', circle: { userCompanionId: 'me' } },
+          ],
+        },
+        select: { id: true },
+      });
+    });
+
+    it('answers 404 to someone not linked, without reading the photo', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValue(null);
+
+      await expect(service.getAvatarFile('stranger', 'lea')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 when the person has no photo', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValue({ id: 'link-1' });
+      prisma.user.findUnique.mockResolvedValue({ avatarPath: null });
+
+      await expect(service.getAvatarFile('me', 'lea')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('removeAvatar', () => {
+    it('clears avatarPath', async () => {
+      prisma.user.findUnique.mockResolvedValue({ avatarPath: null });
+      prisma.user.update.mockResolvedValue({
+        passwordHash: null,
+        googleId: null,
+        avatarPath: null,
+      });
+
+      await service.removeAvatar('me');
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'me' },
+          data: { avatarPath: null },
+        }),
+      );
     });
   });
 });

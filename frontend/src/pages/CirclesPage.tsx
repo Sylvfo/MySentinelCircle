@@ -180,6 +180,7 @@ export function CirclesPage() {
               isPrimary
               colorIndex={0}
               size={260}
+              showNames
               inAlertUserIds={inAlertUserIds}
               onOpen={() => navigate(`/circles/${primaryCircle.id}`)}
             />
@@ -196,6 +197,7 @@ export function CirclesPage() {
                   colorIndex={i}
                   size={210}
                   isGroup={c.circleType === 'GROUP'}
+                  showNames={c.circleType !== 'GROUP'}
                   inAlertUserIds={inAlertUserIds}
                   onOpen={() => navigate(`/circles/${c.id}`)}
                 />

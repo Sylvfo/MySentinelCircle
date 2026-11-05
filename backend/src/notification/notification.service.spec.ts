@@ -116,22 +116,43 @@ describe('NotificationService', () => {
     });
   });
 
-  describe('listMine / getUnreadCount', () => {
-    it('scopes the list to the caller, unread only, newest first', async () => {
+  describe('listMine / getUnreadCounts', () => {
+    it('scopes the list to the caller, unread only, newest first, without messages', async () => {
       await service.listMine('user-1');
 
       expect(prisma.notification.findMany).toHaveBeenCalledWith({
-        where: { userId: 'user-1', readAt: null },
+        where: {
+          userId: 'user-1',
+          readAt: null,
+          type: { not: NotificationType.NEW_MESSAGE },
+        },
         orderBy: { createdAt: 'desc' },
         take: 50,
       });
     });
 
-    it('scopes the unread count to the caller', async () => {
-      await service.getUnreadCount('user-1');
+    it("splits the caller's unread count into messages and everything else", async () => {
+      prisma.notification.count
+        .mockResolvedValueOnce(3)
+        .mockResolvedValueOnce(5);
 
+      await expect(service.getUnreadCounts('user-1')).resolves.toEqual({
+        count: 3,
+        messages: 5,
+      });
       expect(prisma.notification.count).toHaveBeenCalledWith({
-        where: { userId: 'user-1', readAt: null },
+        where: {
+          userId: 'user-1',
+          readAt: null,
+          type: { not: NotificationType.NEW_MESSAGE },
+        },
+      });
+      expect(prisma.notification.count).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          readAt: null,
+          type: NotificationType.NEW_MESSAGE,
+        },
       });
     });
   });

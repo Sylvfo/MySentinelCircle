@@ -87,7 +87,25 @@ Your data stays in the Docker volumes, and `make db-down` stops only MariaDB.
 
 ## Demo
 
-Four demo accounts, created by `make db-seed`. Log in with the email or the phone number. The password is `TestPass1234!` for all of them.
+### Quick demo from a fresh clone
+
+Needs only Docker with Compose v2, GNU Make, OpenSSL and curl (no Node.js on your machine):
+
+```
+git clone https://github.com/Sylvfo/MySentinelCircle.git
+cd MySentinelCircle
+make demo
+```
+
+`make demo` creates the env files and certificates, starts everything in Docker, waits until the app answers, loads the demo accounts with their profile photos, then prints the address and the logins below. It can be re-run safely. Open https://localhost:4444 and accept the self-signed certificate.
+
+It uses ports 4444, 8081 and 3306: stop anything already listening there (a local MySQL, for example) first. SMS codes (OTP) are printed by `docker compose logs -f backend`. Stop with `make docker-down`.
+
+About half of the accounts get an illustrated profile photo (`backend/prisma/demo-avatars/`), so you can see both cases.
+
+### Demo accounts
+
+Four demo accounts, created by `make demo` or `make db-seed`. Log in with the email or the phone number. The password is `TestPass1234!` for all of them.
 
 | Name | Email | Phone | Note |
 |---|---|---|---|

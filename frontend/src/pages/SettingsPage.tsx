@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../api/client';
 import {
@@ -11,6 +11,7 @@ import {
   requestEmailChange,
   setDeathNoticeRecipients,
   updateMyDeathNotice,
+  removeAvatar,
   updateProfile,
   uploadAvatar,
   verifyAddPhone,
@@ -21,6 +22,8 @@ import { Modal } from '../components/Modal';
 import { StepUpPanel } from '../components/StepUp';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { useAuth } from '../auth/AuthContext';
+import { SentinelIcon } from '../components/SentinelIcon';
+import { useAvatarUrl } from '../avatars';
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -329,39 +332,67 @@ function EditableToggle({
   );
 }
 
+// My profile photo — private: only the people linked to me can see it (the
+// file is fetched through GET /user/:id/avatar, see avatars.ts).
 function AvatarPanel({ me, onChange, onError }: { me: Me; onChange: () => void; onError: (m: string) => void }) {
   const { t } = useTranslation();
+  const { refreshUser } = useAuth();
   const [submitting, setSubmitting] = useState(false);
-  const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoUrl = useAvatarUrl(me.id, me.avatarPath);
 
-  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const run = async (action: () => Promise<unknown>) => {
     setSubmitting(true);
     try {
-      await uploadAvatar(file);
+      await action();
       onChange();
+      void refreshUser();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
     } finally {
       setSubmitting(false);
-      e.target.value = '';
     }
   };
 
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) void run(() => uploadAvatar(file));
+  };
+
   return (
-    <section className="panel">
+    <section className="panel avatar-panel">
       <h2>{t('settings.avatar')}</h2>
-      {me.avatarPath && (
-        <img
-          src={`${apiUrl}/uploads/avatars/${me.avatarPath}`}
-          alt=""
-          style={{ width: 96, height: 96, borderRadius: '50%', objectFit: 'cover', marginBottom: '0.5rem' }}
-        />
-      )}
-      <div className="row">
-        <input type="file" accept="image/*" disabled={submitting} onChange={onFileChange} />
+      <div className="avatar-panel-body">
+        {photoUrl ? (
+          <img src={photoUrl} alt="" className="avatar-panel-photo" />
+        ) : (
+          <span className="avatar-panel-photo empty" aria-hidden="true">
+            <SentinelIcon size={56} />
+          </span>
+        )}
+        <div className="avatar-panel-actions">
+          <p className="form-hint">{t('settings.avatarHint')}</p>
+          <div className="row">
+            <button type="button" disabled={submitting} onClick={() => fileInputRef.current?.click()}>
+              {me.avatarPath ? t('settings.avatarChange') : t('settings.avatarAdd')}
+            </button>
+            {me.avatarPath && (
+              <button type="button" className="ghost" disabled={submitting} onClick={() => run(removeAvatar)}>
+                {t('settings.avatarRemove')}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hidden
+        disabled={submitting}
+        onChange={onFileChange}
+      />
     </section>
   );
 }

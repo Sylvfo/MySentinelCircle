@@ -20,8 +20,8 @@ import {
 } from '../api/sentinel';
 import { Modal } from '../components/Modal';
 import { Tile } from '../components/Tile';
-import { CompanionIcon } from '../components/CompanionIcon';
-import { PRIMARY_AVATAR_COLOR, companionColor } from '../theme';
+import { PersonAvatar } from '../components/PersonAvatar';
+import { companionColor, companionGold } from '../theme';
 
 export function CompanionsPage() {
   const { t } = useTranslation();
@@ -52,6 +52,12 @@ export function CompanionsPage() {
   // death report to confirm. Invitations received sit above the list anyway.
   const needsAnswer = (c: Companion) => !!c.proposedCircle || !!c.deathNotice.pending?.canConfirmOrReject;
   const sorted = [...companions].sort((a, b) => Number(needsAnswer(b)) - Number(needsAnswer(a)));
+  // Grouped by my role towards them, closest first. Empty groups are skipped.
+  const groups = [
+    { key: 'lead', items: sorted.filter((c) => c.leadSlot) },
+    { key: 'firstCircle', items: sorted.filter((c) => !c.leadSlot && c.circle.isPrimary) },
+    { key: 'others', items: sorted.filter((c) => !c.leadSlot && !c.circle.isPrimary) },
+  ];
 
   // /companions/:linkId: one companion's details and actions, like a
   // circle's own page on My Circles.
@@ -64,10 +70,12 @@ export function CompanionsPage() {
         <Link to="/companions">{t('companions.backToList')}</Link>
         {error && <p className="form-error">{error}</p>}
         <div className="companion-detail-head">
-          <CompanionIcon
+          <PersonAvatar
+            userId={c.companion.id}
+            avatarPath={c.companion.avatarPath}
+            sentinelColor={null}
+            companionColor={companionGold(!!c.leadSlot, c.circle.isPrimary) ?? companionColor(c.companion.id)}
             size={96}
-            color={companionColor(c.companion.id)}
-            shieldColor={c.leadSlot ? PRIMARY_AVATAR_COLOR : undefined}
           />
           <h1>
             {c.companion.firstName} {c.companion.lastName}
@@ -103,20 +111,33 @@ export function CompanionsPage() {
       {companions.length === 0 ? (
         <div className="empty-state">{t('companions.empty')}</div>
       ) : (
-        <div className="companion-grid">
-          {sorted.map((c) => (
-            <Link key={c.linkId} to={`/companions/${c.linkId}`} className="companion-card">
-              {/* Their own blue-violet shade; the shield turns gold when I'm their Lead. */}
-              <CompanionIcon
-                size={72}
-                color={companionColor(c.companion.id)}
-                shieldColor={c.leadSlot ? PRIMARY_AVATAR_COLOR : undefined}
-              />
-              <span className="companion-name">{c.companion.firstName}</span>
-              {needsAnswer(c) && <span className="companion-needs-answer">{t('companions.needsAnswer')}</span>}
-            </Link>
-          ))}
-        </div>
+        groups.map(
+          (g) =>
+            g.items.length > 0 && (
+              <section key={g.key} className="companion-group">
+                {/* Thin labelled separator: my role towards everyone below it. */}
+                <h2 className="companion-group-sep">{t(`companions.groups.${g.key}`)}</h2>
+                <div className="companion-grid">
+                  {g.items.map((c) => (
+                    <Link key={c.linkId} to={`/companions/${c.linkId}`} className="companion-card">
+                      {/* Their own blue-violet shade; the outline turns gold when I.m in their 1st circle (darker for a Lead). */}
+                      <PersonAvatar
+                        userId={c.companion.id}
+                        avatarPath={c.companion.avatarPath}
+                        sentinelColor={null}
+                        companionColor={companionGold(!!c.leadSlot, c.circle.isPrimary) ?? companionColor(c.companion.id)}
+                        size={72}
+                      />
+                      <span className="companion-name">{c.companion.firstName}</span>
+                      {needsAnswer(c) && (
+                        <span className="companion-needs-answer">{t('companions.needsAnswer')}</span>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ),
+        )
       )}
     </div>
   );
@@ -211,26 +232,54 @@ function CompanionPanel({
   );
 }
 
+// The role an invitation offers: a Lead request wins over the base type.
+const invitationRole = (inv: Invitation) => (inv.requestedAsLead ? 'LEAD' : inv.sentinelType);
+
+// One small line per invitation; clicking it opens the details (circle, role,
+// what that role involves) with Accept / Decline.
 function InvitationsInbox({ invitations, onChange }: { invitations: Invitation[]; onChange: () => void }) {
   const { t } = useTranslation();
+  const [open, setOpen] = useState<Invitation | null>(null);
   if (invitations.length === 0) return null;
 
+  const answer = (action: () => Promise<unknown>) => {
+    setOpen(null);
+    void action().then(onChange);
+  };
+
   return (
-    <Tile title={t('companions.invitations')}>
+    <div className="invitation-lines">
       {invitations.map((inv) => (
-        <div key={inv.id} className="row">
-          <span>
-            {t('companions.invitedBy', { who: inv.circle.userCompanion.email || inv.circle.userCompanion.phone })} — {inv.circle.label}
+        <button key={inv.id} type="button" className="invitation-line" onClick={() => setOpen(inv)}>
+          <span className="invitation-dot" aria-hidden="true" />
+          <span className="invitation-text">
+            {t('companions.invitationLine', { who: inv.circle.userCompanion.firstName })}
           </span>
-          <span className="row-actions">
-            <button onClick={() => acceptMembership(inv.id).then(onChange)}>{t('companions.accept')}</button>
-            <button className="ghost" onClick={() => declineMembership(inv.id).then(onChange)}>
+          <span aria-hidden="true">›</span>
+        </button>
+      ))}
+      {open && (
+        <Modal
+          title={t('companions.invitationTitle', { who: open.circle.userCompanion.firstName })}
+          onClose={() => setOpen(null)}
+        >
+          <dl className="invitation-details">
+            <dt>{t('companions.invitationCircle')}</dt>
+            <dd>{open.circle.label}</dd>
+            <dt>{t('companions.invitationRole')}</dt>
+            <dd>{t(`sentinel.type.${invitationRole(open)}`)}</dd>
+            <dt>{t('companions.invitationDuties')}</dt>
+            <dd>{t(`companions.duties.${invitationRole(open)}`, { who: open.circle.userCompanion.firstName })}</dd>
+          </dl>
+          <div className="row">
+            <button onClick={() => answer(() => acceptMembership(open.id))}>{t('companions.accept')}</button>
+            <button className="ghost" onClick={() => answer(() => declineMembership(open.id))}>
               {t('companions.decline')}
             </button>
-          </span>
-        </div>
-      ))}
-    </Tile>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }
 

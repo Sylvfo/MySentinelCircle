@@ -186,6 +186,19 @@ button, input {
   object-fit: contain;
 }
 
+.app-nav .brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-nav .brand-slogan {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  opacity: 0.75;
+}
+
 .app-nav .nav-links {
   display: flex;
   flex-direction: column;
@@ -522,6 +535,202 @@ button, input {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
 }
 
+/* Dashboard My Circles / My Companions tiles: bigger title, people count
+   with its icon in the top-right corner. */
+.tile.tile-dash .tile-header {
+  flex-wrap: nowrap;
+}
+
+.tile.tile-dash .tile-header h2 {
+  font-size: 1.75rem;
+  line-height: 1.15;
+}
+
+.tile.tile-dash .tile-subtitle {
+  margin: 0.15rem 0 0;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.tile-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-brand);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tile-count.sentinel svg {
+  color: #4a8fd1; /* theme.ts's circle blue */
+}
+
+/* Dashboard greeting header */
+.dashboard-greeting {
+  margin-bottom: 0;
+}
+
+.dashboard-greeting h1 {
+  margin: 0 0 0.4rem;
+  font-size: 1.8rem;
+  color: var(--accent);
+}
+
+/* Dashboard = a column exactly as tall as the visible screen (dvh follows
+   the browser's bars appearing/disappearing): greeting, tiles, then the
+   Raise Alert button at the bottom. The tiles share whatever height is left,
+   so their previews show more or less depending on the phone. Below
+   min-height (very short screens) the page simply scrolls. Height subtracts
+   .app-content's own vertical padding (2rem + 2rem on desktop). */
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 4rem);
+  min-height: 34rem;
+}
+
+.dashboard .tile-grid {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0.6rem;
+  /* Stacked: My Circles gets 2/3 of the height, My Companions 1/3. */
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
+  align-items: stretch;
+  margin-bottom: 1rem;
+}
+
+.dashboard .tile-grid .tile-link,
+.dashboard .tile-grid .tile-link .tile {
+  min-height: 0;
+  height: 100%;
+}
+
+/* "Satin / mother-of-pearl" tiles (tile-materials option 2c): soft sheen from
+   the top-left corner, thin light-blue frame; both turn to light reds in
+   alert mode (see .alert-mode below). */
+.tile.tile-dash {
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #f1f6fb 45%, #e3ecf5 100%);
+  border: 1.5px solid #a9c9ea;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 14px rgba(30, 60, 100, 0.13);
+}
+
+.tile.tile-dash .tile-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.alert-mode .tile.tile-dash {
+  background: radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%);
+  border-color: #eab0ab;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 14px rgba(120, 30, 30, 0.13);
+}
+
+/* Preview area: fills the rest of the tile; whatever doesn't fit is cut. */
+.dash-preview {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+/* Previews run edge to edge: cancels the tile's side (1.3rem) and bottom
+   (1.1rem) padding. */
+.tile.tile-dash .dash-preview {
+  margin-left: -1.3rem;
+  margin-right: -1.3rem;
+  margin-bottom: -1.1rem;
+}
+
+.circles-preview .preview-ring {
+  position: absolute;
+}
+
+/* Overview only: no message-capability badges, no circle names. */
+.circles-preview .circle-msg-badge,
+.circles-preview .circle-ring-center {
+  display: none;
+}
+
+.circles-preview .preview-ring.primary {
+  left: -20px;
+  top: 25px;
+}
+
+.circles-preview .preview-ring.other {
+  right: -30px;
+  top: 90px;
+}
+
+/* Up to 3 companions per row, like the Companions page on a phone. */
+.companions-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  gap: 0.5rem;
+}
+
+.preview-companion .companion-icon {
+  max-width: 100%;
+  height: auto;
+}
+
+.preview-companion .companion-name {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.tile.tile-dash .dash-preview.companions-preview {
+  margin-top: 0;
+}
+
+.preview-companion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.raise-alert-btn {
+  flex-shrink: 0;
+  display: block;
+  padding: 0.6rem 1.25rem;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: 1.05rem;
+  text-align: center;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.raise-alert-btn .raise-alert-title {
+  display: block;
+}
+
+.raise-alert-btn .raise-alert-hint {
+  display: block;
+  font-family: system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.raise-alert-btn:hover,
+.raise-alert-btn:focus-visible {
+  filter: brightness(1.08);
+}
+
 /* Dashboard's "Raise An Alert" tile, styled as a red call-to-action. */
 .tile.tile-raise {
   background: var(--danger);
@@ -704,6 +913,69 @@ button, input {
   color: var(--danger);
 }
 
+/* Dashboard's Running Alert tile: fully in the alert reds, so it reads as
+   part of alert mode. Light text on the alert red. */
+.tile.tile-running {
+  background: linear-gradient(160deg, #c8352c 0%, var(--danger) 100%);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.tile.tile-running .tile-header h2,
+.tile.tile-running p,
+.tile.tile-running .form-hint {
+  color: #fff;
+}
+
+.tile.tile-running .form-hint {
+  opacity: 0.85;
+}
+
+/* Dashboard in alert mode: the Running Alert tile fills the free space,
+   My Circles / My Companions shrink to two compact full-width rows, one
+   above the other (header and count only), and Raise Alert stays at the bottom. */
+.dashboard.has-alert > .tile-link {
+  flex: 1;
+  min-height: 0;
+}
+
+.dashboard.has-alert > .tile-link .tile {
+  height: 100%;
+  margin-top: 0;
+}
+
+.dashboard.has-alert .tile-grid {
+  flex: 0 0 auto;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto;
+  margin-top: 0.75rem;
+}
+
+.dashboard.has-alert .tile.tile-dash {
+  padding: 0.6rem 0.8rem;
+}
+
+.dashboard.has-alert .tile.tile-dash .tile-header {
+  margin-bottom: 0;
+  flex-wrap: wrap;
+}
+
+.dashboard.has-alert .tile.tile-dash .tile-header h2 {
+  font-size: 1.05rem;
+}
+
+.dashboard.has-alert .tile.tile-dash .tile-subtitle {
+  font-size: 0.8rem;
+}
+
+.dashboard.has-alert .tile-count {
+  font-size: 1.05rem;
+}
+
+.dashboard.has-alert .tile.tile-dash .tile-body {
+  display: none;
+}
+
 .alert-detail {
   margin: 0.5rem 0 1rem;
   padding: 0.75rem 1rem;
@@ -826,19 +1098,24 @@ button, input {
     border-right: none;
     border-bottom: 1px solid var(--border);
     align-self: stretch;
-    /* Fixed height: .sticky-header sticks right below it (top: 52px). */
-    height: 52px;
+    /* Fixed height: .sticky-header sticks right below it (top: 64px). */
+    height: 64px;
   }
 
   .app-nav .brand {
     margin-bottom: 0;
     margin-right: 0.5rem;
     flex-shrink: 0;
+    font-size: 1.2rem;
   }
 
   .app-nav .brand img {
-    width: 32px;
-    height: 32px;
+    width: 42px;
+    height: 42px;
+  }
+
+  .app-nav .brand-slogan {
+    font-size: 0.85rem;
   }
 
   .app-nav .user-row {
@@ -879,6 +1156,40 @@ button, input {
     padding-bottom: 5.5rem;
   }
 
+  /* Full-height column minus the 64px top bar and .app-content's mobile
+     padding (1rem top + 5.5rem bottom, the room kept for .bottom-nav) — so
+     Raise Alert ends right above the bottom nav. */
+  .dashboard {
+    height: calc(100dvh - 64px - 6.5rem);
+    min-height: 28rem;
+  }
+
+  /* The greeting takes space the tiles need more on a phone. */
+  .dashboard-greeting {
+    display: none;
+  }
+
+  .dashboard .tile-grid {
+    gap: 0.75rem;
+    margin-top: 0;
+  }
+
+  /* Band behind the floating bottom bar, painted with the page's own
+     background (blue, or red in alert mode): scrolled content disappears
+     under it instead of showing around the bar. Bar: 1rem from the bottom,
+     ~3rem tall, plus a 0.75rem margin above it. */
+  .app-shell::after {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4.75rem;
+    background: var(--page-gradient) fixed;
+    z-index: 14;
+    pointer-events: none;
+  }
+
   .bottom-nav {
     position: fixed;
     left: 1rem;
@@ -895,6 +1206,7 @@ button, input {
   }
 
   .bottom-nav a {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1008,7 +1320,7 @@ button, input {
   }
 
   .sticky-header {
-    top: 52px;
+    top: 64px;
     margin: 0 -1rem;
     padding: 1rem 1rem 1rem;
   }
@@ -1083,6 +1395,118 @@ button, input {
   font-weight: 700;
 }
 
+/* Companions list: groups by my role, each under a thin labelled line. */
+.companion-group {
+  margin-top: 1.25rem;
+}
+
+.companion-group .companion-grid {
+  margin-top: 0.75rem;
+}
+
+/* Phones: always 3 per row (120px min cards only fit 2 on a 360px screen). */
+@media (max-width: 640px) {
+  .companion-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .app-content a.companion-card {
+    min-width: 0;
+    padding: 0.6rem 0.25rem;
+  }
+
+  .app-content a.companion-card .companion-icon {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .app-content a.companion-card .companion-name {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+
+.companion-group-sep {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--companion-color);
+}
+
+.companion-group-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--companion-color);
+  opacity: 0.3;
+}
+
+/* Invitations received: one small clickable line each, details in a modal. */
+.invitation-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 1rem;
+}
+
+.app-content button.invitation-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid rgba(91, 91, 214, 0.3);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-content button.invitation-line:hover,
+.app-content button.invitation-line:focus-visible {
+  background: rgba(91, 91, 214, 0.08);
+}
+
+.invitation-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--companion-color);
+  flex-shrink: 0;
+}
+
+.invitation-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.invitation-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.invitation-details dt {
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.invitation-details dd {
+  margin: 0;
+}
+
 .companion-needs-answer {
   font-size: 0.75rem;
   font-weight: 700;
@@ -1116,7 +1540,35 @@ button, input {
 /* Messages list: one clickable row per conversation — name, then a one-line
    preview of the last message. Higher specificity than .app-content button. */
 .conversation-list{display:flex; flex-direction:column; padding:0;}
-.app-content button.conversation-row{display:flex; flex-direction:column; align-items:flex-start; gap:0.2rem; width:100%; padding:0.75rem 1rem; background:none; color:var(--text); border-radius:0; border-bottom:1px solid var(--border); text-align:left; font:inherit; font-weight:400;}
+.conversation-relations{display:flex; flex-direction:column; gap:0.1rem; margin-top:0.35rem;}
+.conversation-relations p{margin:0; font-weight:700; color:var(--text);}
+.conversation-relations p.none{color:var(--text-muted);}
+/* PersonAvatar: round profile photo (ring in the relation color) with the
+   relation icon(s) as a small badge in the bottom-right corner. */
+/* Settings: my profile photo */
+.avatar-panel-body{display:flex; align-items:center; gap:1.25rem; flex-wrap:wrap;}
+.avatar-panel-photo{width:96px; height:96px; border-radius:50%; object-fit:cover; flex-shrink:0;}
+.avatar-panel-photo.empty{display:flex; align-items:center; justify-content:center; background:var(--bg-subtle); color:var(--text-muted);}
+.avatar-panel-actions{display:flex; flex-direction:column; gap:0.5rem; min-width:0;}
+.avatar-panel-actions .form-hint{margin:0;}
+.person-avatar{position:relative; display:inline-block; flex-shrink:0;}
+.person-avatar-photo{width:100%; height:100%; border-radius:50%; object-fit:cover; border:2px solid var(--border); display:block;}
+.person-avatar-badge{position:absolute; right:-35%; bottom:-12%; display:flex; filter:drop-shadow(0 1px 1px rgba(255,255,255,0.9));}
+.conversation-text{display:flex; flex-direction:column; gap:0.2rem; flex:1; min-width:0;}
+/* RelationIcons: Sentinel silhouette and/or companion outline; when both,
+   the outline overlaps the silhouette's right side. */
+.relation-icons{position:relative; display:inline-block; flex-shrink:0;}
+.relation-icons > *{position:absolute; top:0;}
+.relation-icons .relation-sentinel{left:0; display:flex; align-items:flex-end; justify-content:center;}
+.relation-icons > svg{right:0;}
+/* Messages search: filters conversations, and offers "New message" with
+   roster people I haven't written to yet. */
+.messages-search{display:block; width:100%; margin:0 0 1rem; padding:0.6rem 1rem; border:1px solid var(--border); border-radius:999px; background:var(--bg); font:inherit; color:var(--text);}
+.conversation-list + .conversation-list{margin-top:1rem;}
+.messages-section-title{margin:1.5rem 0 0.6rem; font-size:0.85rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
+.alert-chat-icon{display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; flex-shrink:0; color:var(--danger);}
+.conversation-list-title{margin:0; padding:0.6rem 1rem 0.3rem; font-size:0.8rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
+.app-content button.conversation-row{display:flex; flex-direction:row; align-items:center; gap:0.75rem; width:100%; padding:0.75rem 1rem; background:none; color:var(--text); border-radius:0; border-bottom:1px solid var(--border); text-align:left; font:inherit; font-weight:400;}
 .app-content button.conversation-row:last-child{border-bottom:none;}
 .app-content button.conversation-row:hover{background:var(--bg-subtle);}
 .conversation-name{display:flex; align-items:center; gap:0.4rem;}
@@ -1133,7 +1585,16 @@ button, input {
 .conversation-contact-details{display:flex; flex-wrap:wrap; gap:0.25rem 1rem; margin:0.25rem 0 0.5rem; color:var(--text-muted); font-size:0.9rem;}
 .conversation-alert{display:flex; flex-direction:column; gap:0.2rem; padding:0.6rem 0.8rem; border-radius:var(--radius); background:var(--accent-subtle); border-left:4px solid var(--danger);}
 .conversation-alert-none{margin:0; color:var(--text-muted); font-size:0.9rem;}
-.conversation-compose{margin-top:1rem;}
+.conversation-compose{display:flex; align-items:center; gap:0.5rem; margin:1rem 0;}
+.compose-attach{position:relative; flex-shrink:0;}
+.app-content button.compose-icon-btn{display:inline-flex; align-items:center; justify-content:center; width:2.5rem; height:2.5rem; margin:0; padding:0; border-radius:50%; background:var(--bg); color:var(--accent); border:1px solid var(--border); flex-shrink:0;}
+.app-content button.compose-icon-btn.compose-send{background:var(--accent); color:#fff; border-color:var(--accent);}
+.app-content button.compose-icon-btn:disabled{opacity:0.45; cursor:default;}
+.compose-input{flex:1; min-width:0; height:2.5rem; padding:0 1rem; border:1px solid var(--border); border-radius:999px; background:var(--bg); font:inherit; color:var(--text);}
+/* "+" menu: opens downward, the composer sits at the top of the thread. */
+.compose-attach-menu{position:absolute; top:calc(100% + 0.4rem); left:0; z-index:20; display:flex; flex-direction:column; min-width:9rem; padding:0.3rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow);}
+.app-content .compose-attach-menu button{display:flex; align-items:center; gap:0.5rem; width:100%; margin:0; padding:0.5rem 0.6rem; background:none; color:var(--text); border:none; border-radius:6px; text-align:left; font:inherit; font-weight:400;}
+.app-content .compose-attach-menu button:hover{background:var(--bg-subtle);}
 
 .app-content a.button-link.member-panel-message{margin:0 0 0.5rem;}
 

@@ -7,8 +7,8 @@ import { listCircles, listCompanions } from '../api/sentinel';
 import { listAlerts, type MyAlertSummary } from '../api/alert';
 import { NOTIFICATIONS_CHANGED } from '../api/notification';
 import { getDirectConversation, listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
-import { CompanionIcon } from '../components/CompanionIcon';
-import { companionColor } from '../theme';
+import { PersonAvatar } from '../components/PersonAvatar';
+import { avatarPathOf, myCompanionColor, mySentinelColor } from '../relations';
 
 // Everything known about the other person, from both directions of the
 // relationship: they can be my Sentinel, someone I watch over, or both.
@@ -19,9 +19,13 @@ interface ContactInfo {
   phone: string | null;
   email: string | null;
   // They watch over me, in this circle of mine.
-  asMySentinel: { circle: string; isLead: boolean } | null;
+  asMySentinel: { circle: string; isLead: boolean; isFirstCircle: boolean } | null;
   // I watch over them, in this circle of theirs.
-  asMyCompanion: { circle: string; isLead: boolean } | null;
+  asMyCompanion: { circle: string; isLead: boolean; isFirstCircle: boolean } | null;
+  // Icon colors for each link (null = no such link) — see RelationIcons.
+  sentinelColor: string | null;
+  companionColor: string | null;
+  avatarPath: string | null;
 }
 
 // /messages/:userId — the 1:1 conversation with one person. The header
@@ -39,7 +43,8 @@ export function ConversationPage() {
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachOpen, setAttachOpen] = useState(false);
 
   // listMessages() also marks this conversation's unread notifications read
   // server-side, so going back to the list shows it as read.
@@ -59,11 +64,13 @@ export function ConversationPage() {
           const m = c.userSentinels.find((s) => s.linkAsSentinel.id === userId && s.status === 'ACCEPTED');
           if (m) {
             sentinel = m.linkAsSentinel;
-            asMySentinel = { circle: c.label, isLead: m.leadSlot !== null };
+            asMySentinel = { circle: c.label, isLead: m.leadSlot !== null, isFirstCircle: c.circleType === 'FIRST' };
           }
         }
         const comp = companions.find((c) => c.companion.id === userId);
-        const asMyCompanion = comp ? { circle: comp.circle.label, isLead: comp.leadSlot !== null } : null;
+        const asMyCompanion = comp
+          ? { circle: comp.circle.label, isLead: comp.leadSlot !== null, isFirstCircle: comp.circle.isPrimary }
+          : null;
         const firstName = comp?.companion.firstName ?? sentinel?.firstName;
         if (firstName) {
           setInfo({
@@ -74,6 +81,9 @@ export function ConversationPage() {
             email: comp?.companion.email ?? null,
             asMySentinel,
             asMyCompanion,
+            sentinelColor: mySentinelColor(circles, userId),
+            companionColor: myCompanionColor(companions, userId),
+            avatarPath: avatarPathOf(circles, companions, userId),
           });
         }
         // Running alerts that concern this conversation: about them, or my own.
@@ -104,11 +114,6 @@ export function ConversationPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, conversationId]);
-
-  // Newest message in view, like any chat.
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages.length]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -141,6 +146,13 @@ export function ConversationPage() {
   };
 
   const name = info?.firstName ?? '';
+  // Most specific role only: Lead, else 1st circle, else the circle's name.
+  const roleLabel = (r: { circle: string; isLead: boolean; isFirstCircle: boolean }) =>
+    r.isLead
+      ? t('conversation.roleLead')
+      : r.isFirstCircle
+        ? t('conversation.roleFirstCircle')
+        : t('conversation.roleCircle', { circle: r.circle });
 
   return (
     <div className="page-bleed sticky-header-page conversation-page">
@@ -148,7 +160,13 @@ export function ConversationPage() {
         <Link to="/messages">{t('conversation.back')}</Link>
         {info && (
           <div className="conversation-contact">
-            <CompanionIcon size={56} color={companionColor(userId)} />
+            <PersonAvatar
+              userId={userId}
+              avatarPath={info.avatarPath}
+              sentinelColor={info.sentinelColor}
+              companionColor={info.companionColor}
+              size={52}
+            />
             <div>
               <h1>
                 {info.firstName} {info.lastName}
@@ -158,22 +176,18 @@ export function ConversationPage() {
                 {info.phone && <span>{info.phone}</span>}
                 {info.email && <span>{info.email}</span>}
               </div>
-              <div>
-                {info.asMySentinel && (
-                  <span className="badge">
-                    {t(info.asMySentinel.isLead ? 'conversation.myLeadSentinel' : 'conversation.mySentinel', {
-                      circle: info.asMySentinel.circle,
-                    })}
-                  </span>
-                )}
-                {info.asMyCompanion && (
-                  <span className="badge">
-                    {t(info.asMyCompanion.isLead ? 'conversation.iAmLead' : 'conversation.iWatch', {
-                      name,
-                      circle: info.asMyCompanion.circle,
-                    })}
-                  </span>
-                )}
+              {/* Both directions, once each, including "no link". */}
+              <div className="conversation-relations">
+                <p className={info.asMySentinel ? '' : 'none'}>
+                  {info.asMySentinel
+                    ? t('conversation.theyForMe', { name, role: roleLabel(info.asMySentinel) })
+                    : t('conversation.theyNotForMe', { name })}
+                </p>
+                <p className={info.asMyCompanion ? '' : 'none'}>
+                  {info.asMyCompanion
+                    ? t('conversation.meForThem', { name, role: roleLabel(info.asMyCompanion) })
+                    : t('conversation.meNotForThem', { name })}
+                </p>
               </div>
             </div>
           </div>
@@ -204,11 +218,78 @@ export function ConversationPage() {
         <p className="form-error">{error}</p>
       ) : (
         <>
+          {/* Messaging-app composer, on top (newest messages are listed
+              first, just below): "+" menu (photo now, GPS position later),
+              rounded text field, paper-plane send button. */}
+          <form className="conversation-compose" autoComplete="off" onSubmit={submit}>
+            <div className="compose-attach">
+              <button
+                type="button"
+                className="compose-icon-btn"
+                aria-label={t('conversation.attach')}
+                aria-expanded={attachOpen}
+                disabled={sending}
+                onClick={() => setAttachOpen((o) => !o)}
+              >
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
+              {attachOpen && (
+                <div className="compose-attach-menu" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAttachOpen(false);
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                      <rect x="3" y="5" width="18" height="14" rx="2" />
+                      <circle cx="8.5" cy="10" r="1.6" />
+                      <path d="M21 16 L15.5 11 L6 19" />
+                    </svg>
+                    {t('conversation.attachPhoto')}
+                  </button>
+                </div>
+              )}
+            </div>
+            <input
+              id="conversation-draft"
+              autoComplete="off"
+              className="compose-input"
+              placeholder={t('alerts.detail.messagePlaceholder')}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <button
+              type="submit"
+              className="compose-icon-btn compose-send"
+              aria-label={t('alerts.detail.send')}
+              disabled={sending || !draft.trim()}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M3 11.2 L20.5 3.5 C21.2 3.2 21.8 3.8 21.5 4.5 L13.8 22 C13.5 22.7 12.5 22.6 12.3 21.9 L10.4 14.6 L3.1 12.7 C2.4 12.5 2.3 11.5 3 11.2 Z" />
+              </svg>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              disabled={sending}
+              onChange={submitImage}
+            />
+          </form>
+          {error && <p className="form-error">{error}</p>}
           {messages.length === 0 ? (
             <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
           ) : (
             <ul className="alert-chat-messages">
-              {messages.map((m) => (
+              {/* Newest first, right under the composer. */}
+              {[...messages].reverse().map((m) => (
                 <li key={m.id}>
                   <strong>{m.senderId === user?.id ? t('alerts.detail.me') : name}</strong> :{' '}
                   {m.type === 'IMAGE' ? (
@@ -224,19 +305,6 @@ export function ConversationPage() {
               ))}
             </ul>
           )}
-          <form className="row conversation-compose" onSubmit={submit}>
-            <input
-              placeholder={t('alerts.detail.messagePlaceholder')}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-            <button type="submit" disabled={sending || !draft.trim()}>
-              {t('alerts.detail.send')}
-            </button>
-            <input type="file" accept="image/*" disabled={sending} onChange={submitImage} />
-          </form>
-          {error && <p className="form-error">{error}</p>}
-          <div ref={bottomRef} />
         </>
       )}
     </div>

@@ -13,6 +13,9 @@ export interface SentinelRef {
   // Only listCircles() returns it (the Sentinel panel on a circle's page).
   lastName?: string | null;
   phone: string;
+  // Profile photo's file name (listCircles() only) — a cache key for
+  // avatars.ts, the photo itself needs GET /user/:id/avatar.
+  avatarPath?: string | null;
 }
 
 export interface Membership {
@@ -101,7 +104,12 @@ export interface Companion {
   leadSlot: LeadSlot | null;
   circle: { id: string; label: string; isPrimary: boolean };
   proposedCircle: { id: string; label: string } | null;
-  companion: PersonRef & { firstName: string; lastName: string | null; userName: string | null };
+  companion: PersonRef & {
+    firstName: string;
+    lastName: string | null;
+    userName: string | null;
+    avatarPath: string | null;
+  };
   // The other accepted members of their 1st circle — empty unless I'm in it.
   firstCircleMembers: { id: string; firstName: string | null; lastName: string | null; isLead: boolean }[];
   deathNotice: CompanionDeathNotice;

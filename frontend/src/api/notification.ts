@@ -30,10 +30,13 @@ export interface NotificationItem {
   targetId: string | null;
 }
 
-// Unread only — read notifications are never listed again.
+// Unread only — read notifications are never listed again. New messages are
+// left out server-side: they show on the Messages tab, not in the bell.
 export const listNotifications = () => apiGet<NotificationItem[]>('/notification/mine');
 
-export const getUnreadCount = () => apiGet<{ count: number }>('/notification/unread-count');
+// `count` = unread notifications except messages (bell); `messages` =
+// unread new-message notifications (Messages tab badge).
+export const getUnreadCount = () => apiGet<{ count: number; messages: number }>('/notification/unread-count');
 
 export const markNotificationRead = (id: string) => apiPost<{ count: number }>(`/notification/${id}/read`, {});
 

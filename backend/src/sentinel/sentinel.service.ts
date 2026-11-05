@@ -107,6 +107,9 @@ export class SentinelService {
                 firstName: true,
                 lastName: true,
                 phone: true,
+                // Photo's file name, only a cache key: the file itself is
+                // served by GET /user/:id/avatar after a link check.
+                avatarPath: true,
               },
             },
           },
@@ -1130,6 +1133,7 @@ export class SentinelService {
                 userName: true,
                 email: true,
                 phone: true,
+                avatarPath: true,
                 status: true,
                 deathReportedAt: true,
                 deathReportedById: true,
@@ -1274,6 +1278,7 @@ export class SentinelService {
           userName: companion.userName,
           email: companion.email,
           phone: companion.phone,
+          avatarPath: companion.avatarPath,
         },
         firstCircleMembers: isPrimary
           ? (firstCircleMembersByCircle.get(l.circle.id) ?? [])
