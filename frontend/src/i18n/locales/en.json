@@ -90,7 +90,9 @@
     "backToPhone": "Back to phone login",
     "firstTimeOrForgot": "First time or forgot your password? Get a code",
     "newPasswordTitle": "Choose a password",
-    "keepPassword": "Keep my current password"
+    "keepPassword": "Keep my current password",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -151,14 +153,7 @@
     "move": "Move",
     "makeLead": "Make Lead Sentinel",
     "removeLead": "Remove as Lead",
-    "excludeFromAlertChat": "Exclude from alert chat",
-    "includeInAlertChat": "Include in alert chat",
     "awaitingFirstCircleConsent": "Awaiting acceptance for the 1st circle",
-    "firstCircleMessagingMode": {
-      "label": "During an alert, can write to my 1st circle",
-      "none": "No",
-      "individual": "Yes"
-    },
     "callOrder": {
       "label": "Call order",
       "random": "Random"
@@ -181,9 +176,10 @@
     "firstCircleFull": "Your 1st circle is full ({{max}} people maximum): it handles an alert together, live. Add other people to another circle.",
     "messaging": {
       "title": "Messages",
-      "duringAlert": "Allow each Sentinel to write to the 1st circle during an alert",
-      "duringAlertHint": "Each one can open their own chat with your 1st circle (and you). Otherwise they only answer the 1st circle's questions. SMS Sentinels, with no account, can't chat.",
-      "someAllowed": "Allowed for {{count}} of {{total}} people: set on each person's page."
+      "duringAlert": "During an alert, this circle's Sentinels can write to my 1st circle",
+      "duringAlertHint": "Each one can open their own chat with your 1st circle (and you). Otherwise they only answer the 1st circle's questions. SMS Sentinels, without an account, can't chat.",
+      "generalOff": "Turned off for all your circles in your settings.",
+      "openSettings": "Open settings"
     },
     "deleteCircle": {
       "button": "Delete circle",
@@ -211,11 +207,7 @@
       "move": "{{name}} will move to the “{{circle}}” circle.",
       "leadOrder": "{{name}} becomes {{slot}}.",
       "makeLead": "{{name}} becomes a Lead Sentinel of your 1st circle.",
-      "removeLead": "{{name}} will no longer be a Lead Sentinel (stays in your 1st circle).",
-      "excludeFromAlertChat": "During an alert, {{name}} will no longer be in the 1st circle Room.",
-      "includeInAlertChat": "During an alert, {{name}} will be in the 1st circle Room.",
-      "alertChatOn": "During an alert, {{name}} will be able to write to your 1st circle.",
-      "alertChatOff": "During an alert, {{name}} will no longer be able to write to your 1st circle."
+      "removeLead": "{{name}} will no longer be a Lead Sentinel (stays in your 1st circle)."
     }
   },
   "groups": {
@@ -699,6 +691,27 @@
       "help": "{{name}} needs help. Can you take care of it now?",
       "assistance": "{{name}} needs assistance. Can you step in now?",
       "whatItMeans": "Taking care of it means trying to reach {{name}}, going to see if needed, and keeping the 1st circle posted in the Room."
+    },
+    "location": {
+      "add": "Add my position",
+      "locating": "Finding your position…",
+      "added": "Your position will be sent (accuracy ± {{accuracy}}).",
+      "remove": "Remove",
+      "hint": "Your position is sent to your 1st circle with the alert, by SMS too. Only if you tap the button.",
+      "denied": "Your phone doesn't allow access to your position. You can write it in the message.",
+      "failed": "Your position couldn't be found. You can try again or write it in the message.",
+      "unsupported": "This browser can't give your position. You can write it in the message.",
+      "approximate": "Position not precise (± {{accuracy}}): it's sent anyway, but also write where you are in the message if you can. On a computer, the position is often guessed from the internet connection.",
+      "update": "Update my position",
+      "updated": "Position sent to your 1st circle (± {{accuracy}}).",
+      "openMap": "See on the map",
+      "maps": {
+        "google": "Google Maps",
+        "apple": "Apple Maps",
+        "osm": "OpenStreetMap"
+      },
+      "copy": "Copy coordinates",
+      "copied": "Coordinates copied"
     }
   },
   "history": {
@@ -866,7 +879,7 @@
       },
       "preferences": {
         "title": "Preferences",
-        "hint": "Language"
+        "hint": "Language, messages during an alert"
       },
       "deathNotice": {
         "title": "In case of death",
@@ -890,7 +903,9 @@
         "ONLY_SMS": "SMS only",
         "UNCOMPLETE": "Incomplete account"
       }
-    }
+    },
+    "alertChatWithFirstCircle": "During an alert, my Sentinels of other circles can write to my 1st circle",
+    "alertChatWithFirstCircleHint": "If unchecked, none of them can, whatever each circle says. If checked, each circle decides (on the circle's page)."
   },
   "welcome": {
     "title": "Welcome",
@@ -1032,7 +1047,8 @@
       "both": "Both together: you watch over each other.",
       "inAlert": "Red: this person is concerned by an alert in progress.",
       "ring": "A ring: a circle. Gold for your 1st circle, blue or blue-green for the others.",
-      "groupRing": "A double ring: a group circle."
+      "groupRing": "A double ring: a group circle.",
+      "alertChat": "Small bubble on a Sentinel: green, they can write to your 1st circle during an alert; red, they can't (their circle's setting, or an SMS Sentinel without an account)."
     }
   },
   "sentinelHome": {
@@ -1059,7 +1075,8 @@
     "thanks": "Thanks, it's sent!",
     "history": "Your exchanges with the team",
     "team": "Team",
-    "unavailable": "Feedback isn't available right now."
+    "unavailable": "Feedback isn't available right now.",
+    "attachHint": "Add a screenshot, sketch or image"
   },
   "person": {
     "back": "← Back",

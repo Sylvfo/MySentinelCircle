@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPostForm } from './client';
+import { API_URL, ApiError, apiGet, apiPost, apiPostForm, getToken } from './client';
 
 export type MessageType = 'TEXT' | 'IMAGE' | 'SYSTEM';
 
@@ -14,8 +14,8 @@ export interface Message {
 export const sendMessage = (conversationId: string, body: string) =>
   apiPost<Message>(`/messaging/conversations/${conversationId}/messages`, { body });
 
-// body is just the stored filename (see api/user.ts's uploadAvatar for the
-// same pattern) — render it as `${API_URL}/uploads/messages/${message.body}`.
+// An IMAGE message's body is the stored file name; the picture itself is
+// private (participants only) — show it with useMessageImageUrl.
 export const sendImageMessage = (conversationId: string, file: File) => {
   const formData = new FormData();
   formData.append('image', file);
@@ -31,8 +31,8 @@ export interface DirectConversation {
 }
 
 // The permanent Me<->Sentinel channel — finds or lazily creates the 1:1
-// conversation with userId. Rejects (403) if messaging isn't currently
-// allowed between the two (see sentinel.ts's canMessageMe cascade).
+// conversation with userId. Rejects (403) unless the two have an accepted
+// Sentinel link (in either direction).
 export const getDirectConversation = (userId: string) =>
   apiGet<DirectConversation>(`/messaging/direct/${userId}`);
 
@@ -52,3 +52,13 @@ export interface ConversationSummary {
 // Every direct conversation I'm in, with the other side, the latest
 // message, and my unread count — what MessagesPage sorts/badges contacts by.
 export const listMyConversations = () => apiGet<ConversationSummary[]>('/messaging/mine');
+
+// A message's image, fetched with my token (it's not a public file).
+export async function fetchMessageImageBlob(messageId: string): Promise<Blob> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}/messaging/messages/${messageId}/image`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  return res.blob();
+}

@@ -46,7 +46,7 @@ const PROFILE_SELECT = {
   userType: true,
   isMajor: true,
   publicStatus: true,
-  allowMessagingByDefault: true,
+  alertChatWithFirstCircle: true,
   createdAt: true,
   updatedAt: true,
   avatarPath: true,

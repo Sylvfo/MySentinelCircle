@@ -13,7 +13,6 @@ import {
   CircleType,
   LeadSlot,
   LinkStatus,
-  MessagingMode,
   NotificationType,
 } from '@prisma/client';
 import { AlertService } from './alert.service';
@@ -55,6 +54,7 @@ describe('AlertService', () => {
       findFirst: jest.Mock;
     };
     conversationParticipant: { create: jest.Mock };
+    message: { create: jest.Mock };
     notification: { count: jest.Mock };
     user: { findUnique: jest.Mock; findFirst: jest.Mock };
     $transaction: jest.Mock;
@@ -73,8 +73,6 @@ describe('AlertService', () => {
   const linkRow = (overrides: Record<string, unknown> = {}) => ({
     id: 'link-1',
     canSendPhone: true,
-    canMessageOwnCircle: true,
-    firstCircleMessagingMode: MessagingMode.GROUP,
     // isLead is driven by leadSlot, not sentinelType — SentinelType.LEAD is
     // never actually assigned anywhere in sentinel.service.ts.
     leadSlot: LeadSlot.LEAD_1,
@@ -118,6 +116,7 @@ describe('AlertService', () => {
         findFirst: jest.fn(),
       },
       conversationParticipant: { create: jest.fn() },
+      message: { create: jest.fn() },
       notification: { count: jest.fn() },
       user: { findUnique: jest.fn(), findFirst: jest.fn() },
       $transaction: jest.fn((arg: unknown) =>
@@ -143,7 +142,134 @@ describe('AlertService', () => {
     service = module.get<AlertService>(AlertService);
   });
 
+  describe('updateLocation', () => {
+    const running = (overrides: Record<string, unknown> = {}) => ({
+      id: 'alert-1',
+      userCompanionId: 'alice-id',
+      alertStatus: AlertStatus.LAUNCHED,
+      messageAlert:
+        'Je suis tombée\n\nPosition partagée (± 15 m) : https://www.google.com/maps/search/?api=1&query=1.00000,2.00000',
+      conversations: [{ id: 'room-1', closedAt: null }],
+      ...overrides,
+    });
+
+    it('replaces the position line and posts it in the 1st circle room', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(running());
+
+      await service.updateLocation('alice-id', 'alert-1', {
+        latitude: 46.5,
+        longitude: 6.6,
+        accuracy: 12000,
+      });
+
+      const line =
+        'Position mise à jour (approximative, ± 12 km) : https://www.google.com/maps/search/?api=1&query=46.50000,6.60000';
+      expect(prisma.alert.update).toHaveBeenCalledWith({
+        where: { id: 'alert-1' },
+        data: { messageAlert: `Je suis tombée\n\n${line}` },
+      });
+      expect(prisma.message.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          conversationId: 'room-1',
+          senderId: 'alice-id',
+          body: `📍 ${line}`,
+        }),
+      });
+    });
+
+    it('adds a position line when none was shared at launch', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(
+        running({ messageAlert: 'Je suis tombée' }),
+      );
+
+      await service.updateLocation('alice-id', 'alert-1', {
+        latitude: 46.5,
+        longitude: 6.6,
+        accuracy: 1500,
+      });
+
+      expect(prisma.alert.update).toHaveBeenCalledWith({
+        where: { id: 'alert-1' },
+        data: {
+          messageAlert:
+            'Je suis tombée\n\nPosition mise à jour (approximative, ± 1.5 km) : https://www.google.com/maps/search/?api=1&query=46.50000,6.60000',
+        },
+      });
+    });
+
+    it('is only for the person the alert is about', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(running());
+      await expect(
+        service.updateLocation('bob-id', 'alert-1', {
+          latitude: 1,
+          longitude: 2,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('refuses on a closed alert', async () => {
+      prisma.alert.findUnique.mockResolvedValueOnce(
+        running({ alertStatus: AlertStatus.RESOLVED }),
+      );
+      await expect(
+        service.updateLocation('alice-id', 'alert-1', {
+          latitude: 1,
+          longitude: 2,
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
   describe('raiseAlert', () => {
+    it('adds the shared position to the alert message and the SMS', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' });
+      prisma.alert.findFirst.mockResolvedValueOnce(null);
+      prisma.user.findUnique.mockResolvedValueOnce({ hasPaid: true });
+      prisma.circle.findFirst.mockResolvedValueOnce(circle);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([linkRow()]);
+      prisma.user.findUnique.mockResolvedValueOnce({
+        firstName: 'Alice',
+        phone: '+41790000000',
+        phoneVerifiedAt: new Date(),
+      });
+      prisma.alert.create.mockResolvedValueOnce({ id: 'alert-1' });
+      prisma.alert.findUnique.mockResolvedValueOnce({
+        userCompanionId: 'alice-id',
+        participants: [],
+      });
+
+      await service.raiseAlert('alice-id', {
+        companionId: 'alice-id',
+        alertType: AlertType.BYCOMPANION,
+        reason: 'Je suis tombée',
+        location: { latitude: 46.519654, longitude: 6.632273, accuracy: 14.6 },
+      });
+
+      const link =
+        'https://www.google.com/maps/search/?api=1&query=46.51965,6.63227';
+      expect(prisma.alert.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          messageAlert: `Je suis tombée\n\nPosition partagée (± 15 m) : ${link}`,
+        }),
+      });
+      expect(sms.send).toHaveBeenCalledWith(
+        '+41791111111',
+        expect.stringContaining(`Sa position : ${link}`),
+      );
+    });
+
+    it('rejects a position sent by someone raising for another person', async () => {
+      await expect(
+        service.raiseAlert('bob-id', {
+          companionId: 'alice-id',
+          alertType: AlertType.NOCONTACT,
+          reason: 'x',
+          location: { latitude: 46.5, longitude: 6.6 },
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.alert.create).not.toHaveBeenCalled();
+    });
+
     it('raises an alert when the companion raises it for themself', async () => {
       prisma.user.findUnique.mockResolvedValueOnce({ status: 'ACTIVE' }); // assertCompanionNotDeceased
       prisma.alert.findFirst.mockResolvedValueOnce(null); // assertNoActiveAlert
@@ -200,8 +326,6 @@ describe('AlertService', () => {
           circleId: 'circle-1',
           circleName: '1er cercle',
           canSendPhoneAtAlert: true,
-          canMessageOwnCircleAtAlert: true,
-          firstCircleMessagingModeAtAlert: MessagingMode.GROUP,
           isLead: true,
           // Lead 1 is the responsible Lead from the start — not a choice.
           leadAssignedAt: expect.any(Date),
@@ -972,13 +1096,13 @@ describe('AlertService', () => {
       userCompanionId: 'alice-id',
       circleType: CircleType.BASIC,
       status: CircleStatus.ACTIVE,
+      alertChatWithFirstCircle: true,
+      userCompanion: { alertChatWithFirstCircle: true },
     };
 
     const outerLink = (overrides: Record<string, unknown> = {}) => ({
       id: 'outer-link-1',
       canSendPhone: true,
-      canMessageOwnCircle: true,
-      firstCircleMessagingMode: MessagingMode.NONE,
       leadSlot: null,
       linkAsSentinel: { id: 'neighbor-1', phone: '+41793333333' },
       ...overrides,
@@ -1024,6 +1148,7 @@ describe('AlertService', () => {
           circleId: 'outer-1',
           circleName: 'Voisins',
           requestedById: 'alice-id',
+          alertChatWithFirstCircleAtAlert: true,
         }),
         create: expect.objectContaining({
           alertId: 'alert-1',
@@ -1054,6 +1179,43 @@ describe('AlertService', () => {
         targetId: 'alert-1',
       });
     });
+
+    it.each([
+      ['the companion’s general switch is off', false, true],
+      ['the circle’s own setting is off', true, false],
+    ])(
+      'freezes no 1st-circle chat when %s',
+      async (_label, userSwitch, circleSwitch) => {
+        prisma.alert.findUnique
+          .mockResolvedValueOnce(alertRow())
+          .mockResolvedValueOnce({
+            userCompanionId: 'alice-id',
+            participants: [],
+          })
+          .mockResolvedValueOnce({ ...alertRow(), participants: [] });
+        prisma.circle.findFirst.mockResolvedValueOnce({
+          ...outerCircle,
+          alertChatWithFirstCircle: circleSwitch,
+          userCompanion: { alertChatWithFirstCircle: userSwitch },
+        });
+        prisma.linkSentinels.findMany.mockResolvedValueOnce([outerLink()]);
+        prisma.alertParticipant.findMany.mockResolvedValueOnce([]);
+        prisma.user.findUnique.mockResolvedValueOnce({ firstName: 'Alice' });
+
+        await service.requestCircle('alice-id', 'alert-1', {
+          circleId: 'outer-1',
+          questionKind: 'CAN_VISIT',
+        });
+
+        expect(prisma.alertParticipant.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({
+            create: expect.objectContaining({
+              alertChatWithFirstCircleAtAlert: false,
+            }),
+          }),
+        );
+      },
+    );
 
     it('does not re-bump an already-ACTIVE alert’s activatedAt', async () => {
       prisma.alert.findUnique
@@ -1360,7 +1522,7 @@ describe('AlertService', () => {
     const outerParticipant = (overrides: Record<string, unknown> = {}) => ({
       id: 'participant-1',
       circleId: 'outer-1',
-      firstCircleMessagingModeAtAlert: MessagingMode.INDIVIDUAL,
+      alertChatWithFirstCircleAtAlert: true,
       ...overrides,
     });
 
@@ -1442,11 +1604,11 @@ describe('AlertService', () => {
       expect(prisma.conversation.findFirst).not.toHaveBeenCalled();
     });
 
-    it('rejects when the link’s firstCircleMessagingModeAtAlert is NONE', async () => {
+    it('rejects when the circle was not allowed to chat with the 1st circle', async () => {
       prisma.alert.findUnique.mockResolvedValueOnce(alertRow());
       prisma.alertParticipant.findFirst.mockResolvedValueOnce(
         outerParticipant({
-          firstCircleMessagingModeAtAlert: MessagingMode.NONE,
+          alertChatWithFirstCircleAtAlert: false,
         }),
       );
 

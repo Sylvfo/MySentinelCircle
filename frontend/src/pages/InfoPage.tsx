@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useUnreadCounts } from '../unreadCounts';
 import { SentinelIcon } from '../components/SentinelIcon';
+import { MessageBadge } from '../components/CircleRing';
 import { CompanionIcon } from '../components/CompanionIcon';
 import { RelationIcons } from '../components/RelationIcons';
 import {
@@ -260,6 +261,19 @@ function SymbolsLegend() {
       ),
     },
     { key: 'groupRing', icon: <Ring color={teal.color} double /> },
+    {
+      key: 'alertChat',
+      icon: (
+        <>
+          {[true, false].map((on) => (
+            <span key={String(on)} className="symbols-badge" style={{ color: blue.color }}>
+              <SentinelIcon size={30} />
+              <MessageBadge on={on} />
+            </span>
+          ))}
+        </>
+      ),
+    },
   ];
   return (
     <ul className="symbols-legend">

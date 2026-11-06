@@ -1,4 +1,3 @@
-import { join } from 'path';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -12,12 +11,9 @@ async function bootstrap() {
     origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  // Only message images are public (random, unguessable names). Profile
-  // photos are not: they go through GET /user/:id/avatar, which checks the
-  // caller is linked to that person.
-  app.useStaticAssets(join(process.cwd(), 'uploads', 'messages'), {
-    prefix: '/uploads/messages',
-  });
+  // No uploaded file is public: profile photos go through
+  // GET /user/:id/avatar and message images through
+  // GET /messaging/messages/:id/image, both checking who's asking.
 
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()

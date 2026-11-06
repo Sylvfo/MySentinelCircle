@@ -10,8 +10,9 @@ import {
 } from '../theme';
 import { SentinelIcon } from './SentinelIcon';
 import { useAvatarUrl } from '../avatars';
+import { useAuth } from '../auth/AuthContext';
 
-function MessageBadge({ on }: { on: boolean }) {
+export function MessageBadge({ on }: { on: boolean }) {
   return (
     <span className={`circle-msg-badge ${on ? 'on' : 'off'}`} aria-hidden="true">
       {on ? (
@@ -66,6 +67,7 @@ export function CircleRing({
   label,
   members,
   isPrimary,
+  alertChatWithFirstCircle = true,
   colorIndex,
   size = 180,
   onOpen,
@@ -80,6 +82,9 @@ export function CircleRing({
   label: string;
   members: Membership[];
   isPrimary: boolean;
+  // Outer circles: the circle's own "may chat with my 1st circle during an
+  // alert" rule (Circle.alertChatWithFirstCircle).
+  alertChatWithFirstCircle?: boolean;
   colorIndex: number;
   size?: number;
   onOpen?: () => void;
@@ -99,6 +104,7 @@ export function CircleRing({
   showPhotos?: boolean;
 }) {
   const { t } = useTranslation();
+  const generalAlertChatOn = useAuth().user?.alertChatWithFirstCircle ?? true;
   const palette = isPrimary ? { color: PRIMARY_AVATAR_COLOR, ring: PRIMARY_RING_COLOR } : circlePalette(colorIndex);
   const ringColor = strongRing ? `color-mix(in srgb, ${palette.color} 40%, transparent)` : palette.ring;
   const RING_BORDER_WIDTH = 5;
@@ -136,8 +142,11 @@ export function CircleRing({
                 ? PRIMARY_LEAD_COLOR
                 : '#D9A066'
               : palette.color;
-        // Can chat in the app (has an account) — a Sentinel SMS can't.
-        const canMessage = m.sentinelType !== 'ONLY_SMS';
+        // During an alert, can they write to my 1st circle? The 1st circle
+        // always can (its own room); another circle only if my general
+        // switch and the circle's rule both allow it. A Sentinel SMS never.
+        const canMessage =
+          m.sentinelType !== 'ONLY_SMS' && (isPrimary || (generalAlertChatOn && alertChatWithFirstCircle));
         const Avatar = onSelectMember ? 'button' : 'span';
         return (
           <Avatar

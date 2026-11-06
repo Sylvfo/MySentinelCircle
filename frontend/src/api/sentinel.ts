@@ -5,7 +5,6 @@ export type LinkStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'REMOVED' | 'BLOC
 export type LinkInitiator = 'COMPANION' | 'SENTINEL';
 export type LeadSlot = 'LEAD_1' | 'LEAD_2' | 'LEAD_3';
 export type CircleType = 'BASIC' | 'FIRST' | 'ORGANISATION' | 'RESERVED' | 'GROUP';
-export type MessagingMode = 'NONE' | 'INDIVIDUAL' | 'GROUP';
 
 export interface SentinelRef {
   id: string;
@@ -34,18 +33,6 @@ export interface Membership {
   // Manual outer-circle call rank for batched alert escalation (lower =
   // called first); null = random order. Meaningless for the 1st circle.
   callOrder: number | null;
-  // Alert-time: can this Sentinel join their own (1st) circle's live group
-  // chat during an alert. Separate from canMessageMe below.
-  canMessageOwnCircle: boolean;
-  // Alert-time, outer-circle Sentinels only: can this Sentinel open a chat
-  // with the 1st circle once solicited on an alert (frozen into that
-  // alert's AlertParticipant.firstCircleMessagingModeAtAlert at contact
-  // time — changing this afterward doesn't affect an alert already in
-  // progress).
-  firstCircleMessagingMode: MessagingMode;
-  // The permanent Me<->Sentinel channel — null = inherit the circle's
-  // (then the companion's) setting.
-  canMessageMe: boolean | null;
 }
 
 export interface Circle {
@@ -57,9 +44,10 @@ export interface Circle {
   // Group circles only: the founder's circle (the group's root) has null,
   // every other member's circle points at it.
   groupRootId?: string | null;
-  // null = inherit the companion's default; always allowed on the 1st
-  // circle, no override possible there.
-  canMessageMe: boolean | null;
+  // During an alert, may this circle's Sentinels chat with the 1st circle?
+  // Only counts when the companion's general switch (Me.
+  // alertChatWithFirstCircle) is on; meaningless for the 1st circle itself.
+  alertChatWithFirstCircle: boolean;
 }
 
 export interface PersonRef {
@@ -139,7 +127,7 @@ export const getSecurityScore = () => apiGet<SecurityScore>('/sentinel/security-
 
 export const createCircle = (label: string) => apiPost<Circle>('/sentinel/circles', { label });
 
-export const updateCircle = (id: string, data: { label?: string; canMessageMe?: boolean }) =>
+export const updateCircle = (id: string, data: { label?: string; alertChatWithFirstCircle?: boolean }) =>
   apiPatch<Circle>(`/sentinel/circles/${id}`, data);
 
 export const deleteCircle = (id: string) => apiDelete<{ deleted: true }>(`/sentinel/circles/${id}`);
@@ -162,9 +150,6 @@ export const updateMembership = (
     sentinelType?: SentinelType;
     requestedAsLead?: boolean;
     circleId?: string;
-    canMessageOwnCircle?: boolean;
-    firstCircleMessagingMode?: MessagingMode;
-    canMessageMe?: boolean;
     callOrder?: number;
     // Lead order in the 1st circle (Lead 1 = responsible when an alert starts).
     leadSlot?: LeadSlot;

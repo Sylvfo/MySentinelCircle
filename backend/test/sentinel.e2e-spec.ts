@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { CircleType, LinkStatus, MessagingMode } from '@prisma/client';
+import { CircleType, LinkStatus } from '@prisma/client';
 import { AppModule } from './../src/app.module';
 import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from './../src/email/email-sender.interface';
@@ -26,8 +26,6 @@ interface LinkBody {
   status: LinkStatus;
   circleId: string;
   leadSlot: string | null;
-  canMessageOwnCircle?: boolean;
-  firstCircleMessagingMode?: MessagingMode;
 }
 
 describe('Sentinel (e2e)', () => {
@@ -526,65 +524,44 @@ describe('Sentinel (e2e)', () => {
     });
   });
 
-  describe('Messaging settings', () => {
-    it('updates canMessageOwnCircle/firstCircleMessagingMode for an account-holding Sentinel', async () => {
+  describe('Alert chat with the 1st circle (per circle)', () => {
+    it('is allowed by default and can be switched off for a whole circle', async () => {
       const companion = await signupAccount('Ada');
-      const sentinel = await signupAccount('Bob');
       const circleRes = await request(app.getHttpServer())
         .post('/sentinel/circles')
         .set('Authorization', auth(companion.accessToken))
         .send({ label: 'Voisins' })
         .expect(201);
-      const circle = circleRes.body as CircleBody;
-      const inviteRes = await request(app.getHttpServer())
-        .post(`/sentinel/circles/${circle.id}/invite`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ phone: sentinel.phone, name: 'Bob' })
-        .expect(201);
-      const link = inviteRes.body as LinkBody;
-      await request(app.getHttpServer())
-        .post(`/sentinel/memberships/${link.id}/accept`)
-        .set('Authorization', auth(sentinel.accessToken))
-        .send({})
-        .expect(201);
+      const circle = circleRes.body as CircleBody & {
+        alertChatWithFirstCircle: boolean;
+      };
+      expect(circle.alertChatWithFirstCircle).toBe(true);
 
       const updateRes = await request(app.getHttpServer())
-        .patch(`/sentinel/memberships/${link.id}`)
+        .patch(`/sentinel/circles/${circle.id}`)
         .set('Authorization', auth(companion.accessToken))
-        .send({
-          canMessageOwnCircle: false,
-          firstCircleMessagingMode: MessagingMode.GROUP,
-        })
+        .send({ alertChatWithFirstCircle: false })
         .expect(200);
-      const updated = updateRes.body as LinkBody;
-      expect(updated.canMessageOwnCircle).toBe(false);
-      expect(updated.firstCircleMessagingMode).toBe(MessagingMode.GROUP);
+      expect(
+        (updateRes.body as { alertChatWithFirstCircle: boolean })
+          .alertChatWithFirstCircle,
+      ).toBe(false);
     });
 
-    it('rejects messaging settings on a Sentinel SMS link (no account)', async () => {
+    it('rejects the setting on the 1st circle — it has its own room', async () => {
       const companion = await signupAccount('Ada');
-      const sentinelPhone = testPhone();
-      const circleRes = await request(app.getHttpServer())
-        .post('/sentinel/circles')
+      const circlesRes = await request(app.getHttpServer())
+        .get('/sentinel/circles')
         .set('Authorization', auth(companion.accessToken))
-        .send({ label: 'Voisins' })
-        .expect(201);
-      const circle = circleRes.body as CircleBody;
-      const inviteRes = await request(app.getHttpServer())
-        .post(`/sentinel/circles/${circle.id}/invite`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ phone: sentinelPhone, name: 'Bob' })
-        .expect(201);
-      const link = inviteRes.body as LinkBody;
-      await request(app.getHttpServer())
-        .post('/sentinel/sms/inbound')
-        .send({ from: sentinelPhone, body: 'OUI' })
-        .expect(201);
+        .expect(200);
+      const firstCircle = (circlesRes.body as CircleBody[]).find(
+        (c) => c.circleType === CircleType.FIRST,
+      )!;
 
       await request(app.getHttpServer())
-        .patch(`/sentinel/memberships/${link.id}`)
+        .patch(`/sentinel/circles/${firstCircle.id}`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ firstCircleMessagingMode: MessagingMode.INDIVIDUAL })
+        .send({ alertChatWithFirstCircle: false })
         .expect(400);
     });
   });

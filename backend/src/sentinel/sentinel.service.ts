@@ -132,11 +132,11 @@ export class SentinelService {
   async updateCircle(userId: string, circleId: string, dto: UpdateCircleDto) {
     const circle = await this.ensureCircleOwned(userId, circleId);
     if (
-      dto.canMessageMe !== undefined &&
+      dto.alertChatWithFirstCircle !== undefined &&
       circle.circleType === CircleType.FIRST
     ) {
       throw new BadRequestException(
-        'The 1st circle is always reachable — canMessageMe can’t be overridden there',
+        'The 1st circle always has its own alert chat — this setting is for other circles',
       );
     }
     return this.prisma.circle.update({ where: { id: circleId }, data: dto });
@@ -858,7 +858,7 @@ export class SentinelService {
   // tables either: the report/confirm flow and announcement text are flat
   // fields on User (like Alert's own launchedAt/closedAt), and recipient
   // opt-in + personal message are flat fields on LinkSentinels (alongside
-  // canSendPhone/canMessageMe) — a literal "memorial circle" doesn't work
+  // canSendPhone) — a literal "memorial circle" doesn't work
   // since a Sentinel/Companion pair has only one LinkSentinels row ever.
 
   // Who could serve as the SECOND confirmer for `circleId`'s pending report,
@@ -1394,19 +1394,6 @@ export class SentinelService {
       await this.assertLeadPreserved(link);
     }
 
-    // Messaging settings only mean anything for an account-holding Sentinel
-    // — Sentinel SMS is always predefined-replies-only, regardless.
-    if (
-      (dto.canMessageOwnCircle !== undefined ||
-        dto.firstCircleMessagingMode !== undefined ||
-        dto.canMessageMe !== undefined) &&
-      link.linkAsSentinel.userType === UserType.ONLY_SMS
-    ) {
-      throw new BadRequestException(
-        'Messaging settings only apply to an account-holding Sentinel',
-      );
-    }
-
     return this.prisma.linkSentinels.update({
       where: { id: link.id },
       data: {
@@ -1414,11 +1401,6 @@ export class SentinelService {
         sentinelType: dto.sentinelType ?? link.sentinelType,
         requestedAsLead,
         leadSlot,
-        canMessageOwnCircle:
-          dto.canMessageOwnCircle ?? link.canMessageOwnCircle,
-        firstCircleMessagingMode:
-          dto.firstCircleMessagingMode ?? link.firstCircleMessagingMode,
-        canMessageMe: dto.canMessageMe ?? link.canMessageMe,
         callOrder: dto.callOrder ?? link.callOrder,
       },
     });
@@ -1504,10 +1486,8 @@ export class SentinelService {
   // Whether the permanent Me<->Sentinel channel is open between these two:
   // always, as long as one is an accepted Sentinel of the other (either
   // direction) — Sylvie's call (2026-11), matching plan.txt §4: "Me" can
-  // always reach each of their Sentinels 1:1. The old canMessageMe /
-  // allowMessagingByDefault overrides are no longer consulted (their
-  // columns stay in the schema, unused). There is no circle-wide chat
-  // outside of an alert.
+  // always reach each of their Sentinels 1:1. There is no circle-wide
+  // chat outside of an alert.
   async canSendDirectMessage(
     userAId: string,
     userBId: string,

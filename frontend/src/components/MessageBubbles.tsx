@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import { API_URL } from '../api/client';
+import { useEffect, useState } from 'react';
+import { fetchMessageImageBlob } from '../api/messaging';
+import { LinkifiedText } from './LinkifiedText';
 import type { Message } from '../api/messaging';
 
 // WhatsApp-like bubbles: my messages on the right (dark blue), the others'
@@ -58,9 +60,9 @@ export function MessageBubbles({
                 </span>
               )}
               {m.type === 'IMAGE' ? (
-                <img src={`${API_URL}/uploads/messages/${m.body}`} alt="" className="bubble-image" />
+                <MessageImage messageId={m.id} />
               ) : (
-                m.body
+                <LinkifiedText text={m.body} />
               )}
               <time dateTime={m.createdAt}>
                 {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
@@ -71,4 +73,29 @@ export function MessageBubbles({
       })}
     </ol>
   );
+}
+
+// Images in messages are private: fetched with my token, then shown from a
+// blob URL (cached for the session — an image message never changes).
+const imageCache = new Map<string, Promise<string | null>>();
+
+function MessageImage({ messageId }: { messageId: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let entry = imageCache.get(messageId);
+    if (!entry) {
+      entry = fetchMessageImageBlob(messageId)
+        .then((blob) => URL.createObjectURL(blob))
+        .catch(() => null);
+      imageCache.set(messageId, entry);
+    }
+    let alive = true;
+    void entry.then((u) => {
+      if (alive) setUrl(u);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [messageId]);
+  return url ? <img src={url} alt="" className="bubble-image" /> : <span className="bubble-image placeholder" aria-hidden="true" />;
 }

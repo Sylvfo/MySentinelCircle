@@ -12,7 +12,9 @@ export interface Me {
   userType: string;
   isMajor: boolean;
   publicStatus: string | null;
-  allowMessagingByDefault: boolean;
+  // General switch: during an alert, may my Sentinels of other circles chat
+  // with my 1st circle? Off = nobody; on = each circle decides.
+  alertChatWithFirstCircle: boolean;
   createdAt: string;
   updatedAt: string;
   avatarPath?: string | null;
@@ -25,7 +27,7 @@ export const fetchMe = () => apiGet<Me>('/user/me');
 
 export const updateProfile = (
   dto: Partial<
-    Pick<Me, 'firstName' | 'lastName' | 'userName' | 'isMajor' | 'publicStatus' | 'allowMessagingByDefault'>
+    Pick<Me, 'firstName' | 'lastName' | 'userName' | 'isMajor' | 'publicStatus' | 'alertChatWithFirstCircle'>
   >,
 ) => apiPatch<Me>('/user/me', dto);
 

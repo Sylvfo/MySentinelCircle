@@ -11,7 +11,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AlertService } from './alert.service';
-import { CreateAlertDto } from './dto/create-alert.dto';
+import { AlertLocationDto, CreateAlertDto } from './dto/create-alert.dto';
 import { AskQuestionDto } from './dto/ask-question.dto';
 import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
@@ -90,6 +90,16 @@ export class AlertController {
     @Body() dto: UpdateAlertStatusDto,
   ) {
     return this.alert.updateStatus(user.userId, id, dto);
+  }
+
+  // The person the alert is about shares an updated GPS position.
+  @Patch(':id/location')
+  updateLocation(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: AlertLocationDto,
+  ) {
+    return this.alert.updateLocation(user.userId, id, dto);
   }
 
   @Patch(':id/label')

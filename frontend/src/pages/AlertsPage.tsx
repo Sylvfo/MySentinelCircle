@@ -13,15 +13,19 @@ import {
   markFound,
   raiseAlert,
   requestCircleChat,
+  updateAlertLocation,
   updateAlertLabel,
   updateAlertStatus,
   type AlertDetail,
+  type AlertLocation,
   type AlertSummary,
   type AlertType,
   type FoundFollowUp,
   type MyAlertSummary,
   type MyParticipation,
 } from '../api/alert';
+import { APPROXIMATE_ACCURACY_M, formatAccuracy, useLocate } from '../geolocation';
+import { LinkifiedText } from '../components/LinkifiedText';
 import { listCompanions, type Companion } from '../api/sentinel';
 import { listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
 import { Modal } from '../components/Modal';
@@ -124,6 +128,10 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
   const [situation, setSituation] = useState('');
   const [needs, setNeeds] = useState('');
   const [status, setStatus] = useState('');
+  // My GPS position, only if I tap "Add my position" (alert for myself).
+  const [location, setLocation] = useState<AlertLocation | null>(null);
+  const { locate: findPosition, locating, error: locateError } = useLocate();
+  const locate = () => void findPosition().then((loc) => loc && setLocation(loc));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -155,6 +163,7 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
         companionId: targetId,
         alertType: RAISE_TYPE[kind],
         reason: reason || t('alerts.defaultReason'),
+        ...(forSelf && location ? { location } : {}),
       });
       if (canWriteStatus && status.trim()) await updateAlertStatus(alert.id, status.trim());
       navigate('/running-alert');
@@ -231,6 +240,26 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
             onChange={(e) => setNeeds(e.target.value)}
           />
         </label>
+        {forSelf && (
+          <div className="alert-location">
+            {location ? (
+              <>
+                <p>
+                  📍 {t('alerts.location.added', { accuracy: formatAccuracy(location.accuracy ?? 0) })}{' '}
+                  <button type="button" className="link-button" onClick={() => setLocation(null)}>
+                    {t('alerts.location.remove')}
+                  </button>
+                </p>
+                <ApproximateWarning location={location} />
+              </>
+            ) : (
+              <button type="button" className="ghost" disabled={locating} onClick={locate}>
+                📍 {locating ? t('alerts.location.locating') : t('alerts.location.add')}
+              </button>
+            )}
+            <small>{locateError ? t(`alerts.location.${locateError}`) : t('alerts.location.hint')}</small>
+          </div>
+        )}
         {canWriteStatus && (
           <label>
             {t('alerts.self.statusLabel')}
@@ -414,8 +443,7 @@ export function AlertDetailPanel({
         myParticipation.status !== 'CLOSED' &&
         myParticipation.alert.alertStatus !== 'RESOLVED';
       const canChat =
-        !!myParticipation.firstCircleMessagingModeAtAlert &&
-        myParticipation.firstCircleMessagingModeAtAlert !== 'NONE' &&
+        !!myParticipation.alertChatWithFirstCircleAtAlert &&
         myParticipation.alert.alertStatus !== 'RESOLVED';
       const canLeaveLight = myParticipation.status !== 'CLOSED' && myParticipation.alert.alertStatus !== 'RESOLVED';
       const lightVars = {
@@ -659,6 +687,7 @@ export function AlertDetailPanel({
             {companionStatus}
             {firstCircleStatus}
             <AlertMessage text={detail.messageAlert} />
+            {isCompanion && running && <UpdateMyPosition alertId={alertId} onDone={loadDetail} />}
           </div>
         </>
       )}
@@ -1180,7 +1209,55 @@ function AlertMessage({ text }: { text: string }) {
   return (
     <div className="alert-message">
       <strong>{t('alerts.detail.messageAlert')}</strong>
-      <p>{text}</p>
+      <p>
+        <LinkifiedText text={text} />
+      </p>
+    </div>
+  );
+}
+
+// Says so when the position is only a rough guess — it's still sent.
+function ApproximateWarning({ location }: { location: AlertLocation }) {
+  const { t } = useTranslation();
+  if ((location.accuracy ?? 0) <= APPROXIMATE_ACCURACY_M) return null;
+  return (
+    <p className="alert-location-warning">
+      ⚠ {t('alerts.location.approximate', { accuracy: formatAccuracy(location.accuracy ?? 0) })}
+    </p>
+  );
+}
+
+// In my own running alert: send where I am now, as often as I like.
+function UpdateMyPosition({ alertId, onDone }: { alertId: string; onDone: () => void }) {
+  const { t } = useTranslation();
+  const { locate, locating, error } = useLocate();
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<AlertLocation | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const update = async () => {
+    setSendError(null);
+    const loc = await locate();
+    if (!loc) return;
+    setSending(true);
+    try {
+      await updateAlertLocation(alertId, loc);
+      setSent(loc);
+      onDone();
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <div className="alert-location">
+      <button type="button" className="ghost" disabled={locating || sending} onClick={() => void update()}>
+        📍 {locating ? t('alerts.location.locating') : t('alerts.location.update')}
+      </button>
+      {sent && <small>✓ {t('alerts.location.updated', { accuracy: formatAccuracy(sent.accuracy ?? 0) })}</small>}
+      {sent && <ApproximateWarning location={sent} />}
+      {error && <small>{t(`alerts.location.${error}`)}</small>}
+      {sendError && <p className="form-error">{sendError}</p>}
     </div>
   );
 }

@@ -170,6 +170,7 @@ export function DashboardPage() {
                     label={otherCircles[0].label}
                     members={liveMembersOf(otherCircles[0])}
                     isPrimary={false}
+                    alertChatWithFirstCircle={otherCircles[0].alertChatWithFirstCircle}
                     colorIndex={0}
                     size={140}
                     isGroup={otherCircles[0].circleType === 'GROUP'}
@@ -184,6 +185,7 @@ export function DashboardPage() {
                     label={otherCircles[1].label}
                     members={liveMembersOf(otherCircles[1])}
                     isPrimary={false}
+                    alertChatWithFirstCircle={otherCircles[1].alertChatWithFirstCircle}
                     colorIndex={1}
                     size={140}
                     isGroup={otherCircles[1].circleType === 'GROUP'}

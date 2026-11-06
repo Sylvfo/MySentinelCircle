@@ -6,6 +6,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { PASSWORD_MAX_LENGTH } from '../../common/password';
 
 export class CompleteProfileDto {
   // Mandatory prénom for every account (see plan.txt CIRCLES & PERMISSIONS).
@@ -21,9 +22,10 @@ export class CompleteProfileDto {
   @MaxLength(80)
   lastName?: string;
 
-  @ApiProperty({ minLength: 8 })
+  @ApiProperty({ minLength: 8, maxLength: PASSWORD_MAX_LENGTH })
   @IsString()
   @MinLength(8)
+  @MaxLength(PASSWORD_MAX_LENGTH)
   password: string;
 
   @ApiProperty({ required: false, minLength: 3, maxLength: 30 })

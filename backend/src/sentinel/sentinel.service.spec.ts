@@ -11,7 +11,6 @@ import {
   LeadSlot,
   LinkInitiator,
   LinkStatus,
-  MessagingMode,
   NotificationType,
   SentinelType,
   UserType,
@@ -521,7 +520,7 @@ describe('SentinelService', () => {
   });
 
   describe('updateCircle', () => {
-    it('updates the label and canMessageMe on a BASIC circle', async () => {
+    it('updates the label and the alert-chat rule on a BASIC circle', async () => {
       prisma.circle.findUnique.mockResolvedValueOnce({
         id: 'work-1',
         userCompanionId: 'me',
@@ -531,16 +530,16 @@ describe('SentinelService', () => {
 
       await service.updateCircle('me', 'work-1', {
         label: 'Travail',
-        canMessageMe: false,
+        alertChatWithFirstCircle: false,
       });
 
       expect(prisma.circle.update).toHaveBeenCalledWith({
         where: { id: 'work-1' },
-        data: { label: 'Travail', canMessageMe: false },
+        data: { label: 'Travail', alertChatWithFirstCircle: false },
       });
     });
 
-    it('rejects setting canMessageMe on the 1st circle — always reachable, no override', async () => {
+    it('rejects the alert-chat rule on the 1st circle — it has its own room', async () => {
       prisma.circle.findUnique.mockResolvedValueOnce({
         id: 'first-1',
         userCompanionId: 'me',
@@ -548,7 +547,9 @@ describe('SentinelService', () => {
       });
 
       await expect(
-        service.updateCircle('me', 'first-1', { canMessageMe: false }),
+        service.updateCircle('me', 'first-1', {
+          alertChatWithFirstCircle: false,
+        }),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.circle.update).not.toHaveBeenCalled();
     });
@@ -1386,87 +1387,6 @@ describe('SentinelService', () => {
       expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
     });
 
-    it('updates messaging settings for an account-holding Sentinel', async () => {
-      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
-        id: 'link-1',
-        status: LinkStatus.ACCEPTED,
-        circleId: 'work-1',
-        leadSlot: null,
-        requestedAsLead: false,
-        sentinelType: SentinelType.SENTINEL,
-        canMessageOwnCircle: true,
-        firstCircleMessagingMode: MessagingMode.NONE,
-        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
-        linkAsSentinel: { userType: UserType.ACCOUNT },
-      });
-      prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
-
-      await service.updateMembership('me', 'link-1', {
-        canMessageOwnCircle: false,
-        firstCircleMessagingMode: MessagingMode.GROUP,
-      });
-
-      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
-        where: { id: 'link-1' },
-        data: {
-          circleId: 'work-1',
-          sentinelType: SentinelType.SENTINEL,
-          requestedAsLead: false,
-          leadSlot: null,
-          canMessageOwnCircle: false,
-          firstCircleMessagingMode: MessagingMode.GROUP,
-        },
-      });
-    });
-
-    it('rejects setting messaging settings on a Sentinel SMS (no account)', async () => {
-      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
-        id: 'link-1',
-        status: LinkStatus.ACCEPTED,
-        circleId: 'work-1',
-        leadSlot: null,
-        requestedAsLead: false,
-        sentinelType: SentinelType.ONLY_SMS,
-        canMessageOwnCircle: true,
-        firstCircleMessagingMode: MessagingMode.NONE,
-        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
-        linkAsSentinel: { userType: UserType.ONLY_SMS },
-      });
-
-      await expect(
-        service.updateMembership('me', 'link-1', {
-          firstCircleMessagingMode: MessagingMode.INDIVIDUAL,
-        } as any),
-      ).rejects.toThrow(BadRequestException);
-      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
-    });
-
-    it('sets the per-individual canMessageMe override for an account-holding Sentinel', async () => {
-      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
-        id: 'link-1',
-        status: LinkStatus.ACCEPTED,
-        circleId: 'work-1',
-        leadSlot: null,
-        requestedAsLead: false,
-        sentinelType: SentinelType.SENTINEL,
-        canMessageOwnCircle: true,
-        firstCircleMessagingMode: MessagingMode.NONE,
-        canMessageMe: null,
-        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
-        linkAsSentinel: { userType: UserType.ACCOUNT },
-      });
-      prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
-
-      await service.updateMembership('me', 'link-1', { canMessageMe: false });
-
-      expect(prisma.linkSentinels.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'link-1' },
-          data: expect.objectContaining({ canMessageMe: false }),
-        }),
-      );
-    });
-
     it('sets the outer-circle call order used to batch alert escalation', async () => {
       prisma.linkSentinels.findUnique.mockResolvedValueOnce({
         id: 'link-1',
@@ -1475,9 +1395,6 @@ describe('SentinelService', () => {
         leadSlot: null,
         requestedAsLead: false,
         sentinelType: SentinelType.SENTINEL,
-        canMessageOwnCircle: true,
-        firstCircleMessagingMode: MessagingMode.NONE,
-        canMessageMe: null,
         callOrder: null,
         circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
         linkAsSentinel: { userType: UserType.ACCOUNT },
@@ -1492,28 +1409,6 @@ describe('SentinelService', () => {
           data: expect.objectContaining({ callOrder: 2 }),
         }),
       );
-    });
-
-    it('rejects setting canMessageMe on a Sentinel SMS (no account)', async () => {
-      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
-        id: 'link-1',
-        status: LinkStatus.ACCEPTED,
-        circleId: 'work-1',
-        leadSlot: null,
-        requestedAsLead: false,
-        sentinelType: SentinelType.ONLY_SMS,
-        canMessageOwnCircle: true,
-        firstCircleMessagingMode: MessagingMode.NONE,
-        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
-        linkAsSentinel: { userType: UserType.ONLY_SMS },
-      });
-
-      await expect(
-        service.updateMembership('me', 'link-1', {
-          canMessageMe: false,
-        } as any),
-      ).rejects.toThrow(BadRequestException);
-      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
     });
   });
 

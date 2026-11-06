@@ -173,6 +173,15 @@ export function FeedbackPage() {
                   </div>
                 )}
               </div>
+              {/* Small hint next to the "+": a screenshot often says more. */}
+              <button
+                type="button"
+                className="feedback-attach-hint"
+                disabled={sending}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {t('feedback.attachHint')}
+              </button>
               <input ref={fileInputRef} type="file" accept="image/*" hidden disabled={sending} onChange={submitImage} />
               <span className="feedback-spacer" />
               {sent && <span className="feedback-thanks">{t('feedback.thanks')}</span>}

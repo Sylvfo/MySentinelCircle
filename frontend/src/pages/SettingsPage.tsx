@@ -27,7 +27,7 @@ import { useAvatarUrl } from '../avatars';
 
 export function SettingsPage() {
   const { t } = useTranslation();
-  const { logout } = useAuth();
+  const { logout, refreshUser } = useAuth();
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -205,6 +205,18 @@ export function SettingsPage() {
               <label>{t('common.language')}</label>
               <LanguageSwitcher />
             </div>
+            {/* General switch, wins over each circle's own rule (circle page). */}
+            <EditableToggle
+              label={t('settings.alertChatWithFirstCircle')}
+              value={me.alertChatWithFirstCircle}
+              onSave={(v) => updateProfile({ alertChatWithFirstCircle: v })}
+              onSaved={() => {
+                void reload();
+                void refreshUser();
+              }}
+              onError={setError}
+            />
+            <p className="form-hint">{t('settings.alertChatWithFirstCircleHint')}</p>
           </>,
         )}
       </div>

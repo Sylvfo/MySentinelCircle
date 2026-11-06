@@ -130,8 +130,24 @@ export interface TimelineEvent {
 
 // Not the bare /alert root — nginx's reverse-proxy requires a trailing path
 // segment on every module's location block (see nginx/nginx.conf).
-export const raiseAlert = (data: { companionId: string; alertType: AlertType; reason: string }) =>
+// Where the person is, from their phone (only when raising for oneself).
+export interface AlertLocation {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+}
+
+export const raiseAlert = (data: {
+  companionId: string;
+  alertType: AlertType;
+  reason: string;
+  location?: AlertLocation;
+}) =>
   apiPost<AlertSummary>('/alert/raise', data);
+
+// The person the alert is about sends where they are now.
+export const updateAlertLocation = (id: string, location: AlertLocation) =>
+  apiPatch<AlertSummary>(`/alert/${id}/location`, location);
 
 export const closeAlert = (id: string) => apiPost<AlertSummary>(`/alert/${id}/close`, {});
 
@@ -168,9 +184,9 @@ export interface MyParticipation {
   response: string | null;
   circleName: string;
   isLead: boolean;
-  // Whether this link is authorized to chat with the 1st circle during an
-  // alert (NONE = not authorized, the default).
-  firstCircleMessagingModeAtAlert: 'NONE' | 'INDIVIDUAL' | 'GROUP' | null;
+  // Whether this Sentinel may chat with the 1st circle during this alert
+  // (their circle's rule, frozen when the circle was solicited).
+  alertChatWithFirstCircleAtAlert: boolean | null;
   questions: AlertQuestion[];
   alert: {
     id: string;
@@ -189,8 +205,8 @@ export const getMyParticipation = (id: string) => apiGet<MyParticipation>(`/aler
 
 // Lazily opens (or returns the existing) isolated chat between the calling
 // outer-circle Sentinel and the 1st circle — own conversation per
-// requester, not shared. 403s unless firstCircleMessagingModeAtAlert is
-// authorized.
+// requester, not shared. 403s unless alertChatWithFirstCircleAtAlert is
+// true.
 export const requestCircleChat = (id: string) =>
   apiGet<{ id: string; closedAt: string | null }>(`/alert/${id}/circle-chat`);
 

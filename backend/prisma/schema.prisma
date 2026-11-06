@@ -61,11 +61,12 @@ enum LeadSlot {
   LEAD_3
 }
 
+/*
 enum MessagingMode {
   NONE
   INDIVIDUAL
   GROUP
-}
+}*/
 
 enum AlertStatus {
   SENT
@@ -144,7 +145,8 @@ model User {
   pendingEmail             String?
   pendingEmailTokenHash    String?   @unique
   pendingEmailExpiresAt    DateTime?  
-  allowMessagingByDefault Boolean @default(true) // companion-wide fallback
+  //allowMessagingByDefault Boolean @default(true) // companion-wide fallback
+  alertChatWithFirstCircle Boolean @default(true) // master switch: if false, no Sentinel of mine may chat with my 1st circle during an alert
 
   phone           String? @unique
   phoneVerifiedAt DateTime?
@@ -211,7 +213,8 @@ model Circle {
   circleType CircleType   @default(BASIC)
   status     CircleStatus @default(ACTIVE)
 
-  canMessageMe Boolean? // null = inherit the companion's default; ignored/always-true for circleType FIRST
+  //canMessageMe Boolean? // whole circle may chat with the 1st circle during an alert, if the User switch allows it; ignored for circleType FIRST
+  alertChatWithFirstCircle Boolean @default(true) // whole circle may chat with the 1st circle during an alert, if the User switch allows it; ignored for circleType FIRST
 
   userCompanionId String
   userCompanion   User   @relation("MyCirclesAsCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
@@ -225,7 +228,7 @@ model Circle {
   groupInvitations SentinelGroupInvitation[]
 
 
-@@unique([userCompanionId, groupRootId])
+  @@unique([userCompanionId, groupRootId])
   @@unique([id, userCompanionId])
   @@index([userCompanionId, status])
 }
@@ -237,14 +240,14 @@ model LinkSentinels {
 
   status      LinkStatus    @default(PENDING)
   initiatedBy LinkInitiator
-  canMessageMe Boolean? // null = inherit the circle's setting (which inherits the companion's default) — highest priority, most specific wins
+  //canMessageMe Boolean? // null = inherit the circle's setting (which inherits the companion's default) — highest priority, most specific wins
 
   sentinelType    SentinelType @default(ONLY_SMS)
   requestedAsLead Boolean      @default(false)
   leadSlot        LeadSlot?
 
-  canMessageOwnCircle      Boolean       @default(true)
-  firstCircleMessagingMode MessagingMode @default(NONE)
+  //canMessageOwnCircle      Boolean       @default(true)
+  //firstCircleMessagingMode MessagingMode @default(NONE)
   canSendPhone             Boolean       @default(false)
 
   userSentinelId  String
@@ -358,9 +361,11 @@ model AlertParticipant {
   circle         Circle    @relation(fields: [circleId], references: [id], onDelete: Restrict)
   circleName     String
 
+  alertChatWithFirstCircleAtAlert Boolean? // frozen when the circle is solicited, so a later settings change doesn't alter a past alert
+
   canSendPhoneAtAlert             Boolean?
-  canMessageOwnCircleAtAlert      Boolean?
-  firstCircleMessagingModeAtAlert MessagingMode?
+  //canMessageOwnCircleAtAlert      Boolean?
+  //firstCircleMessagingModeAtAlert MessagingMode?
   //question String? @db.Text // the 1st circle's question when this circle was asked (requestCircle)
 
   alertId String
@@ -407,7 +412,7 @@ model ConversationParticipant {
 model Message {
   id        String    @id @default(cuid())
   createdAt DateTime  @default(now())
-  editedAt  DateTime?
+  //editedAt  DateTime?
   deletedAt DateTime?
 
   body String

@@ -15,9 +15,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
 import { mkdirSync } from 'fs';
 import type { Express, Response } from 'express';
+import { finalizeImageUpload } from '../common/image-upload';
 import { randomUUID } from 'crypto';
 import { UserService, AVATAR_DIR } from './user.service';
 import { AccountDeletionService } from './account-deletion.service';
@@ -175,7 +175,8 @@ export class UserController {
         // Random name: unguessable, and a new photo gets a new name, so
         // nothing stale is served from a cache after a change.
         filename: (_req, file, cb) => {
-          cb(null, `${randomUUID()}${extname(file.originalname)}`);
+          // Extension added once the bytes are checked (finalizeImageUpload).
+          cb(null, randomUUID());
         },
       }),
       limits: { fileSize: 5 * 1024 * 1024 },
@@ -191,11 +192,12 @@ export class UserController {
       },
     }),
   )
-  uploadAvatar(
+  async uploadAvatar(
     @CurrentUser() user: { userId: string },
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.userService.setAvatar(user.userId, file.filename);
+    const filename = await finalizeImageUpload(file);
+    return this.userService.setAvatar(user.userId, filename);
   }
 
   @Delete('me/avatar')

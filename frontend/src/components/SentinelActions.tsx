@@ -9,10 +9,9 @@ import {
   type Circle,
   type LeadSlot,
   type Membership,
-  type MessagingMode,
 } from "../api/sentinel";
 
-// What I can do about one of my Sentinels (role, messaging, placement) —
+// What I can do about one of my Sentinels (role, placement) —
 // shown on their person page (PersonPage), under "watches over you".
 export function SentinelActions({
   m,
@@ -100,24 +99,6 @@ export function SentinelActions({
       () => updateMembership(m.id, { requestedAsLead: !m.leadSlot }),
     );
 
-  // Alert-time only: can this 1st-circle Sentinel join the live group chat
-  // once an alert is raised.
-  const toggleCanMessageOwnCircle = () =>
-    ask(
-      t(m.canMessageOwnCircle ? "circles.confirm.excludeFromAlertChat" : "circles.confirm.includeInAlertChat", { name }),
-      t("common.confirm"),
-      () => updateMembership(m.id, { canMessageOwnCircle: !m.canMessageOwnCircle }),
-    );
-
-  // Outer-circle Sentinels only: whether this Sentinel can open an isolated
-  // chat with the 1st circle once solicited on an alert.
-  const setFirstCircleMessagingMode = (mode: MessagingMode) =>
-    ask(
-      t(mode === "NONE" ? "circles.confirm.alertChatOff" : "circles.confirm.alertChatOn", { name }),
-      t("common.confirm"),
-      () => updateMembership(m.id, { firstCircleMessagingMode: mode }),
-    );
-
   const proposedCircleLabel = m.proposedCircleId
     ? circles.find((c) => c.id === m.proposedCircleId)?.label
     : null;
@@ -140,9 +121,9 @@ export function SentinelActions({
           )}
         </div>
       )}
-      {/* Three sections: role on top, messaging in the middle, then where
-          this Sentinel sits among my circles (move / remove). Empty sections
-          aren't shown. */}
+      {/* Two sections: role on top, then where this Sentinel sits among my
+          circles (move / remove). Whether they may chat with the 1st circle
+          during an alert is a per-circle rule (circle page), not set here. */}
       {/* Call order (outer circles) is hidden for now: the backend keeps it,
           contacting in random order when unset. */}
       {m.status === "ACCEPTED" && isPrimary && (
@@ -175,45 +156,6 @@ export function SentinelActions({
                   </select>
                 </label>
               )}
-        </section>
-      )}
-
-      {m.sentinelType !== "ONLY_SMS" && m.status === "ACCEPTED" && (
-        <section className="member-panel-section">
-          <h4>{t("circles.memberSections.messages")}</h4>
-          {isPrimary && (
-            <button className="ghost" onClick={toggleCanMessageOwnCircle}>
-              {m.canMessageOwnCircle
-                ? t("circles.excludeFromAlertChat")
-                : t("circles.includeInAlertChat")}
-            </button>
-          )}
-          {/* GROUP exists in the schema but isn't exposed here yet — it
-              currently behaves identically to INDIVIDUAL (same isolated
-              chat), so a 3rd option would just be a misleading duplicate
-              until it actually means something different. */}
-          {!isPrimary && (
-            <label className="row" style={{ gap: "0.3rem" }}>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                {t("circles.firstCircleMessagingMode.label")}
-              </span>
-              <select
-                value={
-                  m.firstCircleMessagingMode === "NONE" ? "NONE" : "INDIVIDUAL"
-                }
-                onChange={(e) =>
-                  setFirstCircleMessagingMode(e.target.value as MessagingMode)
-                }
-              >
-                <option value="NONE">
-                  {t("circles.firstCircleMessagingMode.none")}
-                </option>
-                <option value="INDIVIDUAL">
-                  {t("circles.firstCircleMessagingMode.individual")}
-                </option>
-              </select>
-            </label>
-          )}
         </section>
       )}
 

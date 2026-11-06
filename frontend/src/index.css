@@ -2152,3 +2152,70 @@ a.conversation-contact{color:inherit; text-decoration:none;}
 .request-preview{margin:0.5rem 0 0.8rem; padding:0.6rem 0.8rem; border-left:3px solid #134356; background:var(--bg-subtle); border-radius:6px; font-style:italic;}
 .tile.tile-running p.running-ask{font-size:1.05rem; font-weight:700;}
 .tile.tile-running p.running-open{margin-top:0.4rem; font-weight:600; opacity:0.9;}
+
+/* Info legend: a Sentinel with its alert-chat bubble, as on the rings. */
+.symbols-badge { position: relative; display: inline-flex; margin-right: 8px; }
+
+/* Password field with an eye button to show / hide what's typed. */
+.password-input { position: relative; display: block; }
+.password-input input { width: 100%; padding-right: 2.6rem; box-sizing: border-box; }
+.app-content .password-input button.password-eye,
+.password-input button.password-eye {
+  position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%);
+  background: none; border: none; padding: 0.3rem; margin: 0; min-height: 0;
+  color: var(--text-muted); cursor: pointer; display: flex; border-radius: 6px;
+}
+.password-input button.password-eye:focus-visible { outline: 2px solid var(--primary, #134356); }
+@media (hover: hover) { .password-input button.password-eye:hover { color: var(--text); background: none; } }
+
+/* Private message image, while it loads. */
+.bubble-image.placeholder { display: block; width: 180px; height: 120px; border-radius: 10px; background: rgba(127,127,127,0.18); }
+
+/* Feedback: small hint next to the "+" (opens the image picker too). */
+.app-content button.feedback-attach-hint,
+button.feedback-attach-hint {
+  background: none; border: none; padding: 0 0.2rem; margin: 0; min-height: 0;
+  font-size: 0.8rem; color: var(--text-muted); text-align: left; cursor: pointer;
+  border-radius: 4px; font-weight: normal;
+}
+@media (hover: hover) { .app-content button.feedback-attach-hint:hover { background: none; color: var(--text); text-decoration: underline; } }
+
+/* Raise for myself: optional "add my position" (GPS). */
+.alert-location { display: flex; flex-direction: column; gap: 0.3rem; margin: 0.4rem 0 0.8rem; }
+.alert-location p { margin: 0; }
+.alert-location small { color: var(--text-muted); font-size: 0.8rem; }
+.alert-location button.ghost { align-self: flex-start; }
+.alert-location-warning { margin: 0; font-size: 0.85rem; color: #8a5a00; }
+:root[data-theme='dark'] .alert-location-warning { color: #f0c36a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .alert-location-warning { color: #f0c36a; } }
+
+/* A shared position's map link: a real, easy-to-tap button. */
+.map-choice { display: inline-flex; flex-direction: column; gap: 0.3rem; margin: 0.3rem 0; }
+.map-choice-list { display: flex; flex-direction: column; gap: 0.25rem; padding-left: 0.2rem; }
+.map-choice-list a,
+.app-content .map-choice-list button,
+.map-choice-list button {
+  display: block; padding: 0.5rem 0.7rem; min-height: 40px; box-sizing: border-box; text-align: left;
+  border: 1px solid var(--border, rgba(127,127,127,0.35)); border-radius: 8px;
+  background: var(--surface, transparent); color: var(--text); font: inherit; text-decoration: none; cursor: pointer; margin: 0;
+}
+a.map-link, .app-content button.map-link, button.map-link {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  margin: 0.3rem 0; padding: 0.55rem 0.9rem; min-height: 44px; box-sizing: border-box;
+  border: 1.5px solid var(--accent, #134356); border-radius: 10px;
+  color: var(--accent, #134356); font-weight: 600; text-decoration: none; background: transparent;
+}
+@media (hover: hover) { .app-content button.map-link:hover, button.map-link:hover { background: rgba(19, 67, 86, 0.08); } }
+.bubble .map-choice { display: inline-flex; flex-direction: column; gap: 0.3rem; margin: 0.3rem 0; }
+.map-choice-list { display: flex; flex-direction: column; gap: 0.25rem; padding-left: 0.2rem; }
+.map-choice-list a,
+.app-content .map-choice-list button,
+.map-choice-list button {
+  display: block; padding: 0.5rem 0.7rem; min-height: 40px; box-sizing: border-box; text-align: left;
+  border: 1px solid var(--border, rgba(127,127,127,0.35)); border-radius: 8px;
+  background: var(--surface, transparent); color: var(--text); font: inherit; text-decoration: none; cursor: pointer; margin: 0;
+}
+.bubble .map-choice { display: flex; width: fit-content; }
+
+/* Timeline: the launch message keeps its line breaks; its map link is a button. */
+.timeline-note { white-space: pre-wrap; }

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { PasswordInput } from '../components/PasswordInput';
 import { linkGoogle, loginEmail, loginGoogle, loginPhone, requestOtp } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
@@ -112,7 +113,7 @@ export function LoginPage() {
             </label>
             <label>
               {t('auth.password')}
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)} />
             </label>
             {error && <p className="form-error">{error}</p>}
             <button type="submit" disabled={submitting}>
@@ -149,7 +150,7 @@ export function LoginPage() {
             </label>
             <label>
               {t('auth.password')}
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)} />
             </label>
             {error && <p className="form-error">{error}</p>}
             <button type="submit" disabled={submitting}>

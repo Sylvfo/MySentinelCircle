@@ -108,9 +108,14 @@ export function smsHelpSms(): string {
 
 // Sent to every 1st-circle Sentinel when an alert is raised for their
 // Companion. They answer from the app, never by SMS.
-export function alertRaisedSms(companionFullName: string): string {
+// mapUrl: where the person is, when they shared it on raising the alert.
+export function alertRaisedSms(
+  companionFullName: string,
+  mapUrl?: string,
+): string {
   return (
     `${APP} : alerte pour ${companionFullName}, dont vous etes Sentinel.\n` +
+    (mapUrl ? `Sa position : ${mapUrl}\n` : '') +
     `Pouvez-vous vous en occuper maintenant ? Repondez dans l'app : ${LOGIN_LINK}`
   );
 }

@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { MessageType, NotificationType, UserStatus } from '@prisma/client';
+import { basename } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { SentinelService } from '../sentinel/sentinel.service';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -158,6 +159,26 @@ export class MessagingService {
     }
 
     return message;
+  }
+
+  // The file name of an IMAGE message, for a participant of its
+  // conversation only. 404 (not 403) for anything else, so it doesn't say
+  // whether the message exists.
+  async getMessageImageFile(userId: string, messageId: string) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: { type: true, body: true, conversationId: true },
+    });
+    if (!message || message.type !== MessageType.IMAGE) {
+      throw new NotFoundException('No image');
+    }
+    const participant = await this.prisma.conversationParticipant.findFirst({
+      where: { conversationId: message.conversationId, userId, leftAt: null },
+      select: { id: true },
+    });
+    if (!participant) throw new NotFoundException('No image');
+    // Our own random name, but never trust it as a path.
+    return basename(message.body);
   }
 
   async listMessages(userId: string, conversationId: string) {

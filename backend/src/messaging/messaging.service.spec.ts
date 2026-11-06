@@ -5,7 +5,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { NotificationType } from '@prisma/client';
+import { MessageType, NotificationType } from '@prisma/client';
 import { MessagingService } from './messaging.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SentinelService } from '../sentinel/sentinel.service';
@@ -18,7 +18,7 @@ describe('MessagingService', () => {
   let prisma: {
     conversationParticipant: { findFirst: jest.Mock; findMany: jest.Mock };
     conversation: { findFirst: jest.Mock; create: jest.Mock };
-    message: { create: jest.Mock; findMany: jest.Mock };
+    message: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
   };
   let sentinel: { canSendDirectMessage: jest.Mock };
   let notifier: { notifyAlertChanged: jest.Mock; notifyNewMessage: jest.Mock };
@@ -33,7 +33,11 @@ describe('MessagingService', () => {
     prisma = {
       conversationParticipant: { findFirst: jest.fn(), findMany: jest.fn() },
       conversation: { findFirst: jest.fn(), create: jest.fn() },
-      message: { create: jest.fn(), findMany: jest.fn() },
+      message: {
+        create: jest.fn(),
+        findMany: jest.fn(),
+        findUnique: jest.fn(),
+      },
     };
     sentinel = { canSendDirectMessage: jest.fn() };
     notifier = { notifyAlertChanged: jest.fn(), notifyNewMessage: jest.fn() };
@@ -322,6 +326,66 @@ describe('MessagingService', () => {
         service.sendImageMessage('user-1', 'conv-1', 'abc123.jpg'),
       ).rejects.toThrow(ForbiddenException);
       expect(prisma.message.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getMessageImageFile', () => {
+    const image = {
+      type: MessageType.IMAGE,
+      body: 'abc.jpg',
+      conversationId: 'conv-1',
+    };
+
+    it('returns the file name to a participant of the conversation', async () => {
+      prisma.message.findUnique.mockResolvedValueOnce(image);
+      prisma.conversationParticipant.findFirst.mockResolvedValueOnce({
+        id: 'p1',
+      });
+
+      await expect(service.getMessageImageFile('bob', 'msg-1')).resolves.toBe(
+        'abc.jpg',
+      );
+      expect(prisma.conversationParticipant.findFirst).toHaveBeenCalledWith({
+        where: { conversationId: 'conv-1', userId: 'bob', leftAt: null },
+        select: { id: true },
+      });
+    });
+
+    it('hides it (404) from someone outside the conversation', async () => {
+      prisma.message.findUnique.mockResolvedValueOnce(image);
+      prisma.conversationParticipant.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.getMessageImageFile('eve', 'msg-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('404s for a text message or an unknown id', async () => {
+      prisma.message.findUnique.mockResolvedValueOnce({
+        ...image,
+        type: MessageType.TEXT,
+      });
+      await expect(service.getMessageImageFile('bob', 'msg-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      prisma.message.findUnique.mockResolvedValueOnce(null);
+      await expect(service.getMessageImageFile('bob', 'nope')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('never returns a path, only a bare file name', async () => {
+      prisma.message.findUnique.mockResolvedValueOnce({
+        ...image,
+        body: '../../etc/passwd',
+      });
+      prisma.conversationParticipant.findFirst.mockResolvedValueOnce({
+        id: 'p1',
+      });
+
+      await expect(service.getMessageImageFile('bob', 'msg-1')).resolves.toBe(
+        'passwd',
+      );
     });
   });
 

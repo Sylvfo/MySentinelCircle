@@ -5,16 +5,20 @@ import {
   Get,
   Param,
   Post,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname, join } from 'path';
+import { join } from 'path';
 import { mkdirSync } from 'fs';
+import { unlink } from 'fs/promises';
+import { finalizeImageUpload } from '../common/image-upload';
 import { randomUUID } from 'crypto';
-import type { Express } from 'express';
+import type { Express, Response } from 'express';
+import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { MessagingService } from './messaging.service';
@@ -70,7 +74,8 @@ export class MessagingController {
       storage: diskStorage({
         destination: MESSAGE_IMAGE_DIR,
         filename: (_req, file, cb) => {
-          cb(null, `${randomUUID()}${extname(file.originalname)}`);
+          // Extension added once the bytes are checked (finalizeImageUpload).
+          cb(null, randomUUID());
         },
       }),
       limits: { fileSize: 5 * 1024 * 1024 },
@@ -86,12 +91,37 @@ export class MessagingController {
       },
     }),
   )
-  sendImage(
+  async sendImage(
     @CurrentUser() user: { userId: string },
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.messaging.sendImageMessage(user.userId, id, file.filename);
+    const filename = await finalizeImageUpload(file);
+    try {
+      return await this.messaging.sendImageMessage(user.userId, id, filename);
+    } catch (err) {
+      // Not allowed to post here: don't keep the file.
+      await unlink(join(MESSAGE_IMAGE_DIR, filename)).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  // An image sent in a conversation — only for its participants (same rule
+  // as reading its messages), never as a public file. No throttle: a
+  // conversation loads one request per image.
+  @SkipThrottle()
+  @Get('messages/:messageId/image')
+  async getImage(
+    @CurrentUser() user: { userId: string },
+    @Param('messageId') messageId: string,
+    @Res() res: Response,
+  ) {
+    const filename = await this.messaging.getMessageImageFile(
+      user.userId,
+      messageId,
+    );
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.sendFile(join(MESSAGE_IMAGE_DIR, filename));
   }
 
   @Get('conversations/:id/messages')

@@ -11,6 +11,7 @@ import {
   type AlertQuestionKind,
 } from '../api/alert';
 import { replyLabel } from './replyLabel';
+import { LinkifiedText } from './LinkifiedText';
 
 // The companion's other circles during an alert (the 1st circle has its own
 // room): one tile per circle with its people, whether it was asked, and
@@ -358,7 +359,11 @@ export function AlertRepliesTimeline({ detail }: { detail: AlertDetail }) {
           <li key={i} className={e.kind}>
             <time>{new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</time>
             <strong>{e.who}</strong> {e.kind === 'reply' ? <span className="ans">{e.text}</span> : e.text}
-            {e.note && <small>{e.note}</small>}
+            {e.note && (
+              <small className="timeline-note">
+                <LinkifiedText text={e.note} />
+              </small>
+            )}
           </li>
         ))}
       </ol>

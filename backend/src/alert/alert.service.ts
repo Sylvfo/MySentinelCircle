@@ -14,7 +14,7 @@ import {
   CircleStatus,
   CircleType,
   LinkStatus,
-  MessagingMode,
+  MessageType,
   NotificationType,
   UserType,
   LeadSlot,
@@ -42,7 +42,7 @@ import {
   repliesFor,
 } from './alert-replies';
 import type { AlertQuestionKind } from './alert-replies';
-import { CreateAlertDto } from './dto/create-alert.dto';
+import { AlertLocationDto, CreateAlertDto } from './dto/create-alert.dto';
 import { AskQuestionDto } from './dto/ask-question.dto';
 import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
@@ -130,6 +130,14 @@ export class AlertService {
     if (incompleteCaller) {
       throw new ForbiddenException('Complete your profile first');
     }
+    // Only the person themself can share where they are — nobody else's
+    // phone says where they are.
+    if (dto.location && callerId !== dto.companionId) {
+      throw new BadRequestException(
+        'A location can only be shared when raising an alert for yourself',
+      );
+    }
+    const location = dto.location ? describeLocation(dto.location) : null;
     await this.assertCompanionNotDeceased(dto.companionId);
     await this.assertNoActiveAlert(dto.companionId);
     await this.assertCanAffordAlert(dto.companionId);
@@ -184,7 +192,9 @@ export class AlertService {
       const created = await tx.alert.create({
         data: {
           label: ALERT_TYPE_LABELS[dto.alertType],
-          messageAlert: dto.reason,
+          messageAlert: location
+            ? `${dto.reason}\n\n${location.text}`
+            : dto.reason,
           alertStatus: AlertStatus.LAUNCHED,
           alertType: dto.alertType,
           launchedAt: new Date(),
@@ -208,8 +218,6 @@ export class AlertService {
             circleId: circle.id,
             circleName: circle.label,
             canSendPhoneAtAlert: link.canSendPhone,
-            canMessageOwnCircleAtAlert: link.canMessageOwnCircle,
-            firstCircleMessagingModeAtAlert: link.firstCircleMessagingMode,
             isLead: link.leadSlot !== null,
             leadAssignedAt: link.id === responsibleLinkId ? new Date() : null,
             requestedById: callerId,
@@ -220,18 +228,14 @@ export class AlertService {
       }
 
       // The 1st circle's own group chat ("1st circle room"), scoped to this
-      // alert: its Sentinels whose link has canMessageOwnCircle (one
-      // excluded this way still gets an AlertParticipant row and the SMS
-      // above, just not a seat in the live chat) — and the person the
-      // alert is about, who can write there too (Sylvie's call, 2026-11).
+      // alert: every Sentinel of the 1st circle — and the person the alert
+      // is about, who can write there too (Sylvie's call, 2026-11).
       await tx.conversation.create({
         data: {
           alertId: created.id,
           participants: {
             create: [
-              ...links
-                .filter((link) => link.canMessageOwnCircle)
-                .map((link) => ({ userId: link.linkAsSentinel.id })),
+              ...links.map((link) => ({ userId: link.linkAsSentinel.id })),
               { userId: dto.companionId },
             ],
           },
@@ -244,7 +248,7 @@ export class AlertService {
     await this.notifyParticipants(
       alert.id,
       links,
-      alertRaisedSms(companionFullName(companion)),
+      alertRaisedSms(companionFullName(companion), location?.mapUrl),
     );
 
     if (callerId !== dto.companionId && companion?.phone) {
@@ -688,12 +692,22 @@ export class AlertService {
         circleType: CircleType.BASIC,
         status: CircleStatus.ACTIVE,
       },
+      include: {
+        userCompanion: { select: { alertChatWithFirstCircle: true } },
+      },
     });
     if (!circle) {
       throw new BadRequestException(
         'Not a valid outer circle for this companion',
       );
     }
+    // May this circle's Sentinels chat with the 1st circle during this
+    // alert? The companion's general switch wins; when it's on, the
+    // circle's own setting decides. Frozen on each participant now, so a
+    // later settings change doesn't alter this alert.
+    const chatWithFirstCircle =
+      circle.userCompanion.alertChatWithFirstCircle &&
+      circle.alertChatWithFirstCircle;
 
     const links = await this.prisma.linkSentinels.findMany({
       where: { circleId: circle.id, status: LinkStatus.ACCEPTED },
@@ -738,8 +752,7 @@ export class AlertService {
             circleId: circle.id,
             circleName: circle.label,
             canSendPhoneAtAlert: link.canSendPhone,
-            canMessageOwnCircleAtAlert: link.canMessageOwnCircle,
-            firstCircleMessagingModeAtAlert: link.firstCircleMessagingMode,
+            alertChatWithFirstCircleAtAlert: chatWithFirstCircle,
             isLead: link.leadSlot !== null,
             requestedById: callerId,
           },
@@ -748,8 +761,7 @@ export class AlertService {
             circleId: circle.id,
             circleName: circle.label,
             canSendPhoneAtAlert: link.canSendPhone,
-            canMessageOwnCircleAtAlert: link.canMessageOwnCircle,
-            firstCircleMessagingModeAtAlert: link.firstCircleMessagingMode,
+            alertChatWithFirstCircleAtAlert: chatWithFirstCircle,
             isLead: link.leadSlot !== null,
             requestedById: callerId,
             alertId,
@@ -889,7 +901,7 @@ export class AlertService {
   }
 
   // An account-holding outer-circle Sentinel, authorized via their
-  // AlertParticipant's frozen firstCircleMessagingModeAtAlert (not NONE),
+  // AlertParticipant's frozen alertChatWithFirstCircleAtAlert,
   // can request an isolated chat with the 1st circle during an active
   // alert — their own Conversation, not shared with any other requester.
   // Lazily created, like getOrCreateDirectConversation; re-requesting
@@ -915,10 +927,7 @@ export class AlertService {
         'The 1st circle already has its own chat for this alert',
       );
     }
-    if (
-      !participant.firstCircleMessagingModeAtAlert ||
-      participant.firstCircleMessagingModeAtAlert === MessagingMode.NONE
-    ) {
+    if (!participant.alertChatWithFirstCircleAtAlert) {
       throw new ForbiddenException(
         'Not authorized to chat with the 1st circle',
       );
@@ -1109,6 +1118,58 @@ export class AlertService {
   // Alert.label is the alert's name — any accepted 1st-circle Sentinel can
   // set it (not the companion, unlike updateStatus). Visible to every
   // contacted Sentinel, any circle, via getAlert()/getMyParticipation().
+  // The person the alert is about updates where they are (their phone's
+  // GPS), as often as they like while the alert runs. The position line of
+  // the alert's message is replaced, and the 1st circle room gets it as a
+  // message from them, so the history of positions stays readable.
+  async updateLocation(
+    callerId: string,
+    alertId: string,
+    dto: AlertLocationDto,
+  ) {
+    const alert = await this.prisma.alert.findUnique({
+      where: { id: alertId },
+      include: {
+        conversations: {
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: { id: true, closedAt: true },
+        },
+      },
+    });
+    if (!alert) throw new NotFoundException('Alert not found');
+    if (callerId !== alert.userCompanionId) {
+      throw new ForbiddenException(
+        'Only the person the alert is about can share their position',
+      );
+    }
+    if (alert.alertStatus === AlertStatus.RESOLVED) {
+      throw new ConflictException('This alert is already closed');
+    }
+
+    const location = describeLocation(dto, true);
+    const messageAlert = POSITION_LINE.test(alert.messageAlert)
+      ? alert.messageAlert.replace(POSITION_LINE, location.text)
+      : `${alert.messageAlert}\n\n${location.text}`;
+    const updated = await this.prisma.alert.update({
+      where: { id: alertId },
+      data: { messageAlert },
+    });
+    const room = alert.conversations[0];
+    if (room && !room.closedAt) {
+      await this.prisma.message.create({
+        data: {
+          conversationId: room.id,
+          senderId: callerId,
+          type: MessageType.TEXT,
+          body: `📍 ${location.text}`,
+        },
+      });
+    }
+    await this.notifyAlertParticipants(alertId);
+    return updated;
+  }
+
   async updateLabel(
     callerId: string,
     alertId: string,
@@ -1532,4 +1593,37 @@ export class AlertService {
       }
     }
   }
+}
+
+// Lines describing a shared position in Alert.messageAlert — replaced (not
+// piled up) when the person updates it.
+const POSITION_LINE = /^Position (partagée|mise à jour)\b.*$/m;
+
+// Beyond this the position is a rough guess (a computer without GPS
+// locates by its internet connection): said so, never refused.
+const APPROXIMATE_ACCURACY_M = 1000;
+
+// "± 15 m" / "± 1.5 km" / "± 12 km".
+function formatAccuracy(meters: number): string {
+  if (meters < 1000) return `± ${Math.round(meters)} m`;
+  const km = meters / 1000;
+  return `± ${km < 10 ? km.toFixed(1) : Math.round(km)} km`;
+}
+
+// The shared GPS position as a map link and
+// the line added to the alert's message.
+function describeLocation(loc: AlertLocationDto, updated = false) {
+  const lat = loc.latitude.toFixed(5);
+  const lng = loc.longitude.toFixed(5);
+  // Google's official "show this place" link: opens the Google Maps app on
+  // a phone, the web page (no login needed) on a computer.
+  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+  const approximate =
+    loc.accuracy !== undefined && loc.accuracy > APPROXIMATE_ACCURACY_M;
+  const precision =
+    loc.accuracy !== undefined
+      ? ` (${approximate ? 'approximative, ' : ''}${formatAccuracy(loc.accuracy)})`
+      : '';
+  const label = updated ? 'Position mise à jour' : 'Position partagée';
+  return { mapUrl, text: `${label}${precision} : ${mapUrl}` };
 }

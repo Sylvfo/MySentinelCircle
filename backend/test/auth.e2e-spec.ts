@@ -181,6 +181,22 @@ describe('Auth (e2e)', () => {
     expect(loginBody.accessToken).toBeDefined();
   });
 
+  it('rejects a password longer than 128 characters (hashing it would slow the server)', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/signup/email')
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email: testEmail(),
+        password: 'a'.repeat(129),
+      })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email: testEmail(), password: 'a'.repeat(129) })
+      .expect(400);
+  });
+
   it('signs up by email with no phone, gets an access token immediately, and can call a protected route', async () => {
     const email = testEmail();
     const userName = testUsername();

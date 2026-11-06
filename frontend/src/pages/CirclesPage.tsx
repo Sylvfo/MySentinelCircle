@@ -18,6 +18,7 @@ import {
   listIncomingRequests,
   listMyGroupInvitations,
   listMyGroups,
+  updateCircle,
   updateMembership,
   type Circle,
   type Group,
@@ -27,6 +28,7 @@ import {
 import { Tile } from '../components/Tile';
 import { Modal } from '../components/Modal';
 import { CircleRing } from '../components/CircleRing';
+import { useAuth } from '../auth/AuthContext';
 import { SecurityScoreBar } from '../components/SecurityScoreBar';
 import { PENDING_AVATAR_COLOR, PRIMARY_AVATAR_COLOR, circlePalette } from '../theme';
 import { PersonAvatar } from '../components/PersonAvatar';
@@ -199,6 +201,7 @@ export function CirclesPage() {
                   label={c.label}
                   members={liveMembersOf(c)}
                   isPrimary={false}
+                  alertChatWithFirstCircle={c.alertChatWithFirstCircle}
                   colorIndex={i}
                   size={210}
                   isGroup={c.circleType === 'GROUP'}
@@ -341,20 +344,14 @@ function CircleCard({
     (m) => m.status === 'ACCEPTED' || m.status === 'PENDING',
   );
 
-  // "During an alert, can write to my 1st circle" is set per person
-  // (firstCircleMessagingMode); here it's switched for the whole circle at
-  // once. Only people with an account can chat — Sentinels SMS can't.
-  const chatCapable = liveMembers.filter((m) => m.sentinelType !== 'ONLY_SMS');
-  const alertChatCount = chatCapable.filter((m) => m.firstCircleMessagingMode !== 'NONE').length;
-  const alertChatAll = chatCapable.length > 0 && alertChatCount === chatCapable.length;
+  // "During an alert, may write to my 1st circle" is one rule for the whole
+  // circle. My general switch (Settings) wins: when it's off, nobody can,
+  // whatever this circle says.
+  const { user } = useAuth();
+  const generalAlertChatOn = user?.alertChatWithFirstCircle ?? true;
   const toggleAlertChat = async () => {
-    const mode = alertChatAll ? 'NONE' : 'INDIVIDUAL';
     try {
-      for (const m of chatCapable) {
-        if ((m.firstCircleMessagingMode !== 'NONE') !== (mode !== 'NONE')) {
-          await updateMembership(m.id, { firstCircleMessagingMode: mode });
-        }
-      }
+      await updateCircle(circle.id, { alertChatWithFirstCircle: !circle.alertChatWithFirstCircle });
       onChange();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
@@ -404,6 +401,7 @@ function CircleCard({
           label={circle.label}
           members={liveMembers}
           isPrimary={isPrimary}
+          alertChatWithFirstCircle={circle.alertChatWithFirstCircle}
           colorIndex={colorIndex}
           size={300}
           showNames
@@ -472,26 +470,24 @@ function CircleCard({
           liveMembers.length === 0 && <p style={{ color: 'var(--text-muted)' }}>{t('circles.noMembers')}</p>
         )}
 
-        {/* Two different things, spelled out: everyday messages with me,
-            and the alert-time chat with my 1st circle. */}
+        {/* Alert-time chat with my 1st circle, for the whole circle. */}
         {!isPrimary && !group && (
           <section className="circle-messaging">
             <h3>{t('circles.messaging.title')}</h3>
             <label className="circle-messaging-row">
               <input
                 type="checkbox"
-                checked={alertChatAll}
-                disabled={chatCapable.length === 0}
-                ref={(el) => {
-                  if (el) el.indeterminate = alertChatCount > 0 && !alertChatAll;
-                }}
+                checked={generalAlertChatOn && circle.alertChatWithFirstCircle}
+                disabled={!generalAlertChatOn}
                 onChange={toggleAlertChat}
               />
               <span>
                 <strong>{t('circles.messaging.duringAlert')}</strong>
                 <small>{t('circles.messaging.duringAlertHint')}</small>
-                {alertChatCount > 0 && !alertChatAll && (
-                  <small>{t('circles.messaging.someAllowed', { count: alertChatCount, total: chatCapable.length })}</small>
+                {!generalAlertChatOn && (
+                  <small>
+                    {t('circles.messaging.generalOff')} <Link to="/settings">{t('circles.messaging.openSettings')}</Link>
+                  </small>
                 )}
               </span>
             </label>
