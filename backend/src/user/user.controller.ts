@@ -35,6 +35,8 @@ import { StepUpCodeRequestDto } from './dto/step-up-code-request.dto';
 import { StepUpCodeVerifyDto } from './dto/step-up-code-verify.dto';
 import { ChangeEmailRequestDto } from './dto/change-email-request.dto';
 import { DevSetHasPaidDto } from './dto/dev-set-has-paid.dto';
+import { AddSubscriptionYearDto } from './dto/add-subscription-year.dto';
+import { DevSetDeathNoticePurchaseDto } from './dto/dev-set-death-notice-purchase.dto';
 import { UpdateDeathNoticeDto } from './dto/update-death-notice.dto';
 import { SetDeathNoticeRecipientsDto } from './dto/set-death-notice-recipients.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -64,6 +66,39 @@ export class UserController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.userService.updateProfile(user.userId, dto);
+  }
+
+  @Get('me/plan')
+  getPlan(@CurrentUser() user: { userId: string }) {
+    return this.userService.getPlan(user.userId);
+  }
+
+  // Subscribe for a year, or offer a year to someone (simulated payment).
+  @Post('me/subscription-year')
+  addSubscriptionYear(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: AddSubscriptionYearDto,
+  ) {
+    return this.userService.addSubscriptionYear(
+      user.userId,
+      dto.forUserId ?? user.userId,
+    );
+  }
+
+  @Post('me/dev-death-notice-purchase')
+  devSetDeathNoticePurchased(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: DevSetDeathNoticePurchaseDto,
+  ) {
+    return this.userService.devSetDeathNoticePurchased(
+      user.userId,
+      dto.purchased,
+    );
+  }
+
+  @Post('me/accept-terms')
+  acceptTerms(@CurrentUser() user: { userId: string }) {
+    return this.userService.acceptTerms(user.userId);
   }
 
   @Patch('me/pause')

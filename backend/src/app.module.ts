@@ -17,6 +17,7 @@ import { AlertModule } from './alert/alert.module';
 import { OrganizationModule } from './organization/organization.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { SupportModule } from './support/support.module';
+import { PrivacyModule } from './privacy/privacy.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { SupportModule } from './support/support.module';
     AlertModule,
     OrganizationModule,
     MessagingModule,
+    PrivacyModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

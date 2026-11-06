@@ -1,6 +1,7 @@
 import { SentinelIcon } from './SentinelIcon';
 import { CompanionIcon } from './CompanionIcon';
 import { PauseBadge } from './PauseBadge';
+import { SubscribedStar } from './SubscribedStar';
 
 // Who someone is to me, without words: the filled Sentinel silhouette (they
 // watch over me), the companion outline (I watch over them), or both side by
@@ -10,12 +11,15 @@ export function RelationIcons({
   companionColor,
   size = 36,
   paused,
+  subscribed,
 }: {
   sentinelColor: string | null;
   companionColor: string | null;
   size?: number;
   // On pause: dashed outlines and a "||" badge.
   paused?: boolean;
+  // Running subscription: a gold star (top-right).
+  subscribed?: boolean;
 }) {
   const both = sentinelColor && companionColor;
   return (
@@ -31,6 +35,7 @@ export function RelationIcons({
       )}
       {companionColor && <CompanionIcon size={size} color={companionColor} fill={both ? 'var(--bg)' : 'none'} />}
       {paused && <PauseBadge />}
+      {subscribed && <SubscribedStar />}
     </span>
   );
 }

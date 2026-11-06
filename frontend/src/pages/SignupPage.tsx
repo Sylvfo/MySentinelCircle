@@ -6,6 +6,10 @@ import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
+import { TermsCheckbox } from '../components/TermsGate';
+import { GenderSelect } from '../components/GenderSelect';
+import type { Gender } from '../gender';
+import { LegalLinks } from './legal/LegalPage';
 
 function suggestUsername(firstName: string): string {
   const base = firstName.trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
@@ -26,6 +30,8 @@ export function SignupPage() {
   const [userName, setUserName] = useState('');
   const [usernameEdited, setUsernameEdited] = useState(false);
 
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [gender, setGender] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const { applyToken } = useAuth();
@@ -50,7 +56,7 @@ export function SignupPage() {
 
   const handleStep2Submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!credential) return;
+    if (!credential || !termsAccepted) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -62,12 +68,14 @@ export function SignupPage() {
               userName.trim(),
               credential.email,
               credential.password,
+              (gender || undefined) as Gender | undefined,
             )
           : await signupGoogle(
               firstName.trim(),
               lastName.trim() || undefined,
               userName.trim(),
               credential.idToken,
+              (gender || undefined) as Gender | undefined,
             );
 
       await applyToken(accessToken);
@@ -142,8 +150,14 @@ export function SignupPage() {
             />
           </label>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('auth.usernameHint')}</p>
+          <label>
+            {t('gender.label')}
+            <GenderSelect value={gender} onChange={setGender} />
+          </label>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('gender.hint')}</p>
+          <TermsCheckbox checked={termsAccepted} onChange={setTermsAccepted} />
           {error && <p className="form-error">{error}</p>}
-          <button type="submit" disabled={submitting}>
+          <button type="submit" disabled={submitting || !termsAccepted}>
             {t('auth.continue')}
           </button>
           <p className="switch-link">
@@ -157,6 +171,7 @@ export function SignupPage() {
       <p className="switch-link">
         {t('auth.haveAccount')} <Link to="/login">{t('auth.signIn')}</Link>
       </p>
+      <LegalLinks />
     </div>
   );
 }

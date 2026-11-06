@@ -4,10 +4,16 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { listCircles, listCompanions } from '../api/sentinel';
-import { listMyConversations, type ConversationSummary } from '../api/messaging';
-import { alertNeedsMe, isOuterCircleViewer, listAlerts, type MyAlertSummary } from '../api/alert';
+import {
+  isChatClosed,
+  listMyAlertChats,
+  listMyConversations,
+  type AlertChatSummary,
+  type ConversationSummary,
+} from '../api/messaging';
 import { PersonAvatar } from '../components/PersonAvatar';
-import { avatarPathOf, isPausedOf, myCompanionColor, mySentinelColor } from '../relations';
+import { alertChatKind, alertChatTitle } from '../alertChatName';
+import { avatarPathOf, isPausedOf, isSubscribedOf, myCompanionColor, mySentinelColor } from '../relations';
 
 type RosterContact = Omit<Contact, 'lastMessage' | 'unreadCount'>;
 
@@ -19,6 +25,7 @@ interface Contact {
   companionColor: string | null;
   avatarPath: string | null;
   paused?: boolean;
+  subscribed?: boolean;
   lastMessage: ConversationSummary['lastMessage'];
   unreadCount: number;
 }
@@ -27,7 +34,7 @@ export function MessagesPage() {
   const { t } = useTranslation();
   const { socket, user } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [alerts, setAlerts] = useState<MyAlertSummary[]>([]);
+  const [alertChats, setAlertChats] = useState<AlertChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -79,15 +86,17 @@ export function MessagesPage() {
   };
 
   const refreshConversations = () => {
-    return listMyConversations()
-      .then(applyConversations)
+    return Promise.all([listMyConversations(), listMyAlertChats()])
+      .then(([conversations, chats]) => {
+        applyConversations(conversations);
+        setAlertChats(chats);
+      })
       .catch((err) => setError(err instanceof ApiError ? err.message : String(err)));
   };
 
   const loadAll = () => {
-    return Promise.all([listCircles(), listCompanions(), listAlerts()])
-      .then(([circles, companions, myAlerts]) => {
-        setAlerts(myAlerts);
+    return Promise.all([listCircles(), listCompanions()])
+      .then(([circles, companions]) => {
         // My own accepted Sentinels (any circle) — Sentinel SMS has no
         // account, so there's no in-app channel to open with them.
         const mySentinels: Pick<RosterContact, 'userId' | 'name'>[] = circles.flatMap((c) =>
@@ -113,6 +122,7 @@ export function MessagesPage() {
           companionColor: myCompanionColor(companions, c.userId),
           avatarPath: avatarPathOf(circles, companions, c.userId),
           paused: isPausedOf(circles, companions, c.userId),
+          subscribed: isSubscribedOf(circles, companions, c.userId),
         }));
         return refreshConversations();
       })
@@ -150,17 +160,14 @@ export function MessagesPage() {
   const matches = (c: Contact) => !q || c.name.toLocaleLowerCase().includes(q);
   const conversations = contacts.filter((c) => c.lastMessage && matches(c));
   const newContacts = q ? contacts.filter((c) => !c.lastMessage && matches(c)) : [];
-  // Alert chats: the 1st-circle chat of every running alert I'm part of (my
-  // own, or one where I'm in the 1st circle) — outer-circle Sentinels have no
-  // access to it. Search matches the person concerned or the alert's name.
-  const concerns = (a: MyAlertSummary) =>
-    a.userCompanionId === user?.id ? t('history.concernsMe') : a.userCompanion.firstName;
-  const alertChats = alerts.filter(
-    (a) =>
-      alertNeedsMe(a, user?.id) &&
-      !isOuterCircleViewer(a, user?.id) &&
-      (!q || concerns(a).toLocaleLowerCase().includes(q) || a.label.toLocaleLowerCase().includes(q)),
+  // Alert chats (running alerts first, then closed ones, read-only after
+  // their 7 days). Search matches the person concerned or the alert's name.
+  const concerns = (c: AlertChatSummary) =>
+    c.companion.id === user?.id ? t('history.concernsMe') : c.companion.firstName;
+  const shownAlertChats = alertChats.filter(
+    (c) => !q || concerns(c).toLocaleLowerCase().includes(q) || c.alertLabel.toLocaleLowerCase().includes(q),
   );
+
 
   return (
     <div>
@@ -178,17 +185,19 @@ export function MessagesPage() {
       />
       {error && <p className="form-error">{error}</p>}
 
-      {/* Only while an alert is running, and above everything else: the
-          alert's chat matters more than everyday conversations. */}
-      {alertChats.length > 0 && (
+      {/* Above everything else: an alert's chats matter more than everyday
+          conversations. Closed alerts stay listed, read-only after 7 days. */}
+      {shownAlertChats.length > 0 && (
         <>
           <h2 className="messages-section-title">{t('messages.sections.alerts')}</h2>
           <section className="panel conversation-list">
-            {alertChats.map((a) => (
+            {shownAlertChats.map((c) => (
               <button
-                key={a.id}
-                className="conversation-row alert-chat-row"
-                onClick={() => navigate(`/running-alert/${a.id}/chat`)}
+                key={c.conversationId}
+                className={`conversation-row alert-chat-row${c.unreadCount > 0 ? ' unread' : ''}${
+                  c.alertStatus === 'RESOLVED' ? ' resolved' : ''
+                }`}
+                onClick={() => navigate(`/messages/alert/${c.conversationId}`)}
               >
                 <span className="alert-chat-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
@@ -198,8 +207,21 @@ export function MessagesPage() {
                   </svg>
                 </span>
                 <span className="conversation-text">
-                  <span className="conversation-name">{t('messages.alertChatName', { who: concerns(a) })}</span>
-                  <span className="conversation-preview">{a.label}</span>
+                  <span className="conversation-name">
+                    {alertChatTitle(t, c, user?.id)}
+                    {c.unreadCount > 0 && <span className="notification-count inline">{c.unreadCount}</span>}
+                  </span>
+                  <span className="conversation-preview">
+                    {alertChatKind(t, c, user?.id)}
+                    {c.alertStatus === 'RESOLVED' && (
+                      <>
+                        {' '}
+                        <span className="badge">
+                          {t(isChatClosed(c) ? 'messages.alertChatClosed' : 'messages.alertResolved')}
+                        </span>
+                      </>
+                    )}
+                  </span>
                 </span>
               </button>
             ))}
@@ -208,7 +230,7 @@ export function MessagesPage() {
       )}
 
       {/* Everyday chats with my Sentinels and the people I watch over. */}
-      {alertChats.length > 0 && <h2 className="messages-section-title">{t('messages.sections.contacts')}</h2>}
+      {shownAlertChats.length > 0 && <h2 className="messages-section-title">{t('messages.sections.contacts')}</h2>}
       {conversations.length > 0 && (
         <section className="panel conversation-list">
           {/* Most recent first (see applyConversations); unread ones in bold. */}
@@ -222,6 +244,7 @@ export function MessagesPage() {
                 userId={c.userId}
                 avatarPath={c.avatarPath}
                 paused={c.paused}
+                subscribed={c.subscribed}
                 sentinelColor={c.sentinelColor}
                 companionColor={c.companionColor}
               />
@@ -248,6 +271,7 @@ export function MessagesPage() {
                 userId={c.userId}
                 avatarPath={c.avatarPath}
                 paused={c.paused}
+                subscribed={c.subscribed}
                 sentinelColor={c.sentinelColor}
                 companionColor={c.companionColor}
               />

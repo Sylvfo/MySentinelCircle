@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import {
   changePassword,
   deleteAccount,
+  devSetDeathNoticePurchased,
   devSetHasPaid,
   fetchMe,
   getMyDeathNotice,
@@ -24,11 +26,18 @@ import { StepUpPanel } from '../components/StepUp';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { useAuth } from '../auth/AuthContext';
 import { SentinelIcon } from '../components/SentinelIcon';
+import { LegalLinks } from './legal/LegalPage';
+import { PaidPill, UpgradeNotice } from '../components/Upgrade';
+import { IncludedStar } from '../components/SubscribedStar';
+import { usePlan } from '../plan';
 import { useAvatarUrl } from '../avatars';
+import { GenderSelect } from '../components/GenderSelect';
+import type { Gender } from '../gender';
 
 export function SettingsPage() {
   const { t } = useTranslation();
   const { logout, refreshUser } = useAuth();
+  const { plan, reload: reloadPlan } = usePlan();
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,8 +63,15 @@ export function SettingsPage() {
   if (!me) return <p className="form-error">{error}</p>;
 
   const toggle = (key: TileKey) => setOpen((cur) => (cur === key ? null : key));
-  const tile = (key: TileKey, children: ReactNode, extraClass = '') => (
-    <SettingsTile key={key} tileKey={key} open={open === key} onToggle={() => toggle(key)} className={extraClass}>
+  const tile = (key: TileKey, children: ReactNode, extraClass = '', badge?: ReactNode) => (
+    <SettingsTile
+      key={key}
+      tileKey={key}
+      open={open === key}
+      onToggle={() => toggle(key)}
+      className={extraClass}
+      badge={badge}
+    >
       {children}
     </SettingsTile>
   );
@@ -83,6 +99,15 @@ export function SettingsPage() {
               value={me.lastName ?? ''}
               onSave={(v) => updateProfile({ lastName: v })}
               onSaved={reload}
+              onError={setError}
+            />
+            <GenderField
+              value={me.gender}
+              onSave={(v) => updateProfile({ gender: v })}
+              onSaved={() => {
+                void reload();
+                void refreshUser();
+              }}
               onError={setError}
             />
             {me.userName ? (
@@ -173,16 +198,18 @@ export function SettingsPage() {
                 <strong>{t(me.hasPaid ? 'settings.subscription.paid' : 'settings.subscription.free')}</strong>
               </p>
             </div>
-            <p className="form-hint settings-field-hint">{t('settings.subscription.whatPaid')}</p>
-            {/* Where paying will happen once a payment provider is wired in. */}
-            {!me.hasPaid && (
-              <div className="settings-pay">
-                <button type="button" disabled>
-                  {t('settings.subscription.upgrade')}
-                </button>
-                <span className="form-hint">{t('settings.subscription.soon')}</span>
-              </div>
+            {plan && plan.freeAlertsLeft !== null && (
+              <p className="form-hint settings-field-hint">
+                {t('plans.alertsLeft', { count: plan.freeAlertsLeft, limit: plan.freeAlertLimit })}
+              </p>
             )}
+            {plan?.deathNoticePurchased && !plan.hasPaid && (
+              <p className="form-hint settings-field-hint">{t('plans.deathNotice.owned')}</p>
+            )}
+            <p className="form-hint settings-field-hint">{t('settings.subscription.whatPaid')}</p>
+            <Link to="/plans" className="button-link">
+              {t('plans.seePlans')}
+            </Link>
             {import.meta.env.DEV && (
               <div className="settings-dev">
                 <h3>{t('settings.dev.title')}</h3>
@@ -191,7 +218,17 @@ export function SettingsPage() {
                   label={t('settings.dev.hasPaid')}
                   value={me.hasPaid}
                   onSave={(v) => devSetHasPaid(v)}
-                  onSaved={reload}
+                  onSaved={() => {
+                    void reload();
+                    reloadPlan();
+                  }}
+                  onError={setError}
+                />
+                <EditableToggle
+                  label={t('settings.dev.deathNoticePurchased')}
+                  value={plan?.deathNoticePurchased ?? false}
+                  onSave={(v) => devSetDeathNoticePurchased(v)}
+                  onSaved={reloadPlan}
                   onError={setError}
                 />
               </div>
@@ -247,7 +284,17 @@ export function SettingsPage() {
 
       {/* Set apart: a different matter from everyday settings. */}
       <div className="about-tiles settings-apart">
-        {tile('deathNotice', <DeathNoticePanel onError={setError} />, 'settings-quiet')}
+        {tile(
+          'deathNotice',
+          <DeathNoticePanel onError={setError} />,
+          'settings-quiet',
+          // Free: the lock pill. Subscribed: the gold star (it's included).
+          plan && !plan.deathNotice ? (
+            <PaidPill feature="deathNotice" chip />
+          ) : plan?.hasPaid ? (
+            <IncludedStar />
+          ) : undefined,
+        )}
         {tile('delete', <DeleteAccountPanel me={me} onDeleted={logout} onError={setError} />, 'settings-danger')}
       </div>
 
@@ -279,6 +326,7 @@ export function SettingsPage() {
           {t('nav.logout')}
         </button>
       </div>
+      <LegalLinks />
     </div>
   );
 }
@@ -329,12 +377,15 @@ function SettingsTile({
   open,
   onToggle,
   className,
+  badge,
   children,
 }: {
   tileKey: TileKey;
   open: boolean;
   onToggle: () => void;
   className?: string;
+  // Shown after the title, e.g. the lock on a paid feature.
+  badge?: ReactNode;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -363,6 +414,7 @@ function SettingsTile({
         </svg>
         <span className="about-tile-title">
           {t(`settings.tiles.${tileKey}.title`)}
+          {badge}
           <small>{t(`settings.tiles.${tileKey}.hint`)}</small>
         </span>
         <svg className="about-tile-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -432,6 +484,51 @@ function EditableTextField({
         {t('common.save')}
       </button>
       {hint && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{hint}</p>}
+    </form>
+  );
+}
+
+// How texts speak about me ("can you go and see her?"). Only I set it.
+function GenderField({
+  value: initialValue,
+  onSave,
+  onSaved,
+  onError,
+}: {
+  value: Gender | null;
+  onSave: (value: Gender | null) => Promise<unknown>;
+  onSaved: () => void;
+  onError: (m: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [value, setValue] = useState<string>(initialValue ?? '');
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await onSave(value === '' ? null : (value as Gender));
+      onSaved();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <label>
+        {t('gender.label')}
+        <div className="row">
+          <GenderSelect value={value} onChange={setValue} />
+          <button type="submit" disabled={submitting || value === (initialValue ?? '')}>
+            {t('common.save')}
+          </button>
+        </div>
+      </label>
+      <p className="form-hint">{t('gender.hint')}</p>
     </form>
   );
 }
@@ -549,6 +646,7 @@ function AvatarPanel({ me, onChange, onError }: { me: Me; onChange: () => void; 
 // among them is notified, each with an optional personal message.
 function DeathNoticePanel({ onError }: { onError: (m: string) => void }) {
   const { t } = useTranslation();
+  const { plan } = usePlan();
   const [notice, setNotice] = useState<DeathNotice | null>(null);
   const [message, setMessage] = useState('');
   const [selected, setSelected] = useState<Record<string, { notify: boolean; personalMessage: string }>>({});
@@ -614,6 +712,17 @@ function DeathNoticePanel({ onError }: { onError: (m: string) => void }) {
       setSavingRecipients(false);
     }
   };
+
+  // Preparing it is paid: subscription or one-time purchase.
+  if (plan && !plan.deathNotice) {
+    return (
+      <section className="panel">
+        <h2>{t('settings.deathNotice.title')}</h2>
+        <p style={{ color: 'var(--text-muted)' }}>{t('settings.deathNotice.intro')}</p>
+        <UpgradeNotice reason="deathNotice" />
+      </section>
+    );
+  }
 
   return (
     <section className="panel">

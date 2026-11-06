@@ -9,6 +9,9 @@ import { firstCircleAskKey } from '../alertAsk';
 import { listCircles, listCompanions, type Circle, type Companion } from '../api/sentinel';
 import { PauseBadge } from '../components/PauseBadge';
 import { PauseNotice, PausePill } from '../components/PauseNotice';
+import { PlanNudge } from '../components/PlanNudge';
+import { usePlan } from '../plan';
+import { genderContext } from '../gender';
 import { Tile } from '../components/Tile';
 import { SecurityScoreBar } from '../components/SecurityScoreBar';
 import { SentinelIcon } from '../components/SentinelIcon';
@@ -29,6 +32,7 @@ export function DashboardPage() {
   // alertId -> my own participation (my answer, the questions put to me),
   // to say on the tile exactly what is asked of me.
   const [mine, setMine] = useState<Record<string, MyParticipation>>({});
+  const { plan } = usePlan();
 
   useEffect(() => {
     Promise.all([listAlerts(), listCircles(), listCompanions()])
@@ -94,15 +98,19 @@ export function DashboardPage() {
     if (a.userCompanionId === user?.id) return t('dashboard.runningAlert.ask.mine');
     const p = mine[a.id];
     if (!p) return t('dashboard.runningAlert.ask.generic');
-    if (p.alert.alertStatus === 'CLOSING') return t('dashboard.runningAlert.ask.found', { name });
+    const context = genderContext(p.alert.userCompanion.gender);
     const isFirstCircle = a.myParticipation?.circleId === a.firstCircleId;
     if (isFirstCircle) {
-      if (!p.response) return t(`alerts.ask.${firstCircleAskKey(a.alertType)}`, { name });
+      if (!p.response) return t(`alerts.ask.${firstCircleAskKey(a.alertType)}`, { name, context });
       if (p.response === 'GOING') return t('dashboard.runningAlert.ask.going');
       return t('dashboard.runningAlert.ask.answered', { reply: replyLabel(t, p.response) });
     }
     const open = p.questions.find((q) => !q.response);
-    if (open) return t('dashboard.runningAlert.ask.question', { name, question: t(`alerts.questions.${open.kind}`) });
+    if (open)
+      return t('dashboard.runningAlert.ask.question', {
+        name,
+        question: t(`alerts.questions.${open.kind}`, { name, context }),
+      });
     return t('dashboard.runningAlert.ask.thanks');
   };
 
@@ -117,6 +125,19 @@ export function DashboardPage() {
         {/* A reminder, so a pause isn't forgotten: changed in Settings. */}
         <PauseNotice which="both" />
       </header>
+
+      {/* Never while an alert is running: no selling in an emergency. */}
+      {activeAlerts.length === 0 && plan && !plan.hasPaid && (
+        <PlanNudge
+          moment={
+            plan.freeAlertsLeft === 0
+              ? 'afterAlert'
+              : primaryCircle && firstCircleReady(primaryCircle)
+                ? 'netReady'
+                : null
+          }
+        />
+      )}
 
       {error && <p className="form-error">{error}</p>}
 
@@ -243,7 +264,21 @@ export function DashboardPage() {
       <Link to="/alerts" className="raise-alert-btn">
         <span className="raise-alert-title">{t('dashboard.raiseAlert')}</span>
         <span className="raise-alert-hint">{t('dashboard.raiseAlertHint')}</span>
+        {plan && plan.freeAlertsLeft !== null && (
+          <span className="raise-alert-plan">
+            {plan.freeAlertsLeft > 0
+              ? t('plans.dashboard.freeLeft', { count: plan.freeAlertsLeft })
+              : t('plans.dashboard.freeUsed')}
+          </span>
+        )}
       </Link>
     </div>
   );
+}
+
+// The 1st circle can carry an alert: a Lead and at least one other
+// Sentinel, both accepted.
+function firstCircleReady(circle: Circle): boolean {
+  const accepted = circle.userSentinels.filter((m) => m.status === 'ACCEPTED');
+  return accepted.length >= 2 && accepted.some((m) => m.leadSlot !== null);
 }

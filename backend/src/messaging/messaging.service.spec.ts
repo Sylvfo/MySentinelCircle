@@ -19,6 +19,7 @@ describe('MessagingService', () => {
     conversationParticipant: { findFirst: jest.Mock; findMany: jest.Mock };
     conversation: { findFirst: jest.Mock; create: jest.Mock };
     message: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
+    alertParticipant: { findMany: jest.Mock };
   };
   let sentinel: { canSendDirectMessage: jest.Mock };
   let notifier: { notifyAlertChanged: jest.Mock; notifyNewMessage: jest.Mock };
@@ -38,6 +39,7 @@ describe('MessagingService', () => {
         findMany: jest.fn(),
         findUnique: jest.fn(),
       },
+      alertParticipant: { findMany: jest.fn() },
     };
     sentinel = { canSendDirectMessage: jest.fn() };
     notifier = { notifyAlertChanged: jest.fn(), notifyNewMessage: jest.fn() };
@@ -240,10 +242,32 @@ describe('MessagingService', () => {
       expect(prisma.message.create).not.toHaveBeenCalled();
     });
 
+    it('still accepts a message during a closed alert’s grace period', async () => {
+      prisma.conversationParticipant.findFirst.mockResolvedValueOnce({
+        id: 'part-1',
+        // closeAlert set it 7 days ahead: still writable until then.
+        conversation: {
+          closedAt: new Date(Date.now() + 86_400_000),
+          alertId: 'alert-1',
+        },
+      });
+      prisma.conversationParticipant.findMany
+        .mockResolvedValueOnce([{ user: { status: 'ACTIVE' } }])
+        .mockResolvedValueOnce([{ userId: 'user-1' }]);
+      prisma.message.create.mockResolvedValueOnce({ id: 'msg-1' });
+
+      await service.sendMessage('user-1', 'conv-1', { body: 'thanks all' });
+
+      expect(prisma.message.create).toHaveBeenCalled();
+    });
+
     it('rejects sending into a closed conversation', async () => {
       prisma.conversationParticipant.findFirst.mockResolvedValueOnce({
         id: 'part-1',
-        conversation: { closedAt: new Date(), alertId: 'alert-1' },
+        conversation: {
+          closedAt: new Date(Date.now() - 1000),
+          alertId: 'alert-1',
+        },
       });
       prisma.conversationParticipant.findMany.mockResolvedValueOnce([
         { user: { status: 'ACTIVE' } },
@@ -253,6 +277,112 @@ describe('MessagingService', () => {
         service.sendMessage('user-1', 'conv-1', { body: 'hello' }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.message.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listMyAlertChats', () => {
+    const alert = {
+      id: 'alert-1',
+      label: 'Léa',
+      alertType: 'MISSING',
+      alertStatus: 'ACTIVE',
+      firstCircleId: 'first-1',
+      userCompanion: { id: 'lea', firstName: 'Léa' },
+      conversations: [{ id: 'room-1' }],
+    };
+    const conv = (id: string, people: [string, string][]) => ({
+      conversation: {
+        id,
+        closedAt: null,
+        createdAt: new Date(),
+        participants: people.map(([pid, firstName]) => ({
+          user: { id: pid, firstName },
+        })),
+        messages: [],
+        alert,
+      },
+    });
+    const roster = [
+      {
+        alertId: 'alert-1',
+        circleId: 'first-1',
+        userSentinels: { userSentinelId: 'gabriel' },
+      },
+      {
+        alertId: 'alert-1',
+        circleId: 'first-1',
+        userSentinels: { userSentinelId: 'chloe' },
+      },
+      {
+        alertId: 'alert-1',
+        circleId: 'choir',
+        userSentinels: { userSentinelId: 'sam' },
+      },
+    ];
+
+    it('tells the room from a circle chat and names everyone for the 1st circle', async () => {
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        conv('room-1', [
+          ['lea', 'Léa'],
+          ['gabriel', 'Gabriel'],
+          ['chloe', 'Chloé'],
+        ]),
+        conv('chat-1', [
+          ['sam', 'Sam'],
+          ['gabriel', 'Gabriel'],
+          ['chloe', 'Chloé'],
+          ['lea', 'Léa'],
+        ]),
+      ]);
+      prisma.alertParticipant.findMany.mockResolvedValueOnce(roster);
+      notifications.getUnreadCountsByTarget.mockResolvedValueOnce({
+        'chat-1': 2,
+      });
+
+      const chats = await service.listMyAlertChats('gabriel');
+
+      const room = chats.find((c) => c.conversationId === 'room-1');
+      const chat = chats.find((c) => c.conversationId === 'chat-1');
+      expect(room).toMatchObject({
+        kind: 'room',
+        alertType: 'MISSING',
+        outsider: null,
+        unreadCount: 0,
+      });
+      expect(chat).toMatchObject({
+        kind: 'circleChat',
+        outsider: { id: 'sam', firstName: 'Sam' },
+        unreadCount: 2,
+      });
+      expect(chat!.senders.map((u) => u.id).sort()).toEqual([
+        'chloe',
+        'gabriel',
+        'lea',
+        'sam',
+      ]);
+    });
+
+    it('hides the 1st circle’s names from the outer-circle Sentinel', async () => {
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([
+        conv('chat-1', [
+          ['sam', 'Sam'],
+          ['gabriel', 'Gabriel'],
+          ['chloe', 'Chloé'],
+          ['lea', 'Léa'],
+        ]),
+      ]);
+      prisma.alertParticipant.findMany.mockResolvedValueOnce(roster);
+
+      const [chat] = await service.listMyAlertChats('sam');
+
+      expect(chat.senders.map((u) => u.id).sort()).toEqual(['lea', 'sam']);
+    });
+
+    it('returns nothing without any alert chat', async () => {
+      prisma.conversationParticipant.findMany.mockResolvedValueOnce([]);
+
+      await expect(service.listMyAlertChats('nobody')).resolves.toEqual([]);
+      expect(prisma.alertParticipant.findMany).not.toHaveBeenCalled();
     });
   });
 

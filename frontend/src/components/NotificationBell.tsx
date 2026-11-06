@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { listNotifications, markNotificationRead, type NotificationItem } from '../api/notification';
 import { decrementUnreadCount, useUnreadCounts } from '../unreadCounts';
+import { genderContext } from '../gender';
 
 // Maps a notification to the page that already shows the entity it's
 // about. A new message opens its conversation (with the sender); other
@@ -117,7 +118,10 @@ export function NotificationBell() {
                 className="notification-item unread"
                 onClick={() => handleItemClick(item)}
               >
-                {t(`notifications.types.${translationKey(item)}`, { who: item.actorLabel ?? '' })}
+                {t(`notifications.types.${translationKey(item)}`, {
+                  who: item.actorLabel ?? '',
+                  context: genderContext(item.actorGender),
+                })}
               </button>
             ))
           )}

@@ -32,6 +32,9 @@ import { useAuth } from '../auth/AuthContext';
 import { PauseNotice, PausePill } from '../components/PauseNotice';
 import { SecurityScoreBar } from '../components/SecurityScoreBar';
 import { PENDING_AVATAR_COLOR, PRIMARY_AVATAR_COLOR, circlePalette } from '../theme';
+import { PaidPill } from '../components/Upgrade';
+import { IncludedStar } from '../components/SubscribedStar';
+import { usePlan } from '../plan';
 import { PersonAvatar } from '../components/PersonAvatar';
 
 // Soft guidance only — nothing stops a circle from growing past this, it
@@ -51,6 +54,7 @@ interface GroupContact {
 export function CirclesPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const { plan } = usePlan();
   const [circles, setCircles] = useState<Circle[]>([]);
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -173,9 +177,13 @@ export function CirclesPage() {
           <Link to="/circles/new" className="button-link">
             {t('circles.newCircle')}
           </Link>
-          <Link to="/circles/new-group" className="button-link">
-            {t('groups.newGroup')}
-          </Link>
+          <span className="header-action-row">
+            <Link to="/circles/new-group" className="button-link">
+              {t('groups.newGroup')}
+              {plan?.hasPaid && <IncludedStar />}
+            </Link>
+            {plan && !plan.groups && <PaidPill feature="groups" />}
+          </span>
         </div>
       </div>
 
@@ -234,6 +242,7 @@ export function CirclesPage() {
                     userId={m.linkAsSentinel.id}
                     avatarPath={m.linkAsSentinel.avatarPath}
                     paused={m.linkAsSentinel.pausedForOthers}
+                    subscribed={m.linkAsSentinel.subscribed}
                     sentinelColor={PENDING_AVATAR_COLOR}
                     companionColor={null}
                     size={44}

@@ -86,13 +86,15 @@
       "signup": "Erreur lors de la création du compte",
       "invalidCode": "Code invalide"
     },
-    "justLooking": "Juste regarder comment ça marche",
-    "backToPhone": "Revenir à la connexion par téléphone",
-    "firstTimeOrForgot": "Première fois ou mot de passe oublié ? Recevoir un code",
     "newPasswordTitle": "Choisis un mot de passe",
     "keepPassword": "Garder mon mot de passe actuel",
     "showPassword": "Afficher le mot de passe",
-    "hidePassword": "Masquer le mot de passe"
+    "hidePassword": "Masquer le mot de passe",
+    "phoneOrEmail": "Téléphone ou e-mail",
+    "phoneOrEmailPlaceholder": "+41791234567 ou nom@mail.ch",
+    "getSmsCode": "Recevoir un code par SMS",
+    "forgotPasswordEmail": "Mot de passe oublié ? Recevoir un lien par e-mail",
+    "smsCodeNeedsPhone": "Entre ton numéro de téléphone ci-dessus pour recevoir un code par SMS."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -124,7 +126,6 @@
         "answered": "Tu as répondu « {{reply}} ». Tu peux encore dire « Oui, je m'en occupe ».",
         "question": "Le 1er cercle de {{name}} te demande : « {{question}} »",
         "thanks": "Merci, ta réponse a été transmise. Le 1er cercle s'occupe du reste.",
-        "found": "{{name}} a été retrouvé.e. Regarde ce qu'il reste à faire.",
         "generic": "Regarde l'alerte et réponds si on te le demande."
       }
     }
@@ -204,6 +205,8 @@
     "confirm": {
       "title": "Confirmer le changement",
       "toReserve": "{{name}} va dans ton cercle de réserve : toujours en lien avec toi, mais plus prévenu.e en cas d'alerte.",
+      "toReserve_female": "{{name}} va dans ton cercle de réserve : toujours en lien avec toi, mais plus prévenue en cas d'alerte.",
+      "toReserve_male": "{{name}} va dans ton cercle de réserve : toujours en lien avec toi, mais plus prévenu en cas d'alerte.",
       "move": "{{name}} va passer dans le cercle « {{circle}} ».",
       "leadOrder": "{{name}} devient {{slot}}.",
       "makeLead": "{{name}} devient Sentinelle Lead de ton 1er cercle.",
@@ -213,7 +216,7 @@
   "groups": {
     "newGroup": "Nouveau cercle de groupe",
     "invitations": "Invitations de groupe",
-    "invitedBy": "{{who}} t'a invité.e dans \"{{group}}\"",
+    "invitedBy": "{{who}} t'a invité{{_e}} dans \"{{group}}\"",
     "accept": "Accepter",
     "decline": "Décliner",
     "invite": "Inviter",
@@ -226,7 +229,7 @@
     "eyebrow": "Groupe",
     "addMember": "Ajouter un membre",
     "title": "Cercles de groupe",
-    "intro": "Un cercle partagé entre plusieurs sentinelles (ex. une chorale) — le rejoindre te rend sentinelle de chaque membre, et chaque membre devient ta sentinelle aussi. Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté.e.",
+    "intro": "Un cercle partagé entre plusieurs sentinelles (ex. une chorale) — le rejoindre te rend sentinelle de chaque membre, et chaque membre devient ta sentinelle aussi. Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté{{_e}}.",
     "empty": "Tu ne fais encore partie d'aucun groupe.",
     "byPhoneOr": "Ou n'importe qui, avec son numéro :",
     "byPhone": "Invite n'importe qui avec son numéro :",
@@ -254,6 +257,8 @@
     "declineCircleMove": "Refuser",
     "deathNotice": {
       "deceasedBadge": "Décédé.e",
+      "deceasedBadge_female": "Décédée",
+      "deceasedBadge_male": "Décédé",
       "viewAnnouncement": "Voir l'annonce",
       "announcementTitle": "Annonce",
       "personalMessageLabel": "Pour vous :",
@@ -283,10 +288,10 @@
     "invitationRole": "Rôle",
     "invitationDuties": "Ce que ça implique",
     "duties": {
-      "LEAD": "Tu es dans le 1er cercle de {{who}} et alerté.e en premier. En tant que Sentinelle Lead, tu peux prendre la main sur une alerte et coordonner les autres Sentinelles.",
-      "FIRSTCIRCLE": "Tu es dans le 1er cercle de {{who}} : tu es alerté.e en premier quand cette personne a besoin d'aide, et tu suis l'alerte avec les autres.",
-      "SENTINEL": "Tu n'es alerté.e que si le 1er cercle de {{who}} élargit une alerte et demande ton aide.",
-      "ONLY_SMS": "Tu es contacté.e uniquement par SMS, quand le 1er cercle de {{who}} demande ton aide.",
+      "LEAD": "Tu es dans le 1er cercle de {{who}} et alerté{{_e}} en premier. En tant que Sentinelle Lead, tu peux prendre la main sur une alerte et coordonner les autres Sentinelles.",
+      "FIRSTCIRCLE": "Tu es dans le 1er cercle de {{who}} : tu es alerté{{_e}} en premier quand cette personne a besoin d'aide, et tu suis l'alerte avec les autres.",
+      "SENTINEL": "Tu n'es alerté{{_e}} que si le 1er cercle de {{who}} élargit une alerte et demande ton aide.",
+      "ONLY_SMS": "Tu es contacté{{_e}} uniquement par SMS, quand le 1er cercle de {{who}} demande ton aide.",
       "UNCOMPLETE": "Tu pourras aider {{who}} une fois ton compte complété."
     },
     "groups": {
@@ -301,7 +306,7 @@
     },
     "leaveExplain": "Tu ne veilleras plus sur {{name}}. Ça ne change rien dans l'autre sens : si {{name}} veille sur toi, {{name}} reste ta Sentinelle.",
     "confirmMove": {
-      "accept": "Tu vas entrer dans le 1er cercle de {{name}} : tu seras prévenu.e en premier en cas d'alerte.",
+      "accept": "Tu vas entrer dans le 1er cercle de {{name}} : tu seras prévenu{{_e}} en premier en cas d'alerte.",
       "decline": "Tu restes dans ton cercle actuel chez {{name}}."
     },
     "requests": {
@@ -318,6 +323,9 @@
         "message": "Bonjour {{name}}, j'aimerais ne plus être Sentinelle Lead de ton 1er cercle. Tu peux retirer ce rôle depuis ma page."
       },
       "explain": "Seul.e {{name}} peut faire ce changement. Ce message lui sera envoyé dans votre conversation :",
+      "explain_female": "Seule {{name}} peut faire ce changement. Ce message lui sera envoyé dans votre conversation :",
+      "explain_male": "Seul {{name}} peut faire ce changement. Ce message lui sera envoyé dans votre conversation :",
+      "explain_neutral": "Il n'y a que {{name}} qui peut faire ce changement. Ce message lui sera envoyé dans votre conversation :",
       "send": "Envoyer la demande",
       "sent": "Demande envoyée à {{name}}.",
       "openConversation": "Voir la conversation",
@@ -328,9 +336,15 @@
     },
     "reserve": {
       "button": "Passer dans la réserve de {{name}}",
-      "explain": "Tu restes lié.e à {{name}}, mais tu ne seras plus contacté.e pour ses alertes. Si tu étais sa Sentinelle Lead, tu laisses ce rôle. Seul.e {{name}} peut te remettre dans un cercle.",
+      "explain": "Tu restes lié{{_e}} à {{name}}, mais tu ne seras plus contacté{{_e}} pour ses alertes. Si tu étais sa Sentinelle Lead, tu laisses ce rôle. Seul.e {{name}} peut te remettre dans un cercle.",
+      "explain_female": "Tu restes lié{{_e}} à {{name}}, mais tu ne seras plus contacté{{_e}} pour ses alertes. Si tu étais sa Sentinelle Lead, tu laisses ce rôle. Seule {{name}} peut te remettre dans un cercle.",
+      "explain_male": "Tu restes lié{{_e}} à {{name}}, mais tu ne seras plus contacté{{_e}} pour ses alertes. Si tu étais sa Sentinelle Lead, tu laisses ce rôle. Seul {{name}} peut te remettre dans un cercle.",
+      "explain_neutral": "Tu restes lié{{_e}} à {{name}}, mais tu ne seras plus contacté{{_e}} pour ses alertes. Si tu étais sa Sentinelle Lead, tu laisses ce rôle. Il n'y a que {{name}} qui peut te remettre dans un cercle.",
       "confirm": "Oui, passer en réserve",
-      "inReserve": "Tu es dans la réserve de {{name}} : tu n'es pas contacté.e pour ses alertes. Seul.e {{name}} peut te remettre dans un cercle."
+      "inReserve": "Tu es dans la réserve de {{name}} : tu n'es pas contacté{{_e}} pour ses alertes. Seul.e {{name}} peut te remettre dans un cercle.",
+      "inReserve_female": "Tu es dans la réserve de {{name}} : tu n'es pas contacté{{_e}} pour ses alertes. Seule {{name}} peut te remettre dans un cercle.",
+      "inReserve_male": "Tu es dans la réserve de {{name}} : tu n'es pas contacté{{_e}} pour ses alertes. Seul {{name}} peut te remettre dans un cercle.",
+      "inReserve_neutral": "Tu es dans la réserve de {{name}} : tu n'es pas contacté{{_e}} pour ses alertes. Il n'y a que {{name}} qui peut te remettre dans un cercle."
     }
   },
   "alerts": {
@@ -423,7 +437,6 @@
       "statusByCompanion": "Statut (personne protégée)",
       "statusByFirstCircle": "Statut (1er cercle)",
       "status": {
-        "none": "Pas encore de statut.",
         "placeholder": "Ex. Tout va bien, merci"
       },
       "labelField": "Nom de l'alerte",
@@ -437,7 +450,7 @@
       },
       "leave": {
         "button": "Quitter cette alerte",
-        "confirm": "Quitter cette alerte ? Tu ne seras plus notifié·e à son sujet.",
+        "confirm": "Quitter cette alerte ? Tu ne seras plus notifié{{_e}} à son sujet.",
         "needOtherLead": "Une autre Sentinelle Lead doit prendre le lead avant que tu puisses quitter cette alerte."
       },
       "messageAlert": "Message de départ",
@@ -470,34 +483,8 @@
         "firstCircle": "1er cercle"
       },
       "roster": "1er cercle",
-      "leadExplain": "Tout le 1er cercle agit ensemble. La Lead responsable décide de la suite une fois la personne retrouvée.",
-      "takeOverConfirm": "Reprendre la responsabilité de cette alerte ? La Lead responsable actuelle sera prévenue.",
-      "found": {
-        "button": "Personne retrouvée",
-        "title": "Personne retrouvée : et maintenant ?",
-        "intro": "Tu es la Lead responsable : dis comment va la personne et ce qu'il faut faire maintenant.",
-        "notePlaceholder": "Précisions (où, ce qu'il faut…)",
-        "submit": "Confirmer",
-        "submitClose": "Confirmer et terminer l'alerte",
-        "options": {
-          "FINE": {
-            "title": "Tout va bien",
-            "hint": "Termine l'alerte pour tout le monde."
-          },
-          "PICKUP": {
-            "title": "Il faut aller la chercher",
-            "hint": "L'alerte reste ouverte jusqu'à ce que ce soit fait."
-          },
-          "REPATRIATION": {
-            "title": "Rapatriement à organiser",
-            "hint": "L'alerte reste ouverte jusqu'à ce que ce soit fait."
-          },
-          "CARE": {
-            "title": "A besoin de soins",
-            "hint": "L'alerte reste ouverte jusqu'à ce que ce soit fait."
-          }
-        }
-      }
+      "leadExplain": "Tout le 1er cercle agit ensemble, la Lead responsable coordonne. Quand c'est fini, n'importe qui du 1er cercle peut arrêter l'alerte avec un petit mot pour tout le monde.",
+      "takeOverConfirm": "Reprendre la responsabilité de cette alerte ? La Lead responsable actuelle sera prévenue."
     },
     "backToTiles": "← Retour",
     "seeRunningAlert": "Voir l'alerte en cours",
@@ -522,29 +509,33 @@
       "soon": "Bientôt disponible"
     },
     "self": {
-      "intro": "Tout est facultatif : tu peux aussi juste appuyer sur le bouton.",
-      "situationLabel": "Qu'est-ce qui se passe ? Comment vas-tu ?",
-      "situationPlaceholder": "Ex. : je suis tombé.e et je n'arrive pas à me relever",
-      "needsLabel": "De quoi as-tu besoin ?",
-      "needsPlaceholder": "Ex. : que quelqu'un vienne, un appel, qu'on m'emmène",
-      "needsPrefix": "Ce dont j'ai besoin :",
-      "statusLabel": "Statut (tu pourras le mettre à jour ensuite)",
-      "statusPlaceholder": "Ex. : je suis en sécurité pour l'instant"
+      "situationLabel": "Qu'est-ce qui se passe ?",
+      "situationPlaceholder": "Ex. : je suis tombé{{_e}} et je n'arrive pas à me relever",
+      "whereLabel": "Où es-tu ?",
+      "wherePlaceholder": "Ex. : chez moi, à la gare de Lausanne"
     },
     "other": {
       "situationLabel": "Qu'est-ce qui se passe ?",
       "situationPlaceholder": "Ex. : ne répond plus depuis hier soir",
-      "needsLabel": "De quoi cette personne a-t-elle besoin ?",
-      "needsPlaceholder": "Ex. : que quelqu'un passe la voir, contacter ses proches",
-      "statusPlaceholder": "Ex. : on appelle ses proches"
+      "whereLabel": "Où est-elle ?",
+      "whereLabel_male": "Où est-il ?",
+      "whereLabel_neutral": "Où est {{name}} ?",
+      "wherePlaceholder": "Ex. : à son domicile, au travail, on ne sait pas",
+      "bothRequired": "Pour une assistance, écris ce qui se passe et où est la personne (ou envoie ta position) : il faut pouvoir la retrouver."
     },
-    "stopFinalWordLabel": "Un mot final (facultatif) — il deviendra le statut",
+    "stopFinalWordLabel": "Un petit mot pour tout le monde (facultatif) : il deviendra le statut et sera envoyé à toutes les personnes qui ont participé",
     "stopFinalWordPlaceholder": "Ex. : Léa est rentrée, tout va bien, merci à toutes et tous",
     "questions": {
-      "CAN_VISIT": "Pouvez-vous aller le/la voir ?",
+      "CAN_VISIT": "Pouvez-vous aller la voir ?",
+      "CAN_VISIT_male": "Pouvez-vous aller le voir ?",
+      "CAN_VISIT_neutral": "Pouvez-vous aller voir {{name}} ?",
       "LAST_NEWS": "Ses dernières nouvelles ?",
-      "SEEMED_OK": "Semblait-il/elle aller bien ?",
-      "WHERE_SEEN": "Où l'avez-vous vu.e pour la dernière fois ?"
+      "SEEMED_OK": "Semblait-elle aller bien ?",
+      "SEEMED_OK_male": "Semblait-il aller bien ?",
+      "SEEMED_OK_neutral": "{{name}} semblait aller bien ?",
+      "WHERE_SEEN": "Où l'avez-vous vue pour la dernière fois ?",
+      "WHERE_SEEN_male": "Où l'avez-vous vu pour la dernière fois ?",
+      "WHERE_SEEN_neutral": "Où avez-vous vu {{name}} pour la dernière fois ?"
     },
     "replies": {
       "GOING": "Oui, je m'en occupe",
@@ -562,7 +553,6 @@
         "Alerte lancée",
         "1er cercle prévenu",
         "Recherche élargie",
-        "Personne retrouvée",
         "Terminée"
       ],
       "stepsLabel": "Où en est l'alerte",
@@ -575,11 +565,11 @@
           "welcome": [
             "Le 1er cercle agit avec toi : discutez dans le Salon.",
             "N'importe qui peut demander de l'aide aux autres cercles.",
-            "Quand {{name}} est retrouvé.e, c'est toi qui décides de la suite."
+            "Quand c'est fini, arrête l'alerte avec un petit mot pour remercier tout le monde."
           ],
           "todo": [
             "Coordonne avec le 1er cercle dans le Salon",
-            "Quand {{name}} est retrouvé.e : touche « Personne retrouvée » dans le Salon et décide de la suite"
+            "Quand c'est fini : arrête l'alerte avec un petit mot pour tout le monde"
           ]
         },
         "lead": {
@@ -608,19 +598,6 @@
             "Dis si tu peux t'en occuper",
             "Discute avec le cercle dans le Salon",
             "Demande de l'aide si besoin"
-          ]
-        },
-        "found": {
-          "banner": "{{name}} a été retrouvé.e",
-          "tag": "Bonne nouvelle",
-          "title": "{{name}} a été retrouvé.e",
-          "welcome": [
-            "{{lead}} a décidé de la suite : {{followUp}}",
-            "L'alerte reste ouverte jusqu'à ce que ce soit fait."
-          ],
-          "todo": [
-            "{{followUp}}",
-            "Une fois fait : termine l'alerte (en bas de la page)"
           ]
         },
         "companion": {
@@ -698,20 +675,24 @@
     },
     "ask": {
       "missing": "{{name}} ne donne plus de nouvelles. Peux-tu aider à la retrouver maintenant ?",
+      "missing_male": "{{name}} ne donne plus de nouvelles. Peux-tu aider à le retrouver maintenant ?",
+      "missing_neutral": "{{name}} ne donne plus de nouvelles. Peux-tu aider à retrouver {{name}} maintenant ?",
       "help": "{{name}} a besoin d'aide. Peux-tu t'en occuper maintenant ?",
       "assistance": "{{name}} a besoin d'assistance. Peux-tu intervenir maintenant ?",
       "whatItMeans": "T'en occuper, c'est essayer de joindre {{name}}, aller voir si besoin, et tenir le 1er cercle au courant dans le Salon."
     },
     "location": {
       "add": "Ajouter ma position",
+      "addMine": "Envoyer ma position",
       "locating": "Recherche de ta position…",
       "added": "Ta position sera envoyée (précision ± {{accuracy}}).",
       "remove": "Retirer",
       "hint": "Ta position est envoyée à ton 1er cercle avec l'alerte, aussi par SMS. Seulement si tu appuies sur le bouton.",
-      "denied": "Ton téléphone n'autorise pas l'accès à ta position. Tu peux l'écrire dans le message.",
-      "failed": "Ta position n'a pas pu être trouvée. Tu peux réessayer ou l'écrire dans le message.",
-      "unsupported": "Ce navigateur ne peut pas donner ta position. Tu peux l'écrire dans le message.",
-      "approximate": "Position pas précise (± {{accuracy}}) : elle est quand même envoyée, mais écris aussi où tu es dans le message si tu peux. Sur un ordinateur, la position est souvent devinée à partir de la connexion internet.",
+      "hintMine": "Si tu es avec la personne : ta position est envoyée au 1er cercle avec l'alerte, aussi par SMS.",
+      "denied": "Ton téléphone n'autorise pas l'accès à ta position. Tu peux écrire où tu es.",
+      "failed": "Ta position n'a pas pu être trouvée. Tu peux réessayer ou écrire où tu es.",
+      "unsupported": "Ce navigateur ne peut pas donner ta position. Tu peux écrire où tu es.",
+      "approximate": "Position pas précise (± {{accuracy}}) : elle est quand même envoyée, mais écris aussi où tu es si tu peux. Sur un ordinateur, la position est souvent devinée à partir de la connexion internet.",
       "update": "Mettre à jour ma position",
       "updated": "Position envoyée à ton 1er cercle (± {{accuracy}}).",
       "openMap": "Voir sur la carte",
@@ -722,7 +703,26 @@
       },
       "copy": "Copier les coordonnées",
       "copied": "Coordonnées copiées"
-    }
+    },
+    "closingWords": {
+      "fine": {
+        "label": "Tout va bien",
+        "text": "Tout va bien, merci à toutes et tous."
+      },
+      "found": {
+        "label": "Retrouvé.e",
+        "text": "On a retrouvé {{name}}, qui donnera des nouvelles bientôt. Merci pour tout, ne vous inquiétez pas."
+      },
+      "falseAlarm": {
+        "label": "Fausse alerte",
+        "text": "Fausse alerte, désolé.e pour l'inquiétude. Merci d'avoir été là."
+      },
+      "sad": {
+        "label": "Triste nouvelle",
+        "text": "Nous avons une triste nouvelle concernant {{name}}. Merci pour votre présence, nous vous donnerons des nouvelles."
+      }
+    },
+    "placePrefix": "Lieu :"
   },
   "history": {
     "title": "Historique",
@@ -757,10 +757,18 @@
       "contacts": "Avec tes contacts",
       "alerts": "Pendant une alerte"
     },
-    "alertChatName": "Alerte · {{who}}",
     "today": "Aujourd'hui",
     "yesterday": "Hier",
-    "emoji": "Ajouter un smiley"
+    "emoji": "Ajouter un smiley",
+    "alertChatClosed": "Fermée",
+    "alertResolved": "Alerte terminée",
+    "alertChatReadOnly": "Cette discussion est fermée : tu peux la relire, mais plus y écrire.",
+    "alertChatOpenUntil": "L'alerte est terminée. Cette discussion reste ouverte jusqu'au {{date}}, puis passe en lecture seule.",
+    "openAlert": "Voir l'alerte",
+    "alertChatTitle": "Alerte {{who}} · {{type}}",
+    "chatFirstCircle": "Chat 1er cercle",
+    "chatFirstCircleWith": "Chat 1er cercle avec {{name}}",
+    "chatWithFirstCircle": "Chat avec le 1er cercle"
   },
   "conversation": {
     "back": "← Retour aux messages",
@@ -793,7 +801,7 @@
       "SENTINEL_REQUEST_RECEIVED": "{{who}} veut devenir votre sentinelle",
       "SENTINEL_LINK_ACCEPTED": "{{who}} a accepté",
       "SENTINEL_LINK_DECLINED": "{{who}} a refusé",
-      "SENTINEL_GROUP_INVITED": "{{who}} t'a invité.e dans un groupe",
+      "SENTINEL_GROUP_INVITED": "{{who}} t'a invité{{_e}} dans un groupe",
       "DEATH_NOTICE_REPORTED": "Un décès a été signalé — ta confirmation est nécessaire",
       "DEATH_NOTICE_CONFIRMED": "Un décès a été annoncé",
       "DEATH_NOTICE_REJECTED": "Ton signalement de décès a été rejeté comme erreur",
@@ -801,7 +809,9 @@
       "CIRCLE_MOVE_PROPOSED": "{{who}} vous propose de rejoindre son 1er cercle",
       "CIRCLE_MOVE_ACCEPTED": "{{who}} a rejoint votre 1er cercle",
       "CIRCLE_MOVE_DECLINED": "{{who}} a refusé de rejoindre votre 1er cercle",
-      "SENTINEL_TO_RESERVE": "{{who}} est passé.e dans votre réserve pour l'instant"
+      "SENTINEL_TO_RESERVE": "{{who}} est passé.e dans votre réserve pour l'instant",
+      "SENTINEL_TO_RESERVE_female": "{{who}} est passée dans votre réserve pour l'instant",
+      "SENTINEL_TO_RESERVE_male": "{{who}} est passé dans votre réserve pour l'instant"
     }
   },
   "settings": {
@@ -811,7 +821,7 @@
     "editable": "Infos modifiables",
     "phone": "Téléphone",
     "addPhone": "Ajouter ton numéro de téléphone",
-    "isMajor": "Je suis majeur.e",
+    "isMajor": "Je suis majeur{{_e}}",
     "publicStatus": "Statut public",
     "allowMessagingByDefault": "Autoriser mes sentinelles à me contacter par défaut",
     "status": "Statut du compte",
@@ -846,7 +856,8 @@
     "dev": {
       "title": "Dev / tests",
       "hasPaid": "Compte payant (hasPaid)",
-      "hasPaidHint": "Temporaire — remplace un vrai moyen de paiement tant qu'aucun n'est branché."
+      "hasPaidHint": "Temporaire — remplace un vrai moyen de paiement tant qu'aucun n'est branché.",
+      "deathNoticePurchased": "Annonce de décès achetée (test)"
     },
     "deathNotice": {
       "title": "En cas de décès",
@@ -905,7 +916,7 @@
       "plan": "Ton offre",
       "free": "Gratuite",
       "paid": "Payante",
-      "whatPaid": "Le compte payant permet notamment de créer un cercle de groupe. D'autres fonctions suivront.",
+      "whatPaid": "Le compte payant comprend les alertes sans limite, les cercles de groupe et l'annonce de décès.",
       "upgrade": "Passer au compte payant",
       "soon": "Le paiement en ligne arrive bientôt.",
       "userTypes": {
@@ -943,14 +954,15 @@
       "sentinel": "Ajoute un autre Sentinel avec un numéro"
     },
     "whatsMissing": "Ce qu'il manque",
-    "notReadyTap": "Pas encore prêt · touche pour voir ce qu'il manque",
     "minimumTitle": "Pour que ton filet fonctionne, il faut au minimum :",
     "minimum": {
       "phone": "ton numéro de téléphone, vérifié",
       "lead": "une Sentinelle Lead avec un numéro de téléphone",
       "sentinel": "une autre Sentinelle avec un numéro de téléphone"
     },
-    "minimumWhy": "Sans ça, une alerte ne peut prévenir personne par SMS."
+    "minimumWhy": "Sans ça, une alerte ne peut prévenir personne par SMS.",
+    "notProtected": "Pas protégé.e : alerte impossible",
+    "tapToSee": "Touche pour voir ce qu'il manque"
   },
   "newCirclePage": {
     "title": "Nouveau cercle",
@@ -965,7 +977,7 @@
     "intro": "Un cercle de groupe est partagé entre plusieurs personnes, comme une chorale ou une équipe : chaque membre veille sur tous les autres, et tous veillent sur lui ou elle.",
     "nameLabel": "Nom du groupe",
     "namePlaceholder": "Ex. Chorale",
-    "next": "Ensuite, invite des membres. Tu ne peux inviter que des personnes avec qui tu es déjà connecté·e.",
+    "next": "Ensuite, invite des membres. Tu ne peux inviter que des personnes avec qui tu es déjà connecté{{_e}}.",
     "create": "Créer le groupe"
   },
   "info": {
@@ -1159,11 +1171,13 @@
       "forMe": "Pause pour moi : personne d'autre ne peut lancer d'alerte sur moi",
       "forMeHint": "Tu peux toujours lancer une alerte toi-même.",
       "forOthers": "Pause pour les autres : on ne peut pas me solliciter pour une alerte",
-      "forOthersHint": "Tu es retiré.e tout de suite des alertes en cours, et tu ne seras pas contacté.e pour les nouvelles.",
+      "forOthersHint": "Tu es retiré{{_e}} tout de suite des alertes en cours, et tu ne seras pas contacté{{_e}} pour les nouvelles.",
       "leadBlocked": "Tu es Lead sur une alerte en cours. Passe d'abord la main à un.e autre Lead et quitte cette alerte, puis mets-toi en pause."
     },
     "person": {
       "forOthers": "{{name}} est en pause : ne peut pas être sollicité.e pour une alerte en ce moment.",
+      "forOthers_female": "{{name}} est en pause : ne peut pas être sollicitée pour une alerte en ce moment.",
+      "forOthers_male": "{{name}} est en pause : ne peut pas être sollicité pour une alerte en ce moment.",
       "forMe": "{{name}} est en pause : personne d'autre ne peut lancer d'alerte à son sujet en ce moment."
     },
     "raiseOption": "en pause",
@@ -1181,5 +1195,137 @@
       "keep": "Rester en pause",
       "allSettings": "Tous les paramètres"
     }
+  },
+  "legal": {
+    "links": "Documents légaux",
+    "privacy": "Confidentialité",
+    "terms": "Conditions d'utilisation",
+    "notice": "Mentions légales",
+    "accept": {
+      "before": "J'accepte les ",
+      "terms": "conditions d'utilisation",
+      "and": " et la ",
+      "privacy": "politique de confidentialité",
+      "after": "."
+    },
+    "gate": {
+      "title": "Avant de continuer",
+      "intro": "Pour utiliser MySentinelCircle, il faut accepter nos conditions d'utilisation et notre politique de confidentialité. Elles expliquent quelles données sont utilisées, pourquoi, et comment les effacer.",
+      "accept": "Continuer",
+      "logout": "Se déconnecter"
+    }
+  },
+  "contact": {
+    "call": "Appeler {{name}}"
+  },
+  "plans": {
+    "title": "Offres",
+    "intro": "Être Sentinelle est toujours gratuit. L'abonnement sert à protéger toi-même au quotidien.",
+    "alertsLeft_one": "Il te reste {{count}} alerte gratuite sur {{limit}}.",
+    "alertsLeft_other": "Il te reste {{count}} alertes gratuites sur {{limit}}.",
+    "current": "Ton offre actuelle",
+    "soon": "(bientôt)",
+    "paymentSoon": "Le paiement en ligne arrive bientôt.",
+    "seePlans": "Voir les offres",
+    "free": {
+      "title": "Gratuit",
+      "price": "0 CHF",
+      "items": {
+        "sentinel": "Être Sentinelle de qui tu veux, sans limite",
+        "firstCircle": "Ton 1er cercle et tes autres cercles",
+        "messages": "Les messages avec tes proches",
+        "trial_one": "1 alerte à ton sujet pour essayer, une fois pour toutes",
+        "trial_other": "{{count}} alertes à ton sujet pour essayer, une fois pour toutes"
+      }
+    },
+    "paid": {
+      "title": "Abonnement",
+      "price": "[Prix à définir] / an",
+      "subscribe": "S'abonner pour un an",
+      "items": {
+        "alerts": "Alertes à ton sujet sans limite, SMS compris",
+        "groups": "Créer des cercles de groupe",
+        "deathNotice": "L'annonce de décès",
+        "travel": "Le mode voyage",
+        "noAds": "Sans publicité"
+      },
+      "renew": "Ajouter une année",
+      "until": "jusqu'au {{date}}",
+      "ended": "Ton abonnement s'est terminé le {{date}}.",
+      "gift": "Tu peux aussi offrir une année à un.e proche, ou payer une seule alerte quand elle est bloquée."
+    },
+    "deathNotice": {
+      "title": "Annonce de décès seule",
+      "price": "[Prix à définir], une seule fois",
+      "text": "Pour préparer l'annonce à tes Sentinelles sans prendre d'abonnement. Déjà comprise dans l'abonnement.",
+      "buy": "Acheter",
+      "included": "Comprise dans ton abonnement",
+      "owned": "Annonce de décès achetée"
+    },
+    "locked": {
+      "alerts": "Tes alertes gratuites sont utilisées. Pour lancer d'autres alertes, il faut l'abonnement.",
+      "groups": "Créer un cercle de groupe fait partie de l'abonnement. Rejoindre le groupe de quelqu'un d'autre reste gratuit.",
+      "deathNotice": "Préparer l'annonce de décès fait partie de l'abonnement, ou s'achète une seule fois à part."
+    },
+    "payAlert": {
+      "self": {
+        "intro": "Ton alerte gratuite est déjà utilisée. Pour lancer celle-ci :",
+        "year": "M'abonner pour un an et lancer l'alerte"
+      },
+      "other": {
+        "intro": "{{name}} a déjà utilisé son alerte gratuite et n'a pas d'abonnement. Pour lancer cette alerte :",
+        "year": "Offrir un an d'abonnement à {{name}} et lancer l'alerte"
+      },
+      "single": "Payer seulement cette alerte"
+    },
+    "pill": {
+      "label": "Abonnement",
+      "modalTitle": "Fait partie de l'abonnement",
+      "groups": "Créer un cercle de groupe fait partie de l'abonnement. Rejoindre le groupe de quelqu'un d'autre reste gratuit.",
+      "travel": "L'alerte voyage fera partie de l'abonnement : tes proches sont prévenu.e.s si tu n'arrives pas à destination à l'heure prévue.",
+      "deathNotice": "Préparer l'annonce de décès fait partie de l'abonnement, ou s'achète une seule fois à part.",
+      "alerts": "Après ton alerte gratuite, les alertes à ton sujet font partie de l'abonnement."
+    },
+    "dashboard": {
+      "freeLeft_one": "1 alerte gratuite disponible",
+      "freeLeft_other": "{{count}} alertes gratuites disponibles",
+      "freeUsed": "Alerte gratuite utilisée · voir les offres"
+    },
+    "nudge": {
+      "afterAlert": "Ton alerte gratuite a servi. Pour que tes proches puissent toujours être prévenu.e.s, l'abonnement te couvre toute l'année.",
+      "netReady": "Ton filet est prêt : ton 1er cercle peut porter une alerte. Avec l'abonnement, il reste actif toute l'année, sans limite d'alertes.",
+      "later": "Plus tard"
+    },
+    "gift": {
+      "button": "Offrir un an à {{name}}",
+      "title": "Offrir un an à {{name}}",
+      "text": "{{name}} a déjà utilisé son alerte gratuite. En lui offrant un an d'abonnement, une alerte pourra toujours être lancée à son sujet.",
+      "confirm": "Offrir un an"
+    },
+    "star": "Abonnement en cours : une alerte peut toujours être lancée pour cette personne.",
+    "includedStar": "Inclus dans ton abonnement",
+    "starLegend": "= compris dans ton abonnement"
+  },
+  "gender": {
+    "label": "Comment parler de moi",
+    "hint": "Facultatif. Sert à accorder les textes que voient tes proches (par exemple « Peux-tu aller la voir ? »). Sans choix, les textes restent inclusifs.",
+    "options": {
+      "none": "Non renseigné (textes inclusifs)",
+      "FEMALE": "Elle",
+      "MALE": "Il",
+      "NEUTRAL": "Neutre"
+    }
+  },
+  "dictate": {
+    "start": "Dicter",
+    "stop": "Arrêter la dictée",
+    "listening": "J'écoute… (touche pour arrêter)",
+    "unsupported": "Ce navigateur ne sait pas dicter. Sur téléphone, utilise le micro du clavier ; sinon, ouvre l'app dans Chrome, Edge ou Safari."
+  },
+  "alertSignal": {
+    "waiting_one": "Une alerte attend ta réponse",
+    "waiting_other": "{{count}} alertes attendent ta réponse",
+    "running_one": "Une alerte est en cours",
+    "running_other": "{{count}} alertes sont en cours"
   }
 }

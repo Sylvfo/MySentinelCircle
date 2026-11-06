@@ -14,13 +14,22 @@ import {
   sendMessage,
   type Message,
 } from '../api/messaging';
+import { CallButton } from '../components/CallButton';
 import { PersonAvatar } from '../components/PersonAvatar';
 import { CircleChip } from '../components/CircleChip';
 import { SentinelIcon } from '../components/SentinelIcon';
 import { CompanionIcon } from '../components/CompanionIcon';
 import { MessageBubbles } from '../components/MessageBubbles';
 import { EmojiButton } from '../components/EmojiButton';
-import { avatarPathOf, isPausedOf, myCompanionColor, mySentinelColor, publicStatusOf } from '../relations';
+import {
+  avatarPathOf,
+  isPausedOf,
+  isSubscribedOf,
+  myCompanionColor,
+  mySentinelColor,
+  publicStatusOf,
+} from '../relations';
+import { NameStar } from '../components/SubscribedStar';
 
 // Everything known about the other person, from both directions of the
 // relationship: they can be my Sentinel, someone I watch over, or both.
@@ -39,6 +48,7 @@ interface ContactInfo {
   companionColor: string | null;
   avatarPath: string | null;
   paused?: boolean;
+  subscribed?: boolean;
   publicStatus: string | null;
 }
 
@@ -99,6 +109,7 @@ export function ConversationPage() {
             companionColor: myCompanionColor(companions, userId),
             avatarPath: avatarPathOf(circles, companions, userId),
             paused: isPausedOf(circles, companions, userId),
+            subscribed: isSubscribedOf(circles, companions, userId),
             publicStatus: publicStatusOf(circles, companions, userId),
           });
         } else {
@@ -212,6 +223,7 @@ export function ConversationPage() {
             <div>
               <h1>
                 {info.firstName} {info.lastName}
+                {info.subscribed && <NameStar title={t('plans.star')} />}
               </h1>
               {/* One line per direction. No link at all only happens for
                   the feedback inbox's correspondents: no lines then. */}
@@ -236,6 +248,8 @@ export function ConversationPage() {
             </div>
           </Link>
         )}
+        {/* Outside the link above (no link inside a link). */}
+        {info && <CallButton phone={info.phone} name={info.firstName} compact className="conversation-call" />}
         {/* Their status under the photo, across the whole header. */}
         {info?.publicStatus && <p className="conversation-status">{info.publicStatus}</p>}
         {/* Only when there is one: no alert is the normal case. */}

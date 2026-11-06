@@ -1,10 +1,11 @@
 import { SmsInboundService } from './sms-inbound.service';
 import { SentinelService } from './sentinel.service';
 import { AlertService } from '../alert/alert.service';
+import { RetentionService } from '../privacy/retention.service';
 
 const link = (firstName: string, userType = 'ONLY_SMS') => ({
   userCompanion: { firstName },
-  linkAsSentinel: { userType },
+  linkAsSentinel: { userType, phone: '+33611111111' },
 });
 
 const question = (
@@ -31,6 +32,7 @@ describe('SmsInboundService', () => {
     answerQuestion: jest.Mock;
   };
   let sms: { send: jest.Mock };
+  let retention: { eraseStubIfUnused: jest.Mock };
   let service: SmsInboundService;
 
   beforeEach(() => {
@@ -45,9 +47,11 @@ describe('SmsInboundService', () => {
       answerQuestion: jest.fn().mockResolvedValue(replied),
     };
     sms = { send: jest.fn().mockResolvedValue(undefined) };
+    retention = { eraseStubIfUnused: jest.fn().mockResolvedValue(true) };
     service = new SmsInboundService(
       sentinel as unknown as SentinelService,
       alert as unknown as AlertService,
+      retention as unknown as RetentionService,
       sms,
     );
   });
@@ -82,6 +86,7 @@ describe('SmsInboundService', () => {
         action: 'left',
       });
       expect(sentinel.leaveLinkBySms).toHaveBeenCalledWith(only);
+      expect(retention.eraseStubIfUnused).toHaveBeenCalledWith(phone);
     });
 
     it('reports a last Lead kept in place', async () => {
@@ -92,6 +97,7 @@ describe('SmsInboundService', () => {
         matched: true,
         action: 'last_lead_kept',
       });
+      expect(retention.eraseStubIfUnused).not.toHaveBeenCalled();
     });
 
     it('asks who on STOP with several people, removing nobody', async () => {
@@ -137,6 +143,7 @@ describe('SmsInboundService', () => {
         action: 'declined',
       });
       expect(sentinel.answerInvitation).toHaveBeenCalledWith(invitation, false);
+      expect(retention.eraseStubIfUnused).toHaveBeenCalledWith(phone);
     });
   });
 

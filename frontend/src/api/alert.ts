@@ -1,3 +1,4 @@
+import type { Gender } from '../gender';
 import { apiGet, apiPatch, apiPost } from './client';
 
 export type AlertType = 'BYCOMPANION' | 'LITTLEWORRY' | 'MISSING' | 'INCIDENT' | 'UNKNOWN' | 'EMERGENCY' | 'NOCONTACT';
@@ -54,7 +55,7 @@ export interface AlertSummary {
 export interface MyAlertSummary extends AlertSummary {
   myParticipation: { status: string; circleId: string } | null;
   // Who the alert is about.
-  userCompanion: { firstName: string; lastName: string | null };
+  userCompanion: { firstName: string; lastName: string | null; gender?: Gender | null };
 }
 
 // Needs the caller now: it's their own alert, they're in its 1st circle
@@ -94,13 +95,19 @@ export interface AlertParticipant {
   requestedBy: { id: string; firstName: string } | null;
   // avatarPath: their photo's cache key (see avatars.ts).
   userSentinels: {
-    linkAsSentinel: { id: string; firstName: string; avatarPath?: string | null; pausedForOthers?: boolean };
+    linkAsSentinel: {
+      id: string;
+      firstName: string;
+      avatarPath?: string | null;
+      pausedForOthers?: boolean;
+      gender?: Gender | null;
+    };
   };
   questions: AlertQuestion[];
 }
 
 export interface AlertDetail extends AlertSummary {
-  userCompanion: { id: string; firstName: string; myCircles: { id: string; label: string }[] };
+  userCompanion: { id: string; firstName: string; gender?: Gender | null; myCircles: { id: string; label: string }[] };
   // Who last wrote statusByFirstCircle (statusByCompanion is always the
   // companion, no ambiguity there) / renamed the alert — last writer only.
   statusUpdatedBy: { id: string; firstName: string } | null;
@@ -144,6 +151,8 @@ export const raiseAlert = (data: {
   alertType: AlertType;
   reason: string;
   location?: AlertLocation;
+  // Past the free alert, with no subscription: I pay for this one alert.
+  payForThisAlert?: boolean;
 }) =>
   apiPost<AlertSummary>('/alert/raise', data);
 
@@ -151,15 +160,13 @@ export const raiseAlert = (data: {
 export const updateAlertLocation = (id: string, location: AlertLocation) =>
   apiPatch<AlertSummary>(`/alert/${id}/location`, location);
 
-export const closeAlert = (id: string) => apiPost<AlertSummary>(`/alert/${id}/close`, {});
+// finalWord: optional closing words — the stopper's status, posted in the
+// alert's chats and sent in the end-of-alert SMS.
+export const closeAlert = (id: string, finalWord?: string) =>
+  apiPost<AlertSummary>(`/alert/${id}/close`, finalWord ? { finalWord } : {});
 
 export const claimLead = (id: string) => apiPost<AlertDetail>(`/alert/${id}/claim-lead`, {});
 
-// Person found + what next — the responsible Lead only. FINE closes the
-// alert; the others keep it open (CLOSING) with the follow-up as the note.
-export type FoundFollowUp = 'FINE' | 'PICKUP' | 'REPATRIATION' | 'CARE';
-export const markFound = (id: string, followUp: FoundFollowUp, note?: string) =>
-  apiPost<AlertSummary>(`/alert/${id}/found`, { followUp, ...(note ? { note } : {}) });
 
 // "I can't help anymore": the caller's participation becomes CLOSED. A Lead
 // can only leave once another Lead has taken the lead after them.
@@ -197,7 +204,7 @@ export interface MyParticipation {
     messageAlert: string;
     statusByCompanion: string | null;
     statusByFirstCircle: string | null;
-    userCompanion: { firstName: string };
+    userCompanion: { firstName: string; gender?: Gender | null };
   };
 }
 

@@ -1,3 +1,4 @@
+import type { Gender } from '@prisma/client';
 import { normalizeSmsText } from '../sms/normalize-sms';
 
 export const ALERT_QUESTION_KINDS = [
@@ -25,7 +26,11 @@ export const FIRST_CIRCLE_REPLIES: AlertReplyOption[] = [
 ];
 
 interface AlertQuestionDefinition {
+  // Default wording: speaks of the person as "la / elle" when their gender
+  // isn't set (Sylvie's rule, 2026-11-06). `byGender` overrides it; "{name}"
+  // is replaced by their first name (the neutral wording uses it).
   smsText: string;
+  byGender?: Partial<Record<Gender, string>>;
   // Empty for a free-text question.
   replies: AlertReplyOption[];
 }
@@ -35,7 +40,11 @@ const NO_WORDS = ['non', 'no'];
 
 const ALERT_QUESTIONS: Record<AlertQuestionKind, AlertQuestionDefinition> = {
   CAN_VISIT: {
-    smsText: 'Pouvez-vous aller le/la voir ?',
+    smsText: 'Pouvez-vous aller la voir ?',
+    byGender: {
+      MALE: 'Pouvez-vous aller le voir ?',
+      NEUTRAL: 'Pouvez-vous aller voir {name} ?',
+    },
     replies: [
       { code: 'YES', smsLabel: 'Oui', words: YES_WORDS },
       { code: 'LATER', smsLabel: 'Plus tard', words: ['plus tard', 'tard'] },
@@ -59,7 +68,11 @@ const ALERT_QUESTIONS: Record<AlertQuestionKind, AlertQuestionDefinition> = {
     ],
   },
   SEEMED_OK: {
-    smsText: 'Semblait-il/elle aller bien ?',
+    smsText: 'Semblait-elle aller bien ?',
+    byGender: {
+      MALE: 'Semblait-il aller bien ?',
+      NEUTRAL: '{name} semblait aller bien ?',
+    },
     replies: [
       { code: 'YES', smsLabel: 'Oui', words: YES_WORDS },
       { code: 'NO', smsLabel: 'Non', words: NO_WORDS },
@@ -71,13 +84,23 @@ const ALERT_QUESTIONS: Record<AlertQuestionKind, AlertQuestionDefinition> = {
     ],
   },
   WHERE_SEEN: {
-    smsText: "Ou l'avez-vous vu.e pour la derniere fois ?",
+    smsText: "Ou l'avez-vous vue pour la derniere fois ?",
+    byGender: {
+      MALE: "Ou l'avez-vous vu pour la derniere fois ?",
+      NEUTRAL: 'Ou avez-vous vu {name} pour la derniere fois ?',
+    },
     replies: [],
   },
 };
 
-export function alertQuestionText(kind: AlertQuestionKind): string {
-  return ALERT_QUESTIONS[kind].smsText;
+export function alertQuestionText(
+  kind: AlertQuestionKind,
+  about?: { firstName: string; gender: Gender | null },
+): string {
+  const question = ALERT_QUESTIONS[kind];
+  const text =
+    (about?.gender && question.byGender?.[about.gender]) || question.smsText;
+  return text.replace('{name}', about?.firstName ?? '');
 }
 
 export function repliesFor(kind: AlertQuestionKind): AlertReplyOption[] {

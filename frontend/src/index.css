@@ -2072,7 +2072,6 @@ a.conversation-contact{color:inherit; text-decoration:none;}
 .security-score.explainable{position:relative;}
 .app-content button.security-score-toggle{all:unset; display:block; width:100%; cursor:pointer;}
 .app-content button.security-score-toggle:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:6px;}
-.security-score-help{display:block; margin-top:0.3rem; font-size:0.85rem; color:var(--text-muted);}
 .security-score-popup{position:absolute; z-index:30; top:calc(100% + 0.4rem); left:0; right:0; max-width:24rem; padding:0.75rem 0.9rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); font-size:0.92rem;}
 .security-score-popup ul{list-style:none; margin:0.4rem 0; padding:0; display:flex; flex-direction:column; gap:0.25rem;}
 .security-score-popup li.done{color:#1a7f37;}
@@ -2318,3 +2317,139 @@ a.map-link, .app-content button.map-link, button.map-link {
 .reverse-link select{margin-left:0.25rem;}
 /* A sender name that opens their page keeps its own color. */
 .bubble-name a{color:inherit;}
+
+/* Legal pages (privacy, terms, legal notice) and the terms consent. */
+.legal-page{max-width:720px; margin:0 auto; padding:1.5rem 16px 3rem; background:var(--bg); color:var(--text); line-height:1.55;}
+.legal-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;}
+.legal-back{background:none; border:none; color:var(--accent); font:inherit; cursor:pointer; padding:0;}
+.legal-page h2{font-size:1.1rem; margin:1.6rem 0 0.4rem;}
+.legal-page ul{padding-left:1.2rem;}
+.legal-page li{margin:0.25rem 0;}
+.legal-updated{color:var(--text-muted); font-size:0.9rem; margin-top:-0.4rem;}
+.legal-links{display:flex; flex-wrap:wrap; justify-content:center; gap:0.4rem 1rem; margin-top:1.5rem; font-size:0.85rem;}
+.legal-links a{color:var(--text-muted);}
+.auth-page label.terms-checkbox, label.terms-checkbox{flex-direction:row; align-items:flex-start; gap:0.5rem; font-size:0.9rem;}
+.terms-checkbox input{margin-top:0.2rem; flex:none; width:auto;}
+.terms-gate{display:flex; flex-direction:column; gap:0.9rem;}
+.terms-gate .link-button{background:none; border:none; color:var(--accent); font:inherit; cursor:pointer; padding:0;}
+
+/* Call button (tel: link): beside "Send a message" on a person page, a round
+   icon in the top-right corner of a conversation's header. */
+.person-contact-actions{display:flex; flex-wrap:wrap; gap:0.6rem; margin:0 0 1.25rem;}
+.person-contact-actions .button-link{margin:0;}
+.conversation-header .call-button.compact{position:absolute; top:0.75rem; right:1rem; width:2.6rem; height:2.6rem; padding:0; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.2rem;}
+
+/* Plans page and upgrade prompts (free vs paid). */
+.plans-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:1rem; margin-top:1rem;}
+.plan-card ul{padding-left:1.1rem; margin:0.5rem 0;}
+.plan-card li{margin:0.3rem 0;}
+.plan-price{font-size:1.2rem; font-weight:700; margin:0.2rem 0 0.4rem;}
+.plan-current{outline:2px solid var(--accent); outline-offset:-2px;}
+.plan-badge{font-weight:700; color:var(--accent);}
+.plan-soon{color:var(--text-muted); font-size:0.85rem;}
+.plans-usage{font-weight:600;}
+.upgrade-notice{border:1px dashed var(--accent); border-radius:var(--radius); padding:0.9rem 1rem; margin:0.8rem 0; display:flex; flex-direction:column; gap:0.6rem; align-items:flex-start;}
+.upgrade-notice p{margin:0;}
+.pay-choice button{align-self:stretch;}
+
+/* "Subscription" lock pill on paid features, nudges and gifts (free plan). */
+.paid-pill{display:inline-flex; align-items:center; gap:0.3rem; vertical-align:middle; margin-left:0.5rem; padding:0.1rem 0.6rem; border:1.5px solid var(--accent); border-radius:999px; color:var(--accent); background:transparent; font:inherit; font-size:0.8rem; font-weight:700; letter-spacing:0.03em; text-transform:uppercase; white-space:nowrap; cursor:pointer; line-height:1.4;}
+.paid-pill svg{width:13px; height:13px; fill:currentColor; stroke:currentColor; stroke-width:2;}
+.paid-pill.chip{cursor:default; font-size:0.7rem; padding:0 0.45rem;}
+.app-content button.paid-pill{margin:0 0 0 0.5rem; padding:0.1rem 0.6rem; border:1.5px solid var(--accent); border-radius:999px; background:transparent; color:var(--accent);}
+.paid-pill:hover{background:var(--accent-subtle);}
+.paid-pill:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.header-action-row{display:inline-flex; align-items:center; flex-wrap:wrap; gap:0.25rem;}
+.raise-alert-btn .raise-alert-plan{display:block; margin-top:0.3rem; font-size:0.85rem; font-weight:700; opacity:0.9;}
+.plan-nudge{border:1px solid var(--accent); background:var(--accent-subtle); border-radius:var(--radius); padding:0.8rem 1rem; display:flex; flex-direction:column; gap:0.5rem;}
+.plan-nudge p{margin:0;}
+.plan-nudge .row{display:flex; flex-wrap:wrap; align-items:center; gap:1rem;}
+.gift-year-wrap{display:block; margin-top:0.35rem;}
+.app-content button.gift-year{margin:0; padding:0.15rem 0.6rem; font-size:0.8rem; border-radius:999px; border:1.5px solid var(--accent); background:transparent; color:var(--accent); white-space:normal;}
+
+/* Gold star on a subscribed person (variant A): top-right, opposite the
+   pause badge. Same gold family as the 1st circle, a little brighter. */
+.subscribed-star{position:absolute; right:-7px; top:-7px; width:22px; height:22px; z-index:1; pointer-events:none;}
+.subscribed-star svg{width:100%; height:100%; display:block; overflow:visible;}
+.subscribed-star path, .name-star path{fill:#C9952F; stroke:var(--bg); stroke-width:1.6; stroke-linejoin:round;}
+.subscribed-star.on-ring{width:24px; height:24px; right:-8px; top:-8px;}
+/* Next to a name: after it. To put it before, use `order:-1` on a flex
+   parent or swap the markup — one place to change. */
+.name-star{display:inline-block; width:0.9em; height:0.9em; margin-left:0.3em; vertical-align:-0.05em;}
+.name-star svg{width:100%; height:100%; display:block; overflow:visible;}
+.name-star path{stroke-width:1.2;}
+
+/* Login: the two ways in without the password, side by side. */
+.login-help{display:flex; flex-wrap:wrap; justify-content:space-between; gap:0.5rem 1rem; margin:0.75rem 0 0; font-size:0.9rem;}
+.auth-page .login-help .link-button{width:auto; margin:0; padding:0; background:none; border:none; color:var(--accent); font:inherit; cursor:pointer;}
+
+/* An alert chat shown inline (the isolated chat with an outer circle): the
+   Messages composer, but in the flow, never fixed at the bottom. */
+.alert-chat.inline .conversation-compose,
+.conversation-page .alert-chat.inline .conversation-compose{position:static; width:auto; padding:0.5rem 0 0; background:none;}
+
+/* An alert's chat in Messages: title block, and the closed / open-until note. */
+.alert-chat-head h1{margin:0 0 0.25rem; font-size:1.4rem;}
+.alert-chat-head{margin-bottom:0.75rem;}
+.chat-closed-note{margin:0.5rem 0; padding:0.5rem 0.75rem; border-radius:8px; background:var(--surface-muted, rgba(19,67,86,0.08)); color:var(--text-muted); font-size:0.9rem;}
+.conversation-row.alert-chat-row.resolved .alert-chat-icon{opacity:0.5;}
+.status-note-field{display:flex; flex-direction:column; gap:0.3rem;}
+
+/* Safety net not ready: nobody can raise an alert for me. Big and red. */
+.security-score-alarm{display:flex; flex-direction:column; gap:0.1rem; margin-top:0.45rem; color:var(--danger); text-align:left;}
+.security-score-alarm strong{font-size:1.1rem; line-height:1.25;}
+.security-score-alarm span{font-size:0.9rem; text-decoration:underline;}
+
+/* Stopping an alert: ready-made closing words to pick from. */
+.stop-words{display:flex; flex-wrap:wrap; gap:0.4rem; margin:0.5rem 0;}
+.app-content button.stop-word{margin:0; padding:0.35rem 0.75rem; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--text); font-size:0.9rem;}
+.app-content button.stop-word.selected{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 15%, transparent);}
+
+/* Running alert: blocks that open on a tap (role steps, replies, circles). */
+details.role-banner > summary, details.alert-section.collapsible > summary{cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; gap:0.5rem;}
+details.role-banner > summary::-webkit-details-marker, details.alert-section.collapsible > summary::-webkit-details-marker{display:none;}
+details.role-banner > summary::after, details.alert-section.collapsible > summary::after{content:''; flex:none; width:0.55rem; height:0.55rem; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(45deg); margin-right:0.3rem; transition:transform 0.15s;}
+details[open].role-banner > summary::after, details[open].alert-section.collapsible > summary::after{transform:rotate(-135deg);}
+details.alert-section.collapsible > summary h2{margin:0;}
+details.role-banner[open] > ol{margin-top:0.5rem;}
+
+/* An alert chat's page: which chat it is, under the title. */
+.alert-chat-kind{margin:0 0 0.2rem; font-weight:600;}
+
+/* Raise form: one even rhythm — the same gap between each block (who,
+   what, where, the button), a tighter one inside a block. */
+.raise-self-form .tile-body{display:flex; flex-direction:column; gap:1.4rem;}
+.raise-self-form .tile-body > *{margin:0;}
+.raise-self-form .tile-body > label{margin:0;}
+.raise-field{display:flex; flex-direction:column; gap:0.5rem;}
+.raise-self-form .raise-field > label{font-weight:600; margin:0;}
+.raise-actions{display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;}
+.raise-hint{color:var(--text-muted); font-size:0.8rem;}
+.raise-field .alert-location{margin:0;}
+.app-content button.dictate-btn, .app-content button.raise-action-btn{display:inline-flex; align-items:center; gap:0.4rem; margin:0; padding:0.3rem 0.8rem; border-radius:999px; border:1.5px solid var(--accent); background:transparent; color:var(--accent); font-size:0.9rem;}
+.app-content button.raise-action-btn:disabled{opacity:0.6;}
+.dictate-btn svg{width:16px; height:16px; fill:currentColor; stroke:currentColor; stroke-width:1.8; stroke-linecap:round;}
+.dictate-btn svg path{fill:none;}
+.app-content button.dictate-btn.listening{background:var(--danger); border-color:var(--danger); color:#fff;}
+@media (prefers-reduced-motion: no-preference){.dictate-btn.listening svg{animation:dictate-pulse 1.2s ease-in-out infinite;}}
+@keyframes dictate-pulse{50%{opacity:0.4;}}
+.dictate-unsupported{flex-basis:100%; color:var(--text-muted); font-size:0.8rem;}
+
+/* Top bar alert signal (AlertSignal): big pulsing red triangle while an
+   alert waits for my answer, small orange one while one is running. */
+:root{--signal-red:#c62828; --signal-amber:#b26a00; --signal-amber-bg:#fff3e0;}
+:root[data-theme='dark']{--signal-red:#ff5a5a; --signal-amber:#f2a33a; --signal-amber-bg:#3a2a12;}
+.app-nav a.alert-signal{display:inline-flex; align-items:center; justify-content:center; flex:none; padding:0; margin:0 0.35rem 0 0; border-radius:50%; text-decoration:none; background:none;}
+.app-nav a.alert-signal svg{display:block;}
+.app-nav a.alert-signal.urgent svg{width:30px; height:30px;}
+.app-nav a.alert-signal.urgent .tri{fill:var(--signal-red);}
+.app-nav a.alert-signal.urgent .mark{stroke:#fff;}
+.app-nav a.alert-signal.running{width:24px; height:24px; background:var(--signal-amber-bg);}
+.app-nav a.alert-signal.running svg{width:15px; height:15px;}
+.app-nav a.alert-signal.running .tri{fill:none; stroke:var(--signal-amber); stroke-width:2.2;}
+.app-nav a.alert-signal.running .mark{stroke:var(--signal-amber);}
+.app-nav a.alert-signal:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+@media (prefers-reduced-motion: no-preference){
+  .app-nav a.alert-signal.urgent{animation:alert-signal-pulse 1.6s ease-in-out infinite;}
+  @keyframes alert-signal-pulse{0%,100%{transform:scale(1);} 50%{transform:scale(1.12);}}
+}

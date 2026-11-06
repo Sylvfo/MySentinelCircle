@@ -1,3 +1,4 @@
+import { alertChatClosingDate } from '../common/conversation-closed';
 import {
   BadRequestException,
   ConflictException,
@@ -48,12 +49,18 @@ import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
 import { UpdateAlertStatusDto } from './dto/update-alert-status.dto';
 import { UpdateAlertLabelDto } from './dto/update-alert-label.dto';
-import { MarkFoundDto, type FoundFollowUp } from './dto/mark-found.dto';
 import {
   NOT_PAUSED_SENTINEL,
   assertNotDeceased,
   assertNotPausedForMe,
 } from '../user/user-status.util';
+import {
+  FREE_ALERT_TRIAL_LIMIT,
+  FREE_TRIAL_USED_UP,
+  PAYMENT_NOT_AVAILABLE,
+  isSubscribed,
+  paymentSimulated,
+} from '../user/plan.util';
 
 export const LEAD_CANNOT_PAUSE =
   'You are a Lead on an alert in progress — hand the lead over and leave that alert before pausing';
@@ -96,17 +103,8 @@ function withReplyOptions<T extends { kind: string }>(question: T) {
   };
 }
 
-// Written as the 1st circle's status note when the responsible Lead marks
-// the person found with a follow-up still to organize (FINE closes instead).
-const FOUND_FOLLOW_UP_NOTES: Record<Exclude<FoundFollowUp, 'FINE'>, string> = {
-  PICKUP: 'Personne retrouvée : il faut aller la chercher',
-  REPATRIATION: 'Personne retrouvée : rapatriement à organiser',
-  CARE: 'Personne retrouvée : a besoin de soins',
-};
-
 const OUTER_CIRCLE_BATCH_SIZE = 2;
 const OUTER_CIRCLE_STALE_HOURS = 4;
-const FREE_ALERT_TRIAL_LIMIT = 3;
 // Members without a manual callOrder sort after every manually-ordered one
 // (assumed to stay well under this), in a stable-but-unpredictable order.
 const RANDOM_CALL_ORDER_OFFSET = 1_000_000;
@@ -137,17 +135,28 @@ export class AlertService {
     if (incompleteCaller) {
       throw new ForbiddenException('Complete your profile first');
     }
-    // Only the person themself can share where they are — nobody else's
-    // phone says where they are.
-    if (dto.location && callerId !== dto.companionId) {
+    // A position comes from the phone of whoever raises the alert: their
+    // own for an alert about themself, or — for an assistance alert raised
+    // by someone who's with the person — where that someone is, said as
+    // such. Never for a missing person: nobody knows where they are.
+    const forSelf = callerId === dto.companionId;
+    if (dto.location && !forSelf && dto.alertType !== AlertType.INCIDENT) {
       throw new BadRequestException(
-        'A location can only be shared when raising an alert for yourself',
+        'A location can only be shared for yourself or for an assistance alert',
       );
     }
-    const location = dto.location ? describeLocation(dto.location) : null;
+    const sharedBy =
+      dto.location && !forSelf ? await this.firstNameOf(callerId) : undefined;
+    const location = dto.location
+      ? describeLocation(dto.location, false, sharedBy)
+      : null;
     await this.assertCompanionCanBeAlerted(callerId, dto.companionId);
     await this.assertNoActiveAlert(dto.companionId);
-    await this.assertCanAffordAlert(dto.companionId);
+    const paidById = await this.assertCanAffordAlert(
+      callerId,
+      dto.companionId,
+      dto.payForThisAlert === true,
+    );
 
     const circle = await this.prisma.circle.findFirst({
       where: {
@@ -222,6 +231,7 @@ export class AlertService {
           launchedById: callerId,
           userCompanionId: dto.companionId,
           firstCircleId: circle.id,
+          paidById,
         },
       });
 
@@ -269,7 +279,7 @@ export class AlertService {
     await this.notifyParticipants(
       alert.id,
       links,
-      alertRaisedSms(companionFullName(companion), location?.mapUrl),
+      alertRaisedSms(companionFullName(companion), location?.mapUrl, sharedBy),
     );
 
     if (callerId !== dto.companionId && companion?.phone) {
@@ -292,7 +302,10 @@ export class AlertService {
     return alert;
   }
 
-  async closeAlert(callerId: string, alertId: string) {
+  // finalWord (optional): a few closing words ("All fine, thank you all")
+  // — the stopper's status note, posted in every chat of the alert they're
+  // in, and included in the end-of-alert SMS.
+  async closeAlert(callerId: string, alertId: string, finalWord?: string) {
     const alert = await this.prisma.alert.findUnique({
       where: { id: alertId },
       include: {
@@ -318,6 +331,8 @@ export class AlertService {
       alert.firstCircleId,
     );
 
+    const word = finalWord?.trim() || null;
+    const isCompanion = callerId === alert.userCompanionId;
     const now = new Date();
     const [updatedAlert] = await this.prisma.$transaction([
       this.prisma.alert.update({
@@ -326,19 +341,51 @@ export class AlertService {
           alertStatus: AlertStatus.RESOLVED,
           closedAt: now,
           closedById: callerId,
+          // The closing word becomes the stopper's own side's status.
+          ...(word && isCompanion ? { statusByCompanion: word } : {}),
+          ...(word && !isCompanion
+            ? {
+                statusByFirstCircle: word,
+                statusUpdatedById: callerId,
+                statusUpdatedAt: now,
+              }
+            : {}),
         },
       }),
       this.prisma.alertParticipant.updateMany({
         where: { alertId },
         data: { closedAt: now },
       }),
+      // The chats stay open a few more days (see conversation-closed.ts).
       this.prisma.conversation.updateMany({
         where: { alertId },
-        data: { closedAt: now },
+        data: { closedAt: alertChatClosingDate(now) },
       }),
     ]);
 
-    const text = alertClosedSms(alert.userCompanion.firstName);
+    // Posted in each of the alert's chats the stopper is in (they stay
+    // open 7 more days): everyone reads it where they were talking.
+    if (word) {
+      const chats = await this.prisma.conversation.findMany({
+        where: {
+          alertId,
+          participants: { some: { userId: callerId, leftAt: null } },
+        },
+        select: { id: true },
+      });
+      for (const chat of chats) {
+        await this.prisma.message.create({
+          data: {
+            conversationId: chat.id,
+            senderId: callerId,
+            type: MessageType.TEXT,
+            body: word,
+          },
+        });
+      }
+    }
+
+    const text = alertClosedSms(alert.userCompanion.firstName, word);
     await Promise.allSettled(
       alert.participants
         .filter((p) => p.contactedAt && p.circleId !== alert.firstCircleId)
@@ -359,62 +406,6 @@ export class AlertService {
       actorId: callerId,
     });
     return updatedAlert;
-  }
-
-  // Person found: the responsible (active) Lead's decision — the one call
-  // reserved to them; everything else is open to the whole 1st circle.
-  // FINE ends the alert. Otherwise it moves to CLOSING with the follow-up
-  // written as the 1st circle's status note, and stays open until someone
-  // in the 1st circle closes it once that's done.
-  async markFound(callerId: string, alertId: string, dto: MarkFoundDto) {
-    const alert = await this.prisma.alert.findUnique({
-      where: { id: alertId },
-      include: {
-        participants: {
-          where: { isLead: true },
-          select: {
-            leadAssignedAt: true,
-            userSentinels: { select: { userSentinelId: true } },
-          },
-        },
-      },
-    });
-    if (!alert) throw new NotFoundException('Alert not found');
-    if (alert.alertStatus === AlertStatus.RESOLVED) {
-      throw new ConflictException('This alert is already closed');
-    }
-    const active = alert.participants
-      .filter((p) => p.leadAssignedAt)
-      .sort(
-        (a, b) => b.leadAssignedAt!.getTime() - a.leadAssignedAt!.getTime(),
-      )[0];
-    if (!active || active.userSentinels.userSentinelId !== callerId) {
-      throw new ForbiddenException(
-        'Only the responsible Lead can mark the person found — take over the lead first',
-      );
-    }
-
-    if (dto.followUp === 'FINE') return this.closeAlert(callerId, alertId);
-
-    const note = dto.note?.trim();
-    const now = new Date();
-    const updated = await this.prisma.alert.update({
-      where: { id: alertId },
-      data: {
-        alertStatus: AlertStatus.CLOSING,
-        closingAt: now,
-        statusByFirstCircle: note
-          ? `${FOUND_FOLLOW_UP_NOTES[dto.followUp]} — ${note}`
-          : FOUND_FOLLOW_UP_NOTES[dto.followUp],
-        statusUpdatedById: callerId,
-        statusUpdatedAt: now,
-      },
-    });
-    await this.notifyAlertParticipants(alertId, {
-      type: NotificationType.ALERT_RESPONSE,
-      actorId: callerId,
-    });
-    return updated;
   }
 
   // Any Lead Sentinel can claim active leadership of an alert at any time,
@@ -536,6 +527,8 @@ export class AlertService {
           select: {
             id: true,
             firstName: true,
+            // How texts speak about them ("can you go and see her?").
+            gender: true,
             // So the companion or 1st circle can pick a target for
             // requestCircle without a separate lookup (listCircles() only
             // works for the companion themself, not a Sentinel caller).
@@ -564,6 +557,7 @@ export class AlertService {
                   select: {
                     id: true,
                     firstName: true,
+                    gender: true,
                     avatarPath: true,
                     pausedForOthers: true,
                   },
@@ -847,7 +841,7 @@ export class AlertService {
     await this.notifyParticipants(
       alertId,
       batch,
-      alertQuestionSms(await this.companionName(alert), dto.questionKind),
+      await this.questionSms(alert, dto.questionKind),
     );
 
     await this.notifyAlertParticipants(alertId, {
@@ -892,7 +886,7 @@ export class AlertService {
     await this.notifyParticipants(
       alertId,
       links,
-      alertQuestionSms(await this.companionName(alert), dto.questionKind),
+      await this.questionSms(alert, dto.questionKind),
     );
     await this.notifyAlertParticipants(alertId);
     return this.getAlert(callerId, alertId);
@@ -935,12 +929,30 @@ export class AlertService {
     });
   }
 
-  private async companionName(alert: { userCompanionId: string }) {
+  private async firstNameOf(userId: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true },
+    });
+    return user?.firstName ?? '';
+  }
+
+  // The question SMS, worded for the companion's gender.
+  private async questionSms(
+    alert: { userCompanionId: string },
+    kind: AlertQuestionKind,
+  ) {
     const companion = await this.prisma.user.findUnique({
       where: { id: alert.userCompanionId },
-      select: { firstName: true, lastName: true },
+      select: { firstName: true, lastName: true, gender: true },
     });
-    return companionFullName(companion);
+    return alertQuestionSms(
+      companionFullName(companion),
+      kind,
+      companion
+        ? { firstName: companion.firstName, gender: companion.gender }
+        : undefined,
+    );
   }
 
   // At most OUTER_CIRCLE_BATCH_SIZE members per call — ordered by manual
@@ -1101,7 +1113,7 @@ export class AlertService {
             statusByCompanion: true,
             statusByFirstCircle: true,
             firstCircleId: true,
-            userCompanion: { select: { firstName: true } },
+            userCompanion: { select: { firstName: true, gender: true } },
           },
         },
         questions: { orderBy: { createdAt: 'asc' } },
@@ -1408,7 +1420,9 @@ export class AlertService {
           select: { status: true, circleId: true },
         },
         // Who the alert is about — the History list names them.
-        userCompanion: { select: { firstName: true, lastName: true } },
+        userCompanion: {
+          select: { firstName: true, lastName: true, gender: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1446,24 +1460,30 @@ export class AlertService {
     }
   }
 
-  // Lifetime (not annual) free trial, per plan.txt ACCOUNTS & BILLING —
-  // the companion being alerted is the one whose trial/payment counts,
-  // regardless of who actually raises the alert.
-  private async assertCanAffordAlert(companionId: string) {
+  // Lifetime (not annual) free trial, per plan.txt "What's gated" — the
+  // companion being alerted is the one whose trial/subscription counts,
+  // regardless of who actually raises the alert. Past the trial, the caller
+  // may pay for this single alert: returns who paid it (null = covered).
+  private async assertCanAffordAlert(
+    callerId: string,
+    companionId: string,
+    payForThisAlert: boolean,
+  ): Promise<string | null> {
     const companion = await this.prisma.user.findUnique({
       where: { id: companionId },
-      select: { hasPaid: true },
+      select: { paidUntil: true },
     });
-    if (companion?.hasPaid) return;
+    if (companion && isSubscribed(companion)) return null;
 
     const count = await this.prisma.alert.count({
       where: { userCompanionId: companionId },
     });
-    if (count >= FREE_ALERT_TRIAL_LIMIT) {
-      throw new ForbiddenException(
-        'Free trial alerts used up — a paid Companion account is needed to raise more',
-      );
+    if (count < FREE_ALERT_TRIAL_LIMIT) return null;
+    if (!payForThisAlert) throw new ForbiddenException(FREE_TRIAL_USED_UP);
+    if (!paymentSimulated()) {
+      throw new ForbiddenException(PAYMENT_NOT_AVAILABLE);
     }
+    return callerId;
   }
 
   // raiseAlert only: "Me", or ANY of their accepted Sentinels, any circle —
@@ -1662,8 +1682,9 @@ export class AlertService {
 }
 
 // Lines describing a shared position in Alert.messageAlert — replaced (not
-// piled up) when the person updates it.
-const POSITION_LINE = /^Position (partagée|mise à jour)\b.*$/m;
+// piled up) when the person updates it. Also stripped when the account is
+// deleted (AccountDeletionService).
+export const POSITION_LINE = /^Position (partagée|mise à jour)\b.*$/m;
 
 // Beyond this the position is a rough guess (a computer without GPS
 // locates by its internet connection): said so, never refused.
@@ -1678,7 +1699,13 @@ function formatAccuracy(meters: number): string {
 
 // The shared GPS position as a map link and
 // the line added to the alert's message.
-function describeLocation(loc: AlertLocationDto, updated = false) {
+// sharedBy: the first name of whoever sent a position that isn't their own
+// alert's (an assistance alert raised by someone on the spot).
+function describeLocation(
+  loc: AlertLocationDto,
+  updated = false,
+  sharedBy?: string,
+) {
   const lat = loc.latitude.toFixed(5);
   const lng = loc.longitude.toFixed(5);
   // Google's official "show this place" link: opens the Google Maps app on
@@ -1690,6 +1717,10 @@ function describeLocation(loc: AlertLocationDto, updated = false) {
     loc.accuracy !== undefined
       ? ` (${approximate ? 'approximative, ' : ''}${formatAccuracy(loc.accuracy)})`
       : '';
-  const label = updated ? 'Position mise à jour' : 'Position partagée';
+  const label = updated
+    ? 'Position mise à jour'
+    : sharedBy
+      ? `Position partagée par ${sharedBy}`
+      : 'Position partagée';
   return { mapUrl, text: `${label}${precision} : ${mapUrl}` };
 }

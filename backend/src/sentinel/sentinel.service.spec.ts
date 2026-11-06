@@ -53,6 +53,7 @@ describe('SentinelService', () => {
       update: jest.Mock;
     };
     alertParticipant: { count: jest.Mock };
+    alert: { groupBy: jest.Mock };
     $transaction: jest.Mock;
   };
   let sms: { send: jest.Mock };
@@ -90,6 +91,7 @@ describe('SentinelService', () => {
         update: jest.fn(),
       },
       alertParticipant: { count: jest.fn() },
+      alert: { groupBy: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((arg: unknown) =>
         typeof arg === 'function'
           ? (arg as (tx: unknown) => unknown)(prisma)
@@ -112,6 +114,32 @@ describe('SentinelService', () => {
   });
 
   describe('listCircles', () => {
+    it('tells whether each Sentinel is subscribed, without the end date', async () => {
+      prisma.circle.findFirst
+        .mockResolvedValueOnce({ id: 'first-1' })
+        .mockResolvedValueOnce({ id: 'reserve-1' });
+      prisma.circle.findMany.mockResolvedValueOnce([
+        {
+          id: 'first-1',
+          circleType: CircleType.FIRST,
+          userSentinels: [
+            {
+              id: 'l1',
+              linkAsSentinel: { id: 'a', paidUntil: new Date('2999-01-01') },
+            },
+            { id: 'l2', linkAsSentinel: { id: 'b', paidUntil: null } },
+          ],
+        },
+      ]);
+
+      const [first] = await service.listCircles('me');
+
+      expect(first.userSentinels.map((m) => m.linkAsSentinel)).toEqual([
+        { id: 'a', subscribed: true },
+        { id: 'b', subscribed: false },
+      ]);
+    });
+
     it('creates the 1st and reserve circles if missing, sorted FIRST -> BASIC -> RESERVED', async () => {
       prisma.circle.findFirst
         .mockResolvedValueOnce(null) // ensurePrimaryCircle: none yet
@@ -619,7 +647,7 @@ describe('SentinelService', () => {
         prisma.user.findUnique.mockResolvedValueOnce({
           id: 'alice',
           userType: UserType.ACCOUNT,
-          hasPaid: true,
+          paidUntil: new Date('2999-01-01'),
         });
         prisma.circle.create.mockResolvedValueOnce({ id: 'root-1' });
 
@@ -638,7 +666,7 @@ describe('SentinelService', () => {
         prisma.user.findUnique.mockResolvedValueOnce({
           id: 'alice',
           userType: UserType.ACCOUNT,
-          hasPaid: false,
+          paidUntil: null,
         });
 
         await expect(
@@ -859,9 +887,9 @@ describe('SentinelService', () => {
           .mockResolvedValueOnce(2)
           .mockResolvedValueOnce(0);
 
-        await expect(service.moveSelfToReserve('sam', 'link-1')).rejects.toThrow(
-          ConflictException,
-        );
+        await expect(
+          service.moveSelfToReserve('sam', 'link-1'),
+        ).rejects.toThrow(ConflictException);
         expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
       });
 
@@ -871,15 +899,20 @@ describe('SentinelService', () => {
         );
         prisma.alertParticipant.count.mockResolvedValueOnce(1);
 
-        await expect(service.moveSelfToReserve('sam', 'link-1')).rejects.toThrow(
-          ConflictException,
-        );
+        await expect(
+          service.moveSelfToReserve('sam', 'link-1'),
+        ).rejects.toThrow(ConflictException);
         expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
       });
 
       it.each([
         ['someone else', 'other', link(CircleType.BASIC), ForbiddenException],
-        ['already in reserve', 'sam', link(CircleType.RESERVED), ConflictException],
+        [
+          'already in reserve',
+          'sam',
+          link(CircleType.RESERVED),
+          ConflictException,
+        ],
         ['a group link', 'sam', link(CircleType.GROUP), BadRequestException],
         [
           'a link that is not active',
@@ -890,9 +923,9 @@ describe('SentinelService', () => {
       ])('refuses %s', async (_label, caller, row, error) => {
         prisma.linkSentinels.findUnique.mockResolvedValueOnce(row);
 
-        await expect(service.moveSelfToReserve(caller, 'link-1')).rejects.toThrow(
-          error,
-        );
+        await expect(
+          service.moveSelfToReserve(caller, 'link-1'),
+        ).rejects.toThrow(error);
       });
     });
 
@@ -2310,14 +2343,22 @@ describe('SentinelService', () => {
             label: '1er cercle',
             isPrimary: true,
             isReserve: false,
+            isGroup: false,
           },
           proposedCircle: null,
-          companion: { id: 'companion-1', email: null, phone: '+41790000000' },
+          companion: {
+            id: 'companion-1',
+            email: null,
+            phone: '+41790000000',
+            subscribed: false,
+            freeAlertUsed: false,
+          },
           firstCircleMembers: [
             {
               id: 'sentinel-2',
               firstName: 'Chloé',
               lastName: 'Morel',
+              subscribed: false,
               isLead: false,
             },
           ],

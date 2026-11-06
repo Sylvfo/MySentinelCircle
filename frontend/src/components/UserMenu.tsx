@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { setThemeChoice, useThemeChoice } from '../themeMode';
+import { NameStar } from './SubscribedStar';
 
 // Your own name in the nav: opens a small menu (Settings / Log out). The menu
 // is position: fixed from the button's on-screen spot, because the mobile
@@ -58,6 +59,7 @@ export function UserMenu() {
         onClick={toggle}
       >
         {user.firstName}
+        {user.hasPaid && <NameStar />}
       </button>
       {anchor && (
         <div

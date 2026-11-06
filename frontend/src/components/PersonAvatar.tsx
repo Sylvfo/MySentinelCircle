@@ -1,6 +1,7 @@
 import { useAvatarUrl } from '../avatars';
 import { RelationIcons } from './RelationIcons';
 import { PauseBadge } from './PauseBadge';
+import { SubscribedStar } from './SubscribedStar';
 
 // A person as shown in lists and headers. With a profile photo: the round
 // photo, with the relation icon(s) as a small badge in the corner. Without:
@@ -13,6 +14,7 @@ export function PersonAvatar({
   size = 36,
   photoRing,
   paused,
+  subscribed,
 }: {
   userId: string;
   avatarPath: string | null | undefined;
@@ -24,11 +26,21 @@ export function PersonAvatar({
   photoRing?: string;
   // On pause (see Settings): dashed outline and a "||" badge.
   paused?: boolean;
+  // Running subscription: a gold star (top-right).
+  subscribed?: boolean;
 }) {
   const url = useAvatarUrl(userId, avatarPath);
 
   if (!url)
-    return <RelationIcons sentinelColor={sentinelColor} companionColor={companionColor} size={size} paused={paused} />;
+    return (
+      <RelationIcons
+        sentinelColor={sentinelColor}
+        companionColor={companionColor}
+        size={size}
+        paused={paused}
+        subscribed={subscribed}
+      />
+    );
 
   // Ring around the photo in the strongest relation color (as on the badge).
   const ringColor = photoRing ?? sentinelColor ?? companionColor ?? 'var(--border)';
@@ -36,6 +48,7 @@ export function PersonAvatar({
     <span className={`person-avatar${paused ? ' is-paused' : ''}`} style={{ width: size, height: size }}>
       <img src={url} alt="" className="person-avatar-photo" style={{ borderColor: ringColor }} />
       {paused && <PauseBadge />}
+      {subscribed && <SubscribedStar />}
       {!photoRing && (
         <span className="person-avatar-badge">
           <RelationIcons

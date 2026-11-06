@@ -12,19 +12,29 @@ import {
 } from '../api/alert';
 import { replyLabel } from './replyLabel';
 import { LinkifiedText } from './LinkifiedText';
+import { genderContext } from '../gender';
 
 // The companion's other circles during an alert (the 1st circle has its own
 // room): one tile per circle with its people, whether it was asked, and
 // what the 1st circle can do with it right there — ask for help, ask a
 // further question, contact more of its members.
 
-function QuestionSelect({ value, onChange }: { value: AlertQuestionKind; onChange: (k: AlertQuestionKind) => void }) {
+// about: the companion, so each question is worded for them ("la voir").
+function QuestionSelect({
+  value,
+  onChange,
+  about,
+}: {
+  value: AlertQuestionKind;
+  onChange: (k: AlertQuestionKind) => void;
+  about?: { name: string; context?: 'female' | 'male' | 'neutral' };
+}) {
   const { t } = useTranslation();
   return (
     <select value={value} onChange={(e) => onChange(e.target.value as AlertQuestionKind)}>
       {ALERT_QUESTION_KINDS.map((kind) => (
         <option key={kind} value={kind}>
-          {t(`alerts.questions.${kind}`)}
+          {t(`alerts.questions.${kind}`, about)}
         </option>
       ))}
     </select>
@@ -61,6 +71,7 @@ export function AlertCircleTiles({
           alertId={detail.id}
           circle={c}
           members={detail.participants.filter((p) => p.circleId === c.id)}
+          about={{ name: detail.userCompanion.firstName, context: genderContext(detail.userCompanion.gender) }}
           canAct={canAct}
           onChange={onChange}
         />
@@ -78,12 +89,14 @@ function CircleTile({
   alertId,
   circle,
   members,
+  about,
   canAct,
   onChange,
 }: {
   alertId: string;
   circle: { id: string; label: string };
   members: AlertParticipant[];
+  about: { name: string; context?: 'female' | 'male' | 'neutral' };
   canAct: boolean;
   onChange: () => Promise<void>;
 }) {
@@ -182,7 +195,7 @@ function CircleTile({
       )}
       {form && (
         <div className="alert-circle-form">
-          <QuestionSelect value={kind} onChange={setKind} />
+          <QuestionSelect value={kind} onChange={setKind} about={about} />
           <button onClick={send} disabled={sending}>
             {form === 'ask'
               ? t('alerts.circlesView.sendTo', { count: askable.length })
@@ -211,6 +224,8 @@ interface Entry {
 const sameMoment = (a: string, b: string) => Math.abs(new Date(a).getTime() - new Date(b).getTime()) < 2000;
 
 export function AlertRepliesTimeline({ detail }: { detail: AlertDetail }) {
+  // Questions speak about the companion ("Où l'avez-vous vue ?").
+  const about = { name: detail.userCompanion.firstName, context: genderContext(detail.userCompanion.gender) };
   const { t } = useTranslation();
   const [filter, setFilter] = useState<'all' | Kind>('all');
   const first = detail.participants.filter((p) => p.circleId === detail.firstCircleId);
@@ -274,7 +289,7 @@ export function AlertRepliesTimeline({ detail }: { detail: AlertDetail }) {
           kind: 'reply',
           who: `${p.userSentinels.linkAsSentinel.firstName} (${p.circleName})`,
           text: q.kind === 'WHERE_SEEN' ? q.response : replyLabel(t, q.response),
-          note: t(`alerts.questions.${q.kind}`),
+          note: t(`alerts.questions.${q.kind}`, about),
         });
       }
     }
@@ -293,7 +308,7 @@ export function AlertRepliesTimeline({ detail }: { detail: AlertDetail }) {
       kind: 'action',
       who: a.by,
       text: t('alerts.timelineView.asked', { count: a.count }),
-      note: t(`alerts.questions.${a.kind}`),
+      note: t(`alerts.questions.${a.kind}`, about),
     });
   }
   entries.sort((a, b) => a.at.localeCompare(b.at));

@@ -1,3 +1,4 @@
+import type { Gender } from '../gender';
 import { apiGet, apiPost } from './client';
 
 export type NotificationType =
@@ -27,6 +28,8 @@ export interface NotificationItem {
   type: NotificationType;
   actorUserId: string | null;
   actorLabel: string | null;
+  // How the text speaks about whoever triggered it; null = inclusive.
+  actorGender?: Gender | null;
   accepted: boolean | null;
   targetId: string | null;
 }

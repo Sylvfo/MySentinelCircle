@@ -121,6 +121,13 @@ enum NotificationType {
   SENTINEL_LEFT
   CIRCLE_MOVE_PROPOSED
   CIRCLE_MOVE_ANSWERED
+  SENTINEL_TO_RESERVE
+}
+
+enum Gender {
+  FEMALE
+  MALE
+  NEUTRAL
 }
 
 model User {
@@ -138,6 +145,8 @@ model User {
   passwordHash String?
   loginAttempts    Int       @default(0)
   loginLockedUntil DateTime?
+  gender Gender? // how texts speak about me; null = inclusive wording
+
 
   googleId     String? @unique
   avatarPath String?
@@ -150,7 +159,6 @@ model User {
   pausedForMe     Boolean @default(false) // nobody else may raise an alert about me
   pausedForOthers Boolean @default(false) // I can't be asked to take part in any alert
   
-
   phone           String? @unique
   phoneVerifiedAt DateTime?
   pendingPhone String?
@@ -159,8 +167,11 @@ model User {
   publicStatus String?
 
   userType         UserType @default(ONLY_SMS)
-  hasPaid          Boolean  @default(false)
+ //hasPaid          Boolean  @default(false)
   confirmedByOwner Boolean  @default(false)
+  paidUntil              DateTime? // yearly subscription: active while in the future (replaces hasPaid)
+  deathNoticePurchasedAt DateTime? // one-time purchase of the death notice (without a subscription)
+  alertsPaid             Alert[]   @relation("AlertPaidBy")
 
   otpCodeHash  String?
   otpExpiresAt DateTime?
@@ -195,7 +206,10 @@ model User {
   conversationMemberships ConversationParticipant[]
   sentMessages            Message[]
 
-    deathReportedAt    DateTime?      // NEW — set when a Lead reports; cleared back to null on reject
+  termsAcceptedAt DateTime? // when the person accepted the terms + privacy policy
+  termsVersion    String?   // which version they accepted, e.g. "2026-11"
+
+  deathReportedAt    DateTime?      // NEW — set when a Lead reports; cleared back to null on reject
   deathReportedById  String?        // NEW
   deathReportedBy    User?          @relation("DeathReportedBy", fields: [deathReportedById], references: [id], onDelete: Restrict)  // NEW
   deathReportsFiled  User[]         @relation("DeathReportedBy")  // NEW — reverse side of the self-relation
@@ -312,6 +326,9 @@ model Alert {
   messageAlert String
   alertStatus  AlertStatus @default(SENT)
   alertType    AlertType   @default(UNKNOWN)
+
+  paidById String? // who paid for this single alert (outside any subscription)
+  paidBy   User?   @relation("AlertPaidBy", fields: [paidById], references: [id], onDelete: Restrict)
 
   statusByCompanion   String?
   statusByFirstCircle String?

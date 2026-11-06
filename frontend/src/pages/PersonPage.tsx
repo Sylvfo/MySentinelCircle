@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 type EndKind = 'end' | 'block';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { isChatClosed } from '../api/messaging';
 import { ApiError } from '../api/client';
 import { getAlert, type AlertDetail } from '../api/alert';
 import { useAuth } from '../auth/AuthContext';
@@ -19,11 +20,21 @@ import { PersonAvatar } from '../components/PersonAvatar';
 import { SentinelActions } from '../components/SentinelActions';
 import { CompanionActions } from '../components/CompanionActions';
 import { ReverseLinkOffer } from '../components/ReverseLinkOffer';
+import { CallButton } from '../components/CallButton';
 import { CircleChip } from '../components/CircleChip';
 import { SentinelIcon } from '../components/SentinelIcon';
 import { CompanionIcon } from '../components/CompanionIcon';
-import { avatarPathOf, isPausedOf, myCompanionColor, mySentinelColor, publicStatusOf } from '../relations';
+import {
+  avatarPathOf,
+  isPausedOf,
+  isSubscribedOf,
+  myCompanionColor,
+  mySentinelColor,
+  publicStatusOf,
+} from '../relations';
+import { NameStar } from '../components/SubscribedStar';
 import { companionColor, companionGold } from '../theme';
+import { genderContext } from '../gender';
 
 // /people/:userId — everything about one person in one place (a "friend
 // page"): who they are, then one section per direction of the relationship
@@ -117,7 +128,7 @@ export function PersonPage() {
   const sharedAlertChat =
     alert?.conversations.some(
       (conv) =>
-        !conv.closedAt &&
+        !isChatClosed(conv) &&
         conv.participants.some((p) => p.user.id === userId) &&
         conv.participants.some((p) => p.user.id === user?.id),
     ) ?? false;
@@ -211,6 +222,7 @@ export function PersonPage() {
         <div className="person-head-text">
           <h1>
             {person.firstName} {person.lastName}
+            {isSubscribedOf(circles, companions, userId) && <NameStar title={t('plans.star')} />}
           </h1>
           {(membership || companion) && (
             <div className="conversation-relations">
@@ -251,13 +263,24 @@ export function PersonPage() {
       {/* Their status under the photo, across the whole width. */}
       {publicStatus && <p className="person-status">{publicStatus}</p>}
       {membership?.linkAsSentinel.pausedForOthers && (
-        <p className="person-pause">{t('pause.person.forOthers', { name })}</p>
+        <p className="person-pause">
+          {t('pause.person.forOthers', { name, context: genderContext(membership.linkAsSentinel.gender) })}
+        </p>
       )}
-      {companion?.companion.pausedForMe && <p className="person-pause">{t('pause.person.forMe', { name })}</p>}
-      {canMessage && (
-        <Link to={`/messages/${userId}`} className="button-link person-message">
-          {t('companions.sendMessage', { name })}
-        </Link>
+      {companion?.companion.pausedForMe && (
+        <p className="person-pause">
+          {t('pause.person.forMe', { name, context: genderContext(companion.companion.gender) })}
+        </p>
+      )}
+      {(canMessage || person.phone) && (
+        <div className="person-contact-actions">
+          {canMessage && (
+            <Link to={`/messages/${userId}`} className="button-link person-message">
+              {t('companions.sendMessage', { name })}
+            </Link>
+          )}
+          <CallButton phone={person.phone} name={name} />
+        </div>
       )}
 
       <div className="about-tiles">

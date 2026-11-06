@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getSecurityScore, type SecurityScore } from '../api/sentinel';
 
@@ -35,7 +35,8 @@ export function SecurityScoreBar({ refreshKey, barOnly }: { refreshKey?: number;
   }, [open]);
 
   if (!security) return null;
-  const explain = !barOnly && !security.ready;
+  // Not ready: the red notice explains itself everywhere (Dashboard too).
+  const explain = !security.ready;
 
   const track = (
     <div
@@ -51,27 +52,48 @@ export function SecurityScoreBar({ refreshKey, barOnly }: { refreshKey?: number;
     </div>
   );
 
-  if (!explain) return <div className="security-score">{track}</div>;
+  // Not ready: nobody can raise an alert for me — said big and red, so it
+  // can't be missed (Dashboard and My Circles alike).
+  const notice = (
+    <span className="security-score-alarm" role="alert">
+      <strong>⚠ {t('securityScore.notProtected')}</strong>
+      <span>{t('securityScore.tapToSee')}</span>
+    </span>
+  );
+
+  if (!explain) return <div className={`security-score${barOnly ? ' bar-only' : ''}`}>{track}</div>;
+
+  // Inside the Dashboard tile (a link to My Circles): a tap on the notice
+  // or the popup explains, it doesn't navigate away.
+  const stay = (e: MouseEvent | ReactMouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
   return (
     <div
       ref={rootRef}
       className="security-score explainable"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      // Hover opens it with a mouse only: on a phone a tap would fire
+      // "enter" then "click" and close it straight away — a tap toggles.
+      onPointerEnter={(e) => e.pointerType === 'mouse' && setOpen(true)}
+      onPointerLeave={(e) => e.pointerType === 'mouse' && setOpen(false)}
     >
       <button
         type="button"
         className="security-score-toggle"
         aria-expanded={open}
         aria-label={t('securityScore.whatsMissing')}
-        onClick={() => setOpen((o) => !o)}
+        onClick={(e) => {
+          stay(e);
+          setOpen((o) => !o);
+        }}
       >
         {track}
-        <span className="security-score-help">{t('securityScore.notReadyTap')}</span>
+        {notice}
       </button>
       {open && (
-        <div className="security-score-popup" role="dialog" aria-label={t('securityScore.minimumTitle')}>
+        <div className="security-score-popup" onClick={stay} role="dialog" aria-label={t('securityScore.minimumTitle')}>
           <strong>{t('securityScore.minimumTitle')}</strong>
           <ul>
             {REQUIREMENTS.map((r) => {

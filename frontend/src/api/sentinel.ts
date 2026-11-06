@@ -1,3 +1,4 @@
+import type { Gender } from '../gender';
 import { apiDelete, apiGet, apiPatch, apiPost } from './client';
 
 export type SentinelType = 'ONLY_SMS' | 'SENTINEL' | 'LEAD' | 'FIRSTCIRCLE' | 'UNCOMPLETE';
@@ -19,6 +20,10 @@ export interface SentinelRef {
   publicStatus?: string | null;
   // On pause for others: can't be asked to take part in alerts (listCircles() only).
   pausedForOthers?: boolean;
+  // Running yearly subscription (listCircles() only; never the end date).
+  subscribed?: boolean;
+  // How texts speak about them (listCircles() only); null = inclusive.
+  gender?: Gender | null;
 }
 
 export interface Membership {
@@ -72,7 +77,7 @@ export interface Invitation {
   sentinelType: SentinelType;
   requestedAsLead: boolean;
   createdAt: string;
-  circle: { id: string; label: string; userCompanion: PersonRef & { firstName: string } };
+  circle: { id: string; label: string; userCompanion: PersonRef & { firstName: string; gender?: Gender | null } };
 }
 
 // Pending report awaiting a second confirmation — canConfirmOrReject is
@@ -104,6 +109,12 @@ export interface Companion {
     publicStatus: string | null;
     // Nobody but them may raise an alert about them right now.
     pausedForMe: boolean;
+    // Yearly subscription running: an alert can always be raised for them.
+    subscribed: boolean;
+    // No subscription and their free alert is used (offer them a year).
+    freeAlertUsed: boolean;
+    // How texts speak about them; null = inclusive wording.
+    gender: Gender | null;
   };
   // The other accepted members of their 1st circle — empty unless I'm in it.
   firstCircleMembers: {
@@ -112,6 +123,8 @@ export interface Companion {
     lastName: string | null;
     publicStatus: string | null;
     pausedForOthers: boolean;
+    subscribed: boolean;
+    gender: Gender | null;
     isLead: boolean;
   }[];
   deathNotice: CompanionDeathNotice;

@@ -1,5 +1,8 @@
+import { Gender } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  IsEnum,
+  ValidateIf,
   IsBoolean,
   IsOptional,
   IsString,
@@ -42,6 +45,14 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(200)
   publicStatus?: string;
+
+  // How texts speak about me ("can you go and see her?"). null = back to
+  // inclusive wording. Only ever set by the person themself.
+  @ApiProperty({ required: false, enum: Gender, nullable: true })
+  @ValidateIf((_, v) => v !== null)
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender | null;
 
   // General switch: during an alert, may my Sentinels of other circles chat
   // with my 1st circle? Off = nobody; on = each circle decides

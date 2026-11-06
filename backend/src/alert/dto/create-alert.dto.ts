@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEnum,
   IsLatitude,
   IsLongitude,
@@ -47,4 +48,10 @@ export class CreateAlertDto {
   @ValidateNested()
   @Type(() => AlertLocationDto)
   location?: AlertLocationDto;
+
+  // The person has no subscription and their free alert is used: the
+  // caller pays for this one alert (simulated until real payment exists).
+  @IsOptional()
+  @IsBoolean()
+  payForThisAlert?: boolean;
 }

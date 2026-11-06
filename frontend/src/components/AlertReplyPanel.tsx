@@ -11,6 +11,7 @@ import {
 import { firstCircleAskKey } from '../alertAsk';
 import { Tile } from './Tile';
 import { replyLabel } from './replyLabel';
+import { genderContext, type Gender } from '../gender';
 
 function ReplyChoices({
   codes,
@@ -74,11 +75,14 @@ function FreeReply({ current, onSubmit }: { current: string | null; onSubmit: (t
 // "Later" / "Unavailable" can still be changed.
 function FirstCircleReply({
   name,
+  gender,
   alertType,
   current,
   onSend,
 }: {
   name: string;
+  // How to speak about them ("find her"); null = inclusive wording.
+  gender?: Gender | null;
   alertType?: AlertType;
   current: string | null;
   onSend: (code: string) => void;
@@ -91,8 +95,10 @@ function FirstCircleReply({
   }
   return (
     <>
-      <h3 className="reply-question">{t(`alerts.ask.${firstCircleAskKey(alertType)}`, { name })}</h3>
-      <p className="form-hint">{t('alerts.ask.whatItMeans', { name })}</p>
+      <h3 className="reply-question">
+        {t(`alerts.ask.${firstCircleAskKey(alertType)}`, { name, context: genderContext(gender) })}
+      </h3>
+      <p className="form-hint">{t('alerts.ask.whatItMeans', { name, context: genderContext(gender) })}</p>
       {current && <p className="reply-saved">✓ {t('alerts.detail.respond.sent', { reply: replyLabel(t, current) })}</p>}
       <ReplyChoices codes={FIRST_CIRCLE_REPLY_CODES} current={choice ?? current} onSelect={setChoice} />
       {choice && choice !== current && (
@@ -112,6 +118,7 @@ function FirstCircleReply({
 export function AlertReplyPanel({
   alertId,
   name = '',
+  gender,
   alertType,
   firstCircleResponse,
   questions,
@@ -120,6 +127,7 @@ export function AlertReplyPanel({
   alertId: string;
   // Who the alert is about, and what kind of alert, for the 1st circle's question.
   name?: string;
+  gender?: Gender | null;
   alertType?: AlertType;
   // undefined when the viewer isn't in the 1st circle.
   firstCircleResponse?: string | null;
@@ -139,11 +147,11 @@ export function AlertReplyPanel({
   return (
     <Tile>
       {firstCircleResponse !== undefined && (
-        <FirstCircleReply name={name} alertType={alertType} current={firstCircleResponse} onSend={(code) => reply(code)} />
+        <FirstCircleReply name={name} gender={gender} alertType={alertType} current={firstCircleResponse} onSend={(code) => reply(code)} />
       )}
       {questions.map((question) => (
         <div key={question.id}>
-          <p>{t(`alerts.questions.${question.kind}`)}</p>
+          <p>{t(`alerts.questions.${question.kind}`, { name, context: genderContext(gender) })}</p>
           {question.kind === 'WHERE_SEEN' ? (
             <FreeReply current={question.response} onSubmit={(text) => reply(text, question.id)} />
           ) : (

@@ -64,3 +64,13 @@ export function isPausedOf(circles: Circle[], companions: Companion[], userId: s
   }
   return companions.some((c) => c.firstCircleMembers.some((f) => f.id === userId && f.pausedForOthers));
 }
+
+// Same lookup for the gold star: a running subscription, seen by the
+// people linked to them.
+export function isSubscribedOf(circles: Circle[], companions: Companion[], userId: string): boolean {
+  if (companions.some((c) => c.companion.id === userId && c.companion.subscribed)) return true;
+  for (const c of circles) {
+    if (c.userSentinels.some((s) => s.linkAsSentinel.id === userId && s.linkAsSentinel.subscribed)) return true;
+  }
+  return companions.some((c) => c.firstCircleMembers.some((f) => f.id === userId && f.subscribed));
+}

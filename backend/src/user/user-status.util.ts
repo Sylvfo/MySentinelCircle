@@ -34,3 +34,6 @@ export function assertNotPausedForMe(
 // Prisma filter for a LinkSentinels' Sentinel side, reused by every query
 // that picks who to contact.
 export const NOT_PAUSED_SENTINEL = { pausedForOthers: false } as const;
+
+// Shown wherever a deleted (or erased) person used to be named.
+export const DELETED_ACCOUNT_LABEL = 'Compte supprimé';

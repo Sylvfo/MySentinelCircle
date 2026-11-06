@@ -3,6 +3,8 @@ import type { Socket } from 'socket.io-client';
 import { clearToken, getToken, setToken } from '../api/client';
 import { fetchMe, type Me } from '../api/user';
 import { createSocket } from '../realtime/socket';
+import { setReaderEnding } from '../i18n';
+import { readerEnding } from '../gender';
 
 interface AuthContextValue {
   user: Me | null;
@@ -58,6 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshUser().finally(() => setLoading(false));
   }, []);
+
+  // Texts addressed to me agree with my gender ("prévenue" / "prévenu").
+  useEffect(() => {
+    setReaderEnding(readerEnding(user?.gender));
+  }, [user?.gender]);
 
   const applyToken = async (token: string) => {
     setToken(token);

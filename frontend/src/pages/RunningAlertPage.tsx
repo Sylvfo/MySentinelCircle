@@ -11,9 +11,8 @@ import { AlertDetailPanel, StopAlertButton } from './AlertsPage';
 // Alert Mode counterpart to /alerts, which is for launching a new one.
 // /running-alert lists the alerts in progress (or goes straight to the only
 // one); /running-alert/:alertId is one alert, its summary fixed on top.
-// With `chat`, /running-alert/:alertId/chat: that alert's conversations
-// only, on their own page.
-export function RunningAlertPage({ chat = false }: { chat?: boolean }) {
+// Its chats live in Messages (/running-alert/:alertId/chat redirects there).
+export function RunningAlertPage() {
   const { t } = useTranslation();
   const { user, socket } = useAuth();
   const { alertId } = useParams();
@@ -61,17 +60,6 @@ export function RunningAlertPage({ chat = false }: { chat?: boolean }) {
         <Navigate to="/running-alert" replace />
       );
     }
-    if (chat) {
-      return (
-        // conversation-page: fixed composer + bottom room, as in Messages.
-        <div className="conversation-page">
-          <Link to={`/running-alert/${a.id}`}>{t('runningAlertPage.backToAlert')}</Link>
-          <h1>{t('runningAlertPage.chatTitle')}</h1>
-          <p style={{ color: 'var(--text-muted)' }}>{a.label}</p>
-          <AlertDetailPanel alertId={a.id} view="chat" />
-        </div>
-      );
-    }
     const launched = new Date(a.launchedAt ?? a.createdAt).toLocaleString(undefined, {
       dateStyle: 'short',
       timeStyle: 'short',
@@ -101,17 +89,19 @@ export function RunningAlertPage({ chat = false }: { chat?: boolean }) {
             )}
           </p>
           {/* The live statuses, read-only, right under the title — they're
-              written in the 1st circle room. */}
-          <p className="running-alert-status">
-            <strong>{t('alerts.detail.statusByCompanion')} :</strong>{' '}
-            {a.statusByCompanion ?? <span className="running-alert-meta">{t('alerts.detail.status.none')}</span>}
-          </p>
-          <p className="running-alert-status">
-            <strong>{t('alerts.detail.statusByFirstCircle')} :</strong>{' '}
-            {a.statusByFirstCircle ?? <span className="running-alert-meta">{t('alerts.detail.status.none')}</span>}
-          </p>
-          {/* The 1st-circle chat lives on its own page (the companion reads
-              it, the 1st circle writes in it). */}
+              written in the 1st circle room. Nothing shown until written. */}
+          {a.statusByCompanion && (
+            <p className="running-alert-status">
+              <strong>{t('alerts.detail.statusByCompanion')} :</strong> {a.statusByCompanion}
+            </p>
+          )}
+          {a.statusByFirstCircle && (
+            <p className="running-alert-status">
+              <strong>{t('alerts.detail.statusByFirstCircle')} :</strong> {a.statusByFirstCircle}
+            </p>
+          )}
+          {/* The 1st-circle room lives in Messages (this link redirects
+              there, see AlertChatRedirect). */}
           {!isOuterCircleViewer(a, user?.id) && (
             <Link to={`/running-alert/${a.id}/chat`} className="button-link running-alert-chat-link">
               {t('runningAlertPage.openChat')}

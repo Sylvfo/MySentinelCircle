@@ -10,7 +10,6 @@ import {
   getMyParticipation,
   leaveAlert,
   listAlerts,
-  markFound,
   raiseAlert,
   requestCircleChat,
   updateAlertLocation,
@@ -20,15 +19,14 @@ import {
   type AlertLocation,
   type AlertSummary,
   type AlertType,
-  type FoundFollowUp,
   type MyAlertSummary,
   type MyParticipation,
 } from '../api/alert';
 import { APPROXIMATE_ACCURACY_M, formatAccuracy, useLocate } from '../geolocation';
 import { LinkifiedText } from '../components/LinkifiedText';
 import { listCompanions, type Companion } from '../api/sentinel';
-import { updatePause } from '../api/user';
-import { listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
+import { addSubscriptionYear, updatePause } from '../api/user';
+import { isChatClosed, listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
 import { Modal } from '../components/Modal';
 import { AlertReplyPanel } from '../components/AlertReplyPanel';
 import { replyLabel } from '../components/replyLabel';
@@ -38,7 +36,12 @@ import { MessageBubbles } from '../components/MessageBubbles';
 import { EmojiButton } from '../components/EmojiButton';
 import { AlertCircleTiles, AlertRepliesTimeline } from '../components/AlertCircles';
 import { AlertSteps, RoleBanner, WelcomeModal, type GuideRole } from '../components/AlertGuide';
+import { PaidPill, PayForAlertChoice } from '../components/Upgrade';
+import { DictateButton } from '../components/DictateButton';
+import { IncludedStar } from '../components/SubscribedStar';
+import { upgradeReasonOf, usePlan } from '../plan';
 import { PRIMARY_AVATAR_COLOR, PRIMARY_LEAD_COLOR } from '../theme';
+import { genderContext } from '../gender';
 
 // The 4 ways to raise an alert, one tile each. "For myself" is always
 // BYCOMPANION; the two "for someone I watch over" tiles map to one type each;
@@ -57,6 +60,8 @@ export function AlertsPage() {
   const { user } = useAuth();
   const [alerts, setAlerts] = useState<AlertSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  // Paid features shown with a lock on a free account.
+  const { plan: tilesPlan } = usePlan();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -79,6 +84,17 @@ export function AlertsPage() {
   // This page is for launching a new alert only — any alert already in
   // progress lives on its own /running-alert page instead (reached from the
   // Dashboard's "Running Alert" card, which only shows up while one exists).
+  // Subscribed: unlimited alerts are part of what I pay for.
+  const paidTitle = (title: string) =>
+    tilesPlan?.hasPaid ? (
+      <h2>
+        {title}
+        <IncludedStar />
+      </h2>
+    ) : (
+      title
+    );
+
   return (
     <div>
       <h1>{t('alerts.title')}</h1>
@@ -87,17 +103,17 @@ export function AlertsPage() {
 
       <div className="tile-grid raise-grid">
         <Link to="/alerts/self" className="tile-link">
-          <Tile className="tile-raise" title={t('alerts.tiles.self.title')}>
+          <Tile className="tile-raise" title={paidTitle(t('alerts.tiles.self.title'))}>
             <p>{myActiveAlert ? t('alerts.activeAlertNotice') : t('alerts.tiles.self.hint')}</p>
           </Tile>
         </Link>
         <Link to="/alerts/missing" className="tile-link">
-          <Tile title={t('alerts.tiles.missing.title')}>
+          <Tile title={paidTitle(t('alerts.tiles.missing.title'))}>
             <p>{t('alerts.tiles.missing.hint')}</p>
           </Tile>
         </Link>
         <Link to="/alerts/assistance" className="tile-link">
-          <Tile title={t('alerts.tiles.assistance.title')}>
+          <Tile title={paidTitle(t('alerts.tiles.assistance.title'))}>
             <p>{t('alerts.tiles.assistance.hint')}</p>
           </Tile>
         </Link>
@@ -105,6 +121,7 @@ export function AlertsPage() {
         <Tile className="tile-soon" title={t('alerts.tiles.travel.title')}>
           <p>{t('alerts.tiles.travel.hint')}</p>
           <span className="badge">{t('alerts.tiles.soon')}</span>
+          {tilesPlan && !tilesPlan.hasPaid && <PaidPill feature="travel" />}
         </Tile>
       </div>
     </div>
@@ -130,15 +147,20 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [loadingCompanions, setLoadingCompanions] = useState(!forSelf);
   const [companionId, setCompanionId] = useState('');
+  // Two things only, both optional: what's happening, and where.
   const [situation, setSituation] = useState('');
-  const [needs, setNeeds] = useState('');
-  const [status, setStatus] = useState('');
-  // My GPS position, only if I tap "Add my position" (alert for myself).
+  const [place, setPlace] = useState('');
+  // My GPS position, only if I tap the button: for an alert about myself,
+  // or for an assistance alert when I'm with the person.
   const [location, setLocation] = useState<AlertLocation | null>(null);
   const { locate: findPosition, locating, error: locateError } = useLocate();
   const locate = () => void findPosition().then((loc) => loc && setLocation(loc));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Free trial: a limited number of alerts about me, for life.
+  const { plan, reload: reloadPlan } = usePlan();
+  const trialUsedUp = forSelf && plan?.freeAlertsLeft === 0;
+  const upgradeReason = upgradeReasonOf(error);
 
   useEffect(() => {
     if (forSelf) return;
@@ -155,19 +177,21 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
       .finally(() => setLoadingCompanions(false));
   }, [forSelf]);
 
-  const canWriteStatus = forSelf || !!companions.find((c) => c.companion.id === companionId)?.circle.isPrimary;
+  const selectedCompanion = companions.find((c) => c.companion.id === companionId);
+  // Someone needs assistance: we must be able to find them, so both
+  // questions are required. Everything is optional otherwise.
+  const bothRequired = kind === 'assistance';
+  const missingRequired = bothRequired && (!situation.trim() || (!place.trim() && !location));
 
   const pausedInTheirFirstCircle =
-    !forSelf &&
-    !!user?.pausedForOthers &&
-    !!companions.find((c) => c.companion.id === companionId)?.circle.isPrimary;
+    !forSelf && !!user?.pausedForOthers && !!companions.find((c) => c.companion.id === companionId)?.circle.isPrimary;
 
-  const raise = async (join = true) => {
+  const raise = async (join = true, payForThisAlert = false) => {
     const targetId = forSelf ? user?.id : companionId;
     if (!targetId) return;
     setSubmitting(true);
     setError(null);
-    const reason = [situation.trim(), needs.trim() && `${t('alerts.self.needsPrefix')} ${needs.trim()}`]
+    const reason = [situation.trim(), place.trim() && `${t('alerts.placePrefix')} ${place.trim()}`]
       .filter(Boolean)
       .join('\n\n');
     try {
@@ -175,19 +199,37 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
         await updatePause({ pausedForOthers: false });
         await refreshUser();
       }
-      const alert = await raiseAlert({
+      await raiseAlert({
         companionId: targetId,
         alertType: RAISE_TYPE[kind],
         reason: reason || t('alerts.defaultReason'),
-        ...(forSelf && location ? { location } : {}),
+        ...(location && kind !== 'missing' ? { location } : {}),
+        ...(payForThisAlert ? { payForThisAlert } : {}),
       });
-      if (canWriteStatus && status.trim()) await updateAlertStatus(alert.id, status.trim());
       // Not taking part: there's no running alert for me to follow.
       navigate(pausedInTheirFirstCircle && !join ? '/dashboard' : '/running-alert');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
       setSubmitting(false);
     }
+  };
+
+  // Past the free alert: offer (or take) a year of subscription, then
+  // raise; or pay for this one alert only.
+  const raiseAfterPaying = async (how: 'year' | 'single') => {
+    if (how === 'year') {
+      setSubmitting(true);
+      try {
+        await addSubscriptionYear(forSelf ? undefined : companionId);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : String(err));
+        setSubmitting(false);
+        return;
+      }
+      reloadPlan();
+      return raise(true);
+    }
+    return raise(true, true);
   };
 
   const header = (
@@ -226,7 +268,6 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
     <div>
       {header}
       <Tile className="raise-self-form">
-        <p style={{ color: 'var(--text-muted)' }}>{t('alerts.self.intro')}</p>
         {!forSelf && (
           <label>
             {t('alerts.whoLabel')}
@@ -240,28 +281,49 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
             </select>
           </label>
         )}
-        <label>
-          {t(`alerts.${f}.situationLabel`)}
+        {/* 1. What's happening — written or dictated. */}
+        <div className="raise-field">
+          <label htmlFor="raise-situation">{t(`alerts.${f}.situationLabel`)}</label>
           <textarea
+            id="raise-situation"
             rows={3}
             placeholder={t(`alerts.${f}.situationPlaceholder`)}
             value={situation}
             onChange={(e) => setSituation(e.target.value)}
           />
-        </label>
-        <label>
-          {t(`alerts.${f}.needsLabel`)}
-          <textarea
-            rows={2}
-            placeholder={t(`alerts.${f}.needsPlaceholder`)}
-            value={needs}
-            onChange={(e) => setNeeds(e.target.value)}
-          />
-        </label>
-        {forSelf && (
-          <div className="alert-location">
+          <div className="raise-actions">
+            <DictateButton onText={(text) => setSituation((cur) => appendText(cur, text))} />
+          </div>
+        </div>
+        {/* 2. Where — written, dictated, or a GPS position (mine: for
+            myself, or for an assistance alert when I'm with the person).
+            Not asked for someone missing: nobody knows where they are. */}
+        {kind !== 'missing' && (
+          <div className="raise-field">
+            <label htmlFor="raise-place">
+              {forSelf
+                ? t('alerts.self.whereLabel')
+                : t('alerts.other.whereLabel', {
+                    name: selectedCompanion?.companion.firstName ?? '',
+                    context: genderContext(selectedCompanion?.companion.gender),
+                  })}
+            </label>
+            <input
+              id="raise-place"
+              placeholder={t(`alerts.${f}.wherePlaceholder`)}
+              value={place}
+              onChange={(e) => setPlace(e.target.value)}
+            />
+            <div className="raise-actions">
+              <DictateButton onText={(text) => setPlace((cur) => appendText(cur, text))} />
+              {!location && (
+                <button type="button" className="raise-action-btn" disabled={locating} onClick={locate}>
+                  📍 {locating ? t('alerts.location.locating') : t(`alerts.location.${forSelf ? 'add' : 'addMine'}`)}
+                </button>
+              )}
+            </div>
             {location ? (
-              <>
+              <div className="alert-location">
                 <p>
                   📍 {t('alerts.location.added', { accuracy: formatAccuracy(location.accuracy ?? 0) })}{' '}
                   <button type="button" className="link-button" onClick={() => setLocation(null)}>
@@ -269,26 +331,28 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
                   </button>
                 </p>
                 <ApproximateWarning location={location} />
-              </>
+              </div>
             ) : (
-              <button type="button" className="ghost" disabled={locating} onClick={locate}>
-                📍 {locating ? t('alerts.location.locating') : t('alerts.location.add')}
-              </button>
+              <small className="raise-hint">
+                {locateError
+                  ? t(`alerts.location.${locateError}`)
+                  : t(`alerts.location.${forSelf ? 'hint' : 'hintMine'}`)}
+              </small>
             )}
-            <small>{locateError ? t(`alerts.location.${locateError}`) : t('alerts.location.hint')}</small>
           </div>
         )}
-        {canWriteStatus && (
-          <label>
-            {t('alerts.self.statusLabel')}
-            <input
-              placeholder={t(`alerts.${f}.statusPlaceholder`)}
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            />
-          </label>
+        {missingRequired && <p className="form-hint">{t('alerts.other.bothRequired')}</p>}
+        {forSelf && plan && plan.freeAlertsLeft !== null && plan.freeAlertsLeft > 0 && (
+          <p className="form-hint">
+            {t('plans.alertsLeft', {
+              count: plan.freeAlertsLeft,
+              limit: plan.freeAlertLimit,
+            })}
+          </p>
         )}
-        {askPause && pausedInTheirFirstCircle ? (
+        {trialUsedUp ? (
+          <PayForAlertChoice plan={plan} name={null} submitting={submitting} onRaise={raiseAfterPaying} />
+        ) : askPause && pausedInTheirFirstCircle ? (
           <div className="pause-raise-choice">
             <p>{t('pause.raise.question')}</p>
             <button className="alert-btn" disabled={submitting} onClick={() => void raise(true)}>
@@ -301,13 +365,26 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
         ) : (
           <button
             className="alert-btn"
-            disabled={submitting || (forSelf ? !user : !companionId)}
+            disabled={submitting || missingRequired || (forSelf ? !user : !companionId)}
             onClick={() => (pausedInTheirFirstCircle ? setAskPause(true) : void raise())}
           >
             {forSelf ? t('alerts.raiseForSelf') : t('alerts.submit')}
           </button>
         )}
-        {error && <p className="form-error">{error}</p>}
+        {upgradeReason === 'alerts'
+          ? // Their free alert is used and they have no subscription.
+            !trialUsedUp && (
+              <PayForAlertChoice
+                plan={plan}
+                name={
+                  forSelf ? null : (companions.find((c) => c.companion.id === companionId)?.companion.firstName ?? '')
+                }
+                gender={forSelf ? null : companions.find((c) => c.companion.id === companionId)?.companion.gender}
+                submitting={submitting}
+                onRaise={raiseAfterPaying}
+              />
+            )
+          : error && <p className="form-error">{error}</p>}
       </Tile>
     </div>
   );
@@ -316,12 +393,23 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
 // "Stop the alert", behind a confirmation — only the companion and their
 // 1st circle can stop one (enforced by the backend too), so it renders
 // nothing for anyone else.
+// Ready-made closing words when stopping an alert (editable after).
+const CLOSING_WORDS = ['fine', 'found', 'falseAlarm', 'sad'] as const;
+
 export function StopAlertButton({ alert, onStopped }: { alert: MyAlertSummary; onStopped: () => Promise<void> }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [confirming, setConfirming] = useState(false);
   const [finalWord, setFinalWord] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // The person the alert is about, as the closing words name them.
+  const name = alert.userCompanionId === user?.id ? (user?.firstName ?? '') : alert.userCompanion.firstName;
+  const closingWord = (k: (typeof CLOSING_WORDS)[number]) =>
+    t(`alerts.closingWords.${k}.text`, {
+      name,
+      context: genderContext(alert.userCompanion.gender),
+    });
 
   const canStop =
     alert.alertStatus !== 'RESOLVED' &&
@@ -331,10 +419,9 @@ export function StopAlertButton({ alert, onStopped }: { alert: MyAlertSummary; o
   const stop = async () => {
     setConfirming(false);
     try {
-      // The final word becomes the stopper's own status note (companion or
-      // 1st circle side), written just before the alert closes.
-      if (finalWord.trim()) await updateAlertStatus(alert.id, finalWord.trim());
-      await closeAlert(alert.id);
+      // The closing word becomes the stopper's status note, is posted in
+      // the alert's chats and goes out in the end-of-alert SMS (backend).
+      await closeAlert(alert.id, finalWord.trim() || undefined);
       await onStopped();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -350,6 +437,19 @@ export function StopAlertButton({ alert, onStopped }: { alert: MyAlertSummary; o
       {confirming && (
         <Modal title={t('alerts.stopTitle')} onClose={() => setConfirming(false)}>
           <p>{t('alerts.stopConfirm')}</p>
+          {/* A few ready words to pick from, then edit if wanted. */}
+          <div className="stop-words">
+            {CLOSING_WORDS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                className={`stop-word${finalWord === closingWord(k) ? ' selected' : ''}`}
+                onClick={() => setFinalWord(closingWord(k))}
+              >
+                {t(`alerts.closingWords.${k}.label`)}
+              </button>
+            ))}
+          </div>
           <label className="stop-final-word">
             {t('alerts.stopFinalWordLabel')}
             <textarea
@@ -383,15 +483,18 @@ export function AlertDetailPanel({
   alertId,
   footer,
   view = 'main',
+  conversationId,
 }: {
   alertId: string;
   footer?: ReactNode;
   view?: 'main' | 'chat';
+  // Chat view in Messages: only this conversation (the 1st-circle room);
+  // each isolated chat has its own page there.
+  conversationId?: string;
 }) {
   const { t } = useTranslation();
   const { user, socket } = useAuth();
   const [detail, setDetail] = useState<AlertDetail | null>(null);
-  const [foundOpen, setFoundOpen] = useState(false);
   // Set only when getAlert() 403s (e.g. an outer-circle Sentinel) but the
   // caller does have their own participation to show, as a lighter fallback.
   const [myParticipation, setMyParticipation] = useState<MyParticipation | null>(null);
@@ -477,13 +580,12 @@ export function AlertDetailPanel({
         myParticipation.status !== 'CLOSED' &&
         myParticipation.alert.alertStatus !== 'RESOLVED';
       const canChat =
-        !!myParticipation.alertChatWithFirstCircleAtAlert &&
-        myParticipation.alert.alertStatus !== 'RESOLVED';
+        !!myParticipation.alertChatWithFirstCircleAtAlert && myParticipation.alert.alertStatus !== 'RESOLVED';
       const canLeaveLight = myParticipation.status !== 'CLOSED' && myParticipation.alert.alertStatus !== 'RESOLVED';
       const lightVars = {
         name: myParticipation.alert.userCompanion.firstName,
         lead: '',
-        followUp: '',
+        context: genderContext(myParticipation.alert.userCompanion.gender),
       };
       if (view === 'chat') {
         return canChat ? <CircleChatSection alertId={alertId} /> : null;
@@ -506,14 +608,26 @@ export function AlertDetailPanel({
           )}
           {canRespondLight && (
             <AlertSection title={t('alerts.detail.sections.todo')}>
-              <AlertReplyPanel alertId={alertId} questions={myParticipation.questions} onChange={loadDetail} />
+              <AlertReplyPanel
+                alertId={alertId}
+                name={myParticipation.alert.userCompanion.firstName}
+                gender={myParticipation.alert.userCompanion.gender}
+                questions={myParticipation.questions}
+                onChange={loadDetail}
+              />
             </AlertSection>
           )}
           {/* Outside the 1st circle: no alert details (no launch message, no
               roster) — only the statuses and my own answer. */}
           <AlertSection title={t('alerts.detail.sections.know')}>
-            <StatusNoteField label={t('alerts.detail.statusByCompanion')} value={myParticipation.alert.statusByCompanion} />
-            <StatusNoteField label={t('alerts.detail.statusByFirstCircle')} value={myParticipation.alert.statusByFirstCircle} />
+            <StatusNoteField
+              label={t('alerts.detail.statusByCompanion')}
+              value={myParticipation.alert.statusByCompanion}
+            />
+            <StatusNoteField
+              label={t('alerts.detail.statusByFirstCircle')}
+              value={myParticipation.alert.statusByFirstCircle}
+            />
             <p>
               <strong>{t('alerts.detail.myResponse')}</strong>{' '}
               {myParticipation.response ? replyLabel(t, myParticipation.response) : t('alerts.detail.noResponseYet')}
@@ -546,16 +660,14 @@ export function AlertDetailPanel({
   };
 
   // A name in the room opens that person's page, with their place in this alert.
-  const senderLink = (senderId: string) =>
-    senderId === user?.id ? null : `/people/${senderId}?alert=${alertId}`;
+  const senderLink = (senderId: string) => (senderId === user?.id ? null : `/people/${senderId}?alert=${alertId}`);
 
   const myParticipant = detail.participants.find((p) => p.userSentinels.linkAsSentinel.id === user?.id);
   const isCompanion = user?.id === detail.userCompanion.id;
   const isFirstCircleSentinel = !isCompanion && myParticipant?.circleId === detail.firstCircleId;
   const isAlertManager = isCompanion || isFirstCircleSentinel;
   const canRequestCircle = isAlertManager && detail.alertStatus !== 'RESOLVED';
-  const canRespond =
-    !!myParticipant && myParticipant.status !== 'WAITING' && detail.alertStatus !== 'RESOLVED';
+  const canRespond = !!myParticipant && myParticipant.status !== 'WAITING' && detail.alertStatus !== 'RESOLVED';
   const canLeave = !!myParticipant && myParticipant.status !== 'CLOSED' && detail.alertStatus !== 'RESOLVED';
 
   // No "current lead" stored separately — whichever Lead has the latest
@@ -570,10 +682,14 @@ export function AlertDetailPanel({
   // Who's in the 1st circle, for telling the main chat apart from an
   // isolated one when labeling each entry in detail.conversations below.
   const firstCircleSentinelIds = new Set(
-    detail.participants.filter((p) => p.circleId === detail.firstCircleId).map((p) => p.userSentinels.linkAsSentinel.id),
+    detail.participants
+      .filter((p) => p.circleId === detail.firstCircleId)
+      .map((p) => p.userSentinels.linkAsSentinel.id),
   );
 
-  const labelMeta = detail.labelUpdatedBy ? t('alerts.detail.updatedBy', { name: detail.labelUpdatedBy.firstName }) : undefined;
+  const labelMeta = detail.labelUpdatedBy
+    ? t('alerts.detail.updatedBy', { name: detail.labelUpdatedBy.firstName })
+    : undefined;
   const statusFirstCircleMeta = detail.statusUpdatedBy
     ? t('alerts.detail.updatedBy', { name: detail.statusUpdatedBy.firstName })
     : undefined;
@@ -612,9 +728,6 @@ export function AlertDetailPanel({
             : 'involved';
 
   // The guidance (welcome pop-up, "Your role", steps) while the alert runs.
-  // Once the person is found (CLOSING), the 1st circle's job becomes the
-  // follow-up the responsible Lead decided — stored as the 1st circle's
-  // status note by markFound.
   const running = detail.alertStatus !== 'RESOLVED';
   const guideRole: GuideRole | null = !running
     ? null
@@ -622,17 +735,14 @@ export function AlertDetailPanel({
       ? 'companion'
       : !isFirstCircleSentinel
         ? null
-        : detail.alertStatus === 'CLOSING'
-          ? 'found'
-          : roleKey === 'activeLead' || roleKey === 'lead'
-            ? roleKey
-            : 'firstCircle';
+        : roleKey === 'activeLead' || roleKey === 'lead'
+          ? roleKey
+          : 'firstCircle';
   const guideVars = {
     name: detail.userCompanion.firstName,
+    // "retrouvée / retrouvé": how texts speak about them.
+    context: genderContext(detail.userCompanion.gender),
     lead: activeLead?.userSentinels.linkAsSentinel.firstName ?? '',
-    // markFound writes "Personne retrouvée : <follow-up>" — the banner
-    // already says the person was found, so only the follow-up is kept.
-    followUp: (detail.statusByFirstCircle ?? '').replace(/^Personne retrouvée : /, ''),
   };
 
   // Chat page only: who's in the 1st circle, with photo, role and status in
@@ -655,7 +765,9 @@ export function AlertDetailPanel({
             size={44}
           />
           <span className="alert-roster-name">
-            {p.userSentinels.linkAsSentinel.id === user?.id ? t('alerts.detail.me') : p.userSentinels.linkAsSentinel.firstName}
+            {p.userSentinels.linkAsSentinel.id === user?.id
+              ? t('alerts.detail.me')
+              : p.userSentinels.linkAsSentinel.firstName}
           </span>
           <span className="alert-roster-role">
             {activeLead?.id === p.id
@@ -673,9 +785,9 @@ export function AlertDetailPanel({
     <div className="alert-detail">
       {view === 'chat' && (
         <>
-          {/* The responsible Lead (Lead 1 from the start, decided in advance):
-              the whole 1st circle acts together, but "person found + what
-              next" is theirs. Another Lead can take over if they can't. */}
+          {/* The responsible Lead (Lead 1 from the start, decided in advance)
+              coordinates; the whole 1st circle acts together, and anyone in
+              it can stop the alert. Another Lead can take over. */}
           <div className="lead-box">
             <p>
               {activeLead
@@ -686,9 +798,6 @@ export function AlertDetailPanel({
             </p>
             <p className="form-hint">{t('alerts.detail.leadExplain')}</p>
             <div className="row">
-              {activeLead && myParticipant && activeLead.id === myParticipant.id && detail.alertStatus !== 'RESOLVED' && (
-                <button onClick={() => setFoundOpen(true)}>{t('alerts.detail.found.button')}</button>
-              )}
               {canClaimLead && activeLead?.id !== myParticipant?.id && (
                 <button
                   className="ghost"
@@ -701,16 +810,6 @@ export function AlertDetailPanel({
               )}
             </div>
           </div>
-          {foundOpen && (
-            <FoundModal
-              alertId={alertId}
-              onClose={() => setFoundOpen(false)}
-              onDone={() => {
-                setFoundOpen(false);
-                void loadDetail();
-              }}
-            />
-          )}
 
           {/* The alert's info, editable by whoever writes it: its name (any
               1st-circle Sentinel), the launch message, both status notes. The
@@ -740,53 +839,61 @@ export function AlertDetailPanel({
               isolated chat with the 1st circle. Told apart by participants —
               any conversation with someone outside the 1st circle is an
               isolated one, labeled with their name. */}
-          {detail.conversations.map((conv) => {
-            // The companion is in the room too: not an outsider.
-            const outsider = conv.participants.find(
-              (p) => !firstCircleSentinelIds.has(p.user.id) && p.user.id !== detail.userCompanion.id,
-            );
-            const title = outsider
-              ? t('alerts.detail.circleChat.withSentinel', {
-                  name: outsider.user.firstName,
-                })
-              : t('alerts.detail.chatTitle');
-            if (isCompanion && !conv.participants.some((p) => p.user.id === user?.id)) {
-              // The companion writes in every chat of their alert; only an
-              // old one they were never seated in (e.g. in History) stays
-              // read-only — straight off getAlert(), listMessages() would
-              // 403 them.
-              return (
-                <div className="alert-chat" key={conv.id}>
-                  <h3>{title}</h3>
-                  {conv.messages.length === 0 ? (
-                    <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
-                  ) : (
-                    <MessageBubbles
-                      messages={conv.messages.map((m) => ({ ...m, type: 'TEXT' as const, senderId: m.sender.id }))}
-                      myId={user?.id}
-                      nameOf={(id) => conv.messages.find((m) => m.sender.id === id)?.sender.firstName ?? '…'}
-                    />
-                  )}
-                </div>
+          {detail.conversations
+            .filter((conv) => !conversationId || conv.id === conversationId)
+            .map((conv) => {
+              // The companion is in the room too: not an outsider.
+              const outsider = conv.participants.find(
+                (p) => !firstCircleSentinelIds.has(p.user.id) && p.user.id !== detail.userCompanion.id,
               );
-            }
-            // The main 1st-circle chat on the chat page reads like any
-            // conversation (composer fixed at the bottom); isolated chats
-            // stay inline below it.
-            return (
-              <ConversationThread
-                key={conv.id}
-                conversationId={conv.id}
-                title={title}
-                resolveSenderName={senderName}
-                // Only the companion and the 1st circle can read the alert:
-                // for an outer-circle Sentinel the person page couldn't
-                // show the others, so their names stay plain.
-                senderLink={isAlertManager ? senderLink : undefined}
-                fullPage={view === 'chat' && !outsider}
-              />
-            );
-          })}
+              const title = outsider
+                ? t('alerts.detail.circleChat.withSentinel', {
+                    name: outsider.user.firstName,
+                  })
+                : t('alerts.detail.chatTitle');
+              if (isCompanion && !conv.participants.some((p) => p.user.id === user?.id)) {
+                // The companion writes in every chat of their alert; only an
+                // old one they were never seated in (e.g. in History) stays
+                // read-only — straight off getAlert(), listMessages() would
+                // 403 them.
+                return (
+                  <div className="alert-chat" key={conv.id}>
+                    <h3>{title}</h3>
+                    {conv.messages.length === 0 ? (
+                      <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
+                    ) : (
+                      <MessageBubbles
+                        messages={conv.messages.map((m) => ({
+                          ...m,
+                          type: 'TEXT' as const,
+                          senderId: m.sender.id,
+                        }))}
+                        myId={user?.id}
+                        nameOf={(id) => conv.messages.find((m) => m.sender.id === id)?.sender.firstName ?? '…'}
+                      />
+                    )}
+                  </div>
+                );
+              }
+              // The main 1st-circle chat on the chat page reads like any
+              // conversation (composer fixed at the bottom); isolated chats
+              // stay inline below it.
+              return (
+                <ConversationThread
+                  key={conv.id}
+                  conversationId={conv.id}
+                  title={title}
+                  resolveSenderName={senderName}
+                  // Only the companion and the 1st circle can read the alert:
+                  // for an outer-circle Sentinel the person page couldn't
+                  // show the others, so their names stay plain.
+                  senderLink={isAlertManager ? senderLink : undefined}
+                  fullPage={view === 'chat' && !outsider}
+                  // 7 days after the alert closed: read-only.
+                  readOnly={isChatClosed(conv)}
+                />
+              );
+            })}
         </>
       )}
       {error && <p className="form-error">{error}</p>}
@@ -812,6 +919,7 @@ export function AlertDetailPanel({
         <AlertReplyPanel
           alertId={alertId}
           name={detail.userCompanion.firstName}
+          gender={detail.userCompanion.gender}
           alertType={detail.alertType}
           firstCircleResponse={myParticipant.circleId === detail.firstCircleId ? myParticipant.response : undefined}
           questions={myParticipant.questions}
@@ -831,7 +939,9 @@ export function AlertDetailPanel({
             </li>
             <li>
               <strong>{t('alerts.where.circlesTitle')}</strong>{' '}
-              {t('alerts.where.circles', { name: detail.userCompanion.firstName })}
+              {t('alerts.where.circles', {
+                name: detail.userCompanion.firstName,
+              })}
             </li>
           </ol>
           <Link to={`/running-alert/${alertId}/chat`} className="button-link">
@@ -840,11 +950,11 @@ export function AlertDetailPanel({
         </section>
       )}
 
-      <AlertSection title={t('alerts.detail.sections.replies')}>
+      <AlertSection title={t('alerts.detail.sections.replies')} collapsible>
         <AlertRepliesTimeline detail={detail} />
       </AlertSection>
 
-      <AlertSection title={t('alerts.detail.sections.circles')}>
+      <AlertSection title={t('alerts.detail.sections.circles')} collapsible>
         <AlertCircleTiles detail={detail} canAct={canRequestCircle} onChange={loadDetail} />
       </AlertSection>
 
@@ -860,7 +970,27 @@ export function AlertDetailPanel({
   );
 }
 
-function AlertSection({ title, children }: { title: string; children: ReactNode }) {
+// `collapsible`: closed at first, opens on a tap on its title (the long
+// parts of the page, so the rest stays readable).
+function AlertSection({
+  title,
+  children,
+  collapsible = false,
+}: {
+  title: string;
+  children: ReactNode;
+  collapsible?: boolean;
+}) {
+  if (collapsible) {
+    return (
+      <details className="alert-section collapsible">
+        <summary>
+          <h2>{title}</h2>
+        </summary>
+        {children}
+      </details>
+    );
+  }
   return (
     <section className="alert-section">
       <h2>{title}</h2>
@@ -869,87 +999,27 @@ function AlertSection({ title, children }: { title: string; children: ReactNode 
   );
 }
 
-// Person found + what next: the responsible Lead's decision. "Fine" ends
-// the alert; the other choices keep it open (being closed) with the
-// follow-up shown to everyone, until the 1st circle closes it.
-function FoundModal({ alertId, onClose, onDone }: { alertId: string; onClose: () => void; onDone: () => void }) {
-  const { t } = useTranslation();
-  const [followUp, setFollowUp] = useState<FoundFollowUp>('FINE');
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await markFound(alertId, followUp, note.trim() || undefined);
-      onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Modal title={t('alerts.detail.found.title')} onClose={onClose}>
-      <form className="found-form" onSubmit={submit}>
-        <p className="form-hint">{t('alerts.detail.found.intro')}</p>
-        {(['FINE', 'PICKUP', 'REPATRIATION', 'CARE'] as const).map((f) => (
-          <label key={f} className={`found-option${followUp === f ? ' selected' : ''}`}>
-            <input type="radio" name="followUp" value={f} checked={followUp === f} onChange={() => setFollowUp(f)} />
-            <span>
-              <strong>{t(`alerts.detail.found.options.${f}.title`)}</strong>
-              <small>{t(`alerts.detail.found.options.${f}.hint`)}</small>
-            </span>
-          </label>
-        ))}
-        {followUp !== 'FINE' && (
-          <textarea
-            id="found-note"
-            rows={2}
-            maxLength={300}
-            placeholder={t('alerts.detail.found.notePlaceholder')}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-        )}
-        {error && <p className="form-error">{error}</p>}
-        <div className="row">
-          <button type="submit" disabled={busy}>
-            {followUp === 'FINE' ? t('alerts.detail.found.submitClose') : t('alerts.detail.found.submit')}
-          </button>
-          <button type="button" className="ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-// Self-contained message list + input + its own message:new socket
-// listener for one conversation — used for the main 1st-circle chat, each
-// isolated outer-circle chat in the full alert view, and the outer-circle
-// Sentinel's own isolated-chat UI below. Hides itself entirely if the
-// viewer turns out not to be a participant (e.g. a 1st-circle Sentinel
-// excluded from their own circle's chat) rather than showing a bare error.
-function ConversationThread({
+// One alert chat: its messages and the Messages composer. Hides itself
+// entirely if the viewer turns out not to be a participant (e.g. a
+// 1st-circle Sentinel excluded from their own circle's chat) rather than
+// showing a bare error.
+export function ConversationThread({
   conversationId,
   title,
   resolveSenderName,
   senderLink,
   fullPage = false,
+  readOnly = false,
 }: {
   conversationId: string;
-  title: string;
+  title?: string;
   resolveSenderName: (senderId: string) => string;
   senderLink?: (senderId: string) => string | null;
   // The alert's chat page: same layout as a Messages conversation — composer
   // (+ menu, paper plane) fixed at the bottom, page opening at the bottom.
   fullPage?: boolean;
+  // A closed alert's chat after its 7 days: messages only, no composer.
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const { user, socket } = useAuth();
@@ -1030,14 +1100,18 @@ function ConversationThread({
   if (loading || forbidden) return null;
 
   return (
-    <div className="alert-chat">
-      <h3>{title}</h3>
+    <div className={`alert-chat${fullPage ? '' : ' inline'}`}>
+      {title && <h3>{title}</h3>}
       {messages && messages.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
       ) : (
         <MessageBubbles messages={messages ?? []} myId={user?.id} nameOf={resolveSenderName} linkOf={senderLink} />
       )}
-      {fullPage ? (
+      {/* Same composer as in Messages (+ menu, emoji, paper plane); fixed at
+          the bottom on the chat page only, inline anywhere else. */}
+      {readOnly ? (
+        <p className="chat-closed-note">{t('messages.alertChatReadOnly')}</p>
+      ) : (
         <form className="conversation-compose" autoComplete="off" onSubmit={submit}>
           <div className="compose-attach">
             <button
@@ -1048,7 +1122,15 @@ function ConversationThread({
               disabled={sending}
               onClick={() => setAttachOpen((o) => !o)}
             >
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <svg
+                viewBox="0 0 24 24"
+                width="22"
+                height="22"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+              >
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
@@ -1063,7 +1145,15 @@ function ConversationThread({
                     fileInputRef.current?.click();
                   }}
                 >
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="18"
+                    height="18"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  >
                     <rect x="3" y="5" width="18" height="14" rx="2" />
                     <circle cx="8.5" cy="10" r="1.6" />
                     <path d="M21 16 L15.5 11 L6 19" />
@@ -1094,18 +1184,6 @@ function ConversationThread({
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" hidden disabled={sending} onChange={submitImage} />
         </form>
-      ) : (
-        <form className="row" onSubmit={submit}>
-          <input
-            placeholder={t('alerts.detail.messagePlaceholder')}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-          />
-          <button type="submit" disabled={sending || !draft.trim()}>
-            {t('alerts.detail.send')}
-          </button>
-          <input type="file" accept="image/*" disabled={sending} onChange={submitImage} />
-        </form>
       )}
       {error && <p className="form-error">{error}</p>}
     </div>
@@ -1120,32 +1198,23 @@ function ConversationThread({
 // own roster.
 function CircleChatSection({ alertId }: { alertId: string }) {
   const { t } = useTranslation();
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
-  if (!conversationId) {
-    return (
-      <section className="panel">
-        <button
-          onClick={() =>
-            requestCircleChat(alertId)
-              .then((c) => setConversationId(c.id))
-              .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
-          }
-        >
-          {t('alerts.detail.circleChat.title')}
-        </button>
-        {error && <p className="form-error">{error}</p>}
-      </section>
-    );
-  }
-
+  // The chat itself lives in Messages; created (or found) on click.
   return (
-    <ConversationThread
-      conversationId={conversationId}
-      title={t('alerts.detail.circleChat.title')}
-      resolveSenderName={() => t('alerts.detail.circleChat.firstCircleSender')}
-    />
+    <section className="panel">
+      <button
+        onClick={() =>
+          requestCircleChat(alertId)
+            .then((c) => navigate(`/messages/alert/${c.id}`))
+            .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
+        }
+      >
+        {t('alerts.detail.circleChat.title')}
+      </button>
+      {error && <p className="form-error">{error}</p>}
+    </section>
   );
 }
 
@@ -1170,7 +1239,12 @@ function StatusNoteField({
   const [draft, setDraft] = useState(value ?? '');
   const [saving, setSaving] = useState(false);
 
-  if (editing && onSave) {
+  // Nothing written yet: hidden for whoever can only read it; an empty
+  // field (with its example) for whoever may write it.
+  if (!value && !onSave) return null;
+  const empty = !value;
+
+  if ((editing || empty) && onSave) {
     const save = async () => {
       if (!draft.trim()) return;
       setSaving(true);
@@ -1182,26 +1256,30 @@ function StatusNoteField({
       }
     };
     return (
-      <div className="row">
-        <input
-          placeholder={placeholder ?? t('alerts.detail.status.placeholder')}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button onClick={save} disabled={saving || !draft.trim()}>
-          {t('common.save')}
-        </button>
-        <button className="ghost" onClick={() => setEditing(false)}>
-          {t('common.cancel')}
-        </button>
-      </div>
+      <label className="status-note-field">
+        <strong>{label} :</strong>
+        <span className="row">
+          <input
+            placeholder={placeholder ?? t('alerts.detail.status.placeholder')}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button onClick={save} disabled={saving || !draft.trim()}>
+            {t('common.save')}
+          </button>
+          {!empty && (
+            <button className="ghost" onClick={() => setEditing(false)}>
+              {t('common.cancel')}
+            </button>
+          )}
+        </span>
+      </label>
     );
   }
 
   return (
     <p>
-      <strong>{label} :</strong> {value ?? <span style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.status.none')}</span>}{' '}
-      {value && meta && <span style={{ color: 'var(--text-muted)' }}>{meta}</span>}{' '}
+      <strong>{label} :</strong> {value} {value && meta && <span style={{ color: 'var(--text-muted)' }}>{meta}</span>}{' '}
       {onSave && (
         <button
           className="ghost"
@@ -1267,7 +1345,10 @@ function ApproximateWarning({ location }: { location: AlertLocation }) {
   if ((location.accuracy ?? 0) <= APPROXIMATE_ACCURACY_M) return null;
   return (
     <p className="alert-location-warning">
-      ⚠ {t('alerts.location.approximate', { accuracy: formatAccuracy(location.accuracy ?? 0) })}
+      ⚠{' '}
+      {t('alerts.location.approximate', {
+        accuracy: formatAccuracy(location.accuracy ?? 0),
+      })}
     </p>
   );
 }
@@ -1299,10 +1380,24 @@ function UpdateMyPosition({ alertId, onDone }: { alertId: string; onDone: () => 
       <button type="button" className="ghost" disabled={locating || sending} onClick={() => void update()}>
         📍 {locating ? t('alerts.location.locating') : t('alerts.location.update')}
       </button>
-      {sent && <small>✓ {t('alerts.location.updated', { accuracy: formatAccuracy(sent.accuracy ?? 0) })}</small>}
+      {sent && (
+        <small>
+          ✓{' '}
+          {t('alerts.location.updated', {
+            accuracy: formatAccuracy(sent.accuracy ?? 0),
+          })}
+        </small>
+      )}
       {sent && <ApproximateWarning location={sent} />}
       {error && <small>{t(`alerts.location.${error}`)}</small>}
       {sendError && <p className="form-error">{sendError}</p>}
     </div>
   );
 }
+
+// Adds a dictated sentence after what's already written.
+function appendText(current: string, added: string): string {
+  if (!added) return current;
+  return current.trim() ? `${current.trim()} ${added}` : added;
+}
+

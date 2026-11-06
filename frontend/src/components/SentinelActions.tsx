@@ -10,6 +10,7 @@ import {
   type LeadSlot,
   type Membership,
 } from "../api/sentinel";
+import { genderContext } from "../gender";
 
 // What I can do about one of my Sentinels (role, placement) —
 // shown on their person page (PersonPage), under "watches over you".
@@ -67,14 +68,14 @@ export function SentinelActions({
   const toReserve = () =>
     reserve &&
     ask(
-      t("circles.confirm.toReserve", { name }),
+      t("circles.confirm.toReserve", { name, context: genderContext(m.linkAsSentinel.gender) }),
       t("circles.placement.toReserve"),
       () => updateMembership(m.id, { circleId: reserve.id }),
     );
 
   // Ends only this direction (they stop watching over me).
   const remove = () =>
-    ask(t("circles.placement.removeExplain", { name }), t("circles.placement.removeConfirm"), () => removeMembership(m.id), true);
+    ask(t("circles.placement.removeExplain", { name, context: genderContext(m.linkAsSentinel.gender) }), t("circles.placement.removeConfirm"), () => removeMembership(m.id), true);
 
   const move = (circleId: string) => {
     setPicking(false);

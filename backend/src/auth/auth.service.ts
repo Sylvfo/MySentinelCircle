@@ -12,6 +12,7 @@ import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes, randomInt, createHash } from 'crypto';
 import { Prisma, User, UserType } from '@prisma/client';
+import { CURRENT_TERMS_VERSION } from '../privacy/terms';
 import { PrismaService } from '../prisma/prisma.service';
 import { DEFAULT_CIRCLES } from '../sentinel/default-circles';
 import { OTP_SENDER } from './otp/otp-sender.interface';
@@ -71,6 +72,9 @@ export class AuthService {
         userName: dto.userName,
         email: dto.email,
         passwordHash,
+        termsAcceptedAt: new Date(),
+        termsVersion: CURRENT_TERMS_VERSION,
+        gender: dto.gender,
         myCircles: { create: DEFAULT_CIRCLES },
       },
     });
@@ -102,6 +106,9 @@ export class AuthService {
         userName: dto.userName,
         googleId,
         email,
+        termsAcceptedAt: new Date(),
+        termsVersion: CURRENT_TERMS_VERSION,
+        gender: dto.gender,
         myCircles: { create: DEFAULT_CIRCLES },
       },
     });

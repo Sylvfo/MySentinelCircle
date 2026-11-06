@@ -5,6 +5,7 @@ import { NotificationBell } from './NotificationBell';
 import { BottomNav } from './BottomNav';
 import { useUnreadCounts, useUnreadCountsRefresher } from '../unreadCounts';
 import { UserMenu } from './UserMenu';
+import { AlertSignal } from './AlertSignal';
 import logo from '../assets/logo.png';
 
 // No separate "Dashboard" link — the logo itself always goes there (see
@@ -37,6 +38,7 @@ export function AppShell() {
         </Link>
         {user && (
           <div className="user-row">
+            <AlertSignal />
             <NotificationBell />
             <UserMenu />
           </div>

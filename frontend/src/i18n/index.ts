@@ -17,7 +17,9 @@ i18n
     },
     fallbackLng: 'fr',
     supportedLngs: SUPPORTED_LANGUAGES,
-    interpolation: { escapeValue: false },
+    // _e: agreement with the reader (gender.ts readerEnding), inclusive by
+    // default, set from the profile once it's loaded.
+    interpolation: { escapeValue: false, defaultVariables: { _e: '.e' } },
     detection: {
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
@@ -25,3 +27,12 @@ i18n
   });
 
 export default i18n;
+
+// My own gender changes how texts addressed to me are written: update the
+// default and re-render every translated text.
+export function setReaderEnding(ending: string) {
+  const vars = (i18n.options.interpolation ??= {}).defaultVariables ?? {};
+  if (vars._e === ending) return;
+  i18n.options.interpolation.defaultVariables = { ...vars, _e: ending };
+  void i18n.changeLanguage(i18n.language);
+}

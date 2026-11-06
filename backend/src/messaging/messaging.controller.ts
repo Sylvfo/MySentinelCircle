@@ -24,7 +24,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { MessagingService } from './messaging.service';
 import { SendMessageDto } from './dto/send-message.dto';
 
-const MESSAGE_IMAGE_DIR = join(process.cwd(), 'uploads', 'messages');
+export const MESSAGE_IMAGE_DIR = join(process.cwd(), 'uploads', 'messages');
 mkdirSync(MESSAGE_IMAGE_DIR, { recursive: true });
 
 const IMAGE_MIME_TYPES = /^image\/(jpeg|png|webp)$/;
@@ -43,6 +43,13 @@ export class MessagingController {
 
   // The permanent Me<->Sentinel channel — finds or lazily creates the 1:1
   // Conversation with :userId. Send/list afterward reuse the routes below.
+  // My alert chats (1st-circle room, isolated chats with outer circles),
+  // for the Alerts section of Messages.
+  @Get('alert-chats')
+  listAlertChats(@CurrentUser() user: { userId: string }) {
+    return this.messaging.listMyAlertChats(user.userId);
+  }
+
   // The caller's own feedback thread (Give feedback page).
   @Get('support')
   support(@CurrentUser() user: { userId: string }) {

@@ -20,6 +20,7 @@ import {
   User,
   UserStatus,
   UserType,
+  Gender,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
@@ -37,6 +38,11 @@ import {
   sentinelLeaveConfirmSms,
 } from '../sms/messages';
 import { assertNotDeceased } from '../user/user-status.util';
+import {
+  FREE_ALERT_TRIAL_LIMIT,
+  GROUP_NEEDS_PAID,
+  isSubscribed,
+} from '../user/plan.util';
 import { computeSecurityScore } from './security-score';
 import { CreateCircleDto } from './dto/create-circle.dto';
 import { UpdateCircleDto } from './dto/update-circle.dto';
@@ -120,6 +126,11 @@ export class SentinelService {
                 publicStatus: true,
                 // Shown on their avatar: can't be asked to take part in alerts.
                 pausedForOthers: true,
+                // How texts speak about them; null = inclusive wording.
+                gender: true,
+                // Only turned into `subscribed` below: the end date itself
+                // stays private.
+                paidUntil: true,
               },
             },
           },
@@ -131,7 +142,15 @@ export class SentinelService {
     // sort it here instead.
     const rank = (t: CircleType) =>
       t === CircleType.FIRST ? 0 : t === CircleType.RESERVED ? 2 : 1;
-    return circles.sort((a, b) => rank(a.circleType) - rank(b.circleType));
+    return circles
+      .sort((a, b) => rank(a.circleType) - rank(b.circleType))
+      .map((circle) => ({
+        ...circle,
+        userSentinels: circle.userSentinels.map((m) => ({
+          ...m,
+          linkAsSentinel: withSubscribed(m.linkAsSentinel),
+        })),
+      }));
   }
 
   async updateCircle(userId: string, circleId: string, dto: UpdateCircleDto) {
@@ -198,10 +217,8 @@ export class SentinelService {
     this.assertCompleteAccount(founder);
     // Founding a group is paid (joining one someone else founded stays
     // free), per plan.txt ACCOUNTS & BILLING — no trial exception here.
-    if (!founder.hasPaid) {
-      throw new ForbiddenException(
-        'A paid Companion account is needed to found a group circle',
-      );
+    if (!isSubscribed(founder)) {
+      throw new ForbiddenException(GROUP_NEEDS_PAID);
     }
     return this.prisma.circle.create({
       data: {
@@ -774,7 +791,14 @@ export class SentinelService {
             id: true,
             label: true,
             userCompanion: {
-              select: { id: true, firstName: true, email: true, phone: true },
+              select: {
+                id: true,
+                firstName: true,
+                email: true,
+                phone: true,
+                // "invites you to be their / her / his Sentinel".
+                gender: true,
+              },
             },
           },
         },
@@ -1270,6 +1294,8 @@ export class SentinelService {
                 avatarPath: true,
                 publicStatus: true,
                 pausedForMe: true,
+                paidUntil: true,
+                gender: true,
                 status: true,
                 deathReportedAt: true,
                 deathReportedById: true,
@@ -1362,6 +1388,8 @@ export class SentinelService {
                 lastName: true,
                 publicStatus: true,
                 pausedForOthers: true,
+                paidUntil: true,
+                gender: true,
               },
             },
           },
@@ -1376,14 +1404,32 @@ export class SentinelService {
         lastName: string | null;
         publicStatus: string | null;
         pausedForOthers: boolean;
+        subscribed: boolean;
+        gender: Gender | null;
         isLead: boolean;
       }[]
     >();
     for (const m of firstCircleLinks) {
       const list = firstCircleMembersByCircle.get(m.circleId) ?? [];
-      list.push({ ...m.linkAsSentinel, isLead: m.leadSlot !== null });
+      list.push({
+        ...withSubscribed(m.linkAsSentinel),
+        isLead: m.leadSlot !== null,
+      });
       firstCircleMembersByCircle.set(m.circleId, list);
     }
+
+    // Free alert already used? Lets a Sentinel offer them a year before an
+    // emergency rather than during one.
+    const alertCounts = await this.prisma.alert.groupBy({
+      by: ['userCompanionId'],
+      where: {
+        userCompanionId: { in: links.map((l) => l.circle.userCompanion.id) },
+      },
+      _count: { _all: true },
+    });
+    const alertCountByCompanion = new Map(
+      alertCounts.map((c) => [c.userCompanionId, c._count._all]),
+    );
 
     return links.map((l) => {
       const companion = l.circle.userCompanion;
@@ -1430,6 +1476,16 @@ export class SentinelService {
           publicStatus: companion.publicStatus,
           // Nobody but them may raise an alert about them right now.
           pausedForMe: companion.pausedForMe,
+          // How texts speak about them; null = inclusive wording.
+          gender: companion.gender,
+          // Yearly subscription running: an alert can always be raised.
+          subscribed: isSubscribed(companion),
+          // No subscription and the free alert is used: the next alert
+          // needs paying (or a year offered).
+          freeAlertUsed:
+            !isSubscribed(companion) &&
+            (alertCountByCompanion.get(companion.id) ?? 0) >=
+              FREE_ALERT_TRIAL_LIMIT,
         },
         firstCircleMembers: isPrimary
           ? (firstCircleMembersByCircle.get(l.circle.id) ?? [])
@@ -2113,4 +2169,13 @@ export class SentinelService {
     if (!phone) return;
     await this.sms.send(phone, body);
   }
+}
+
+// Linked people see whether someone is subscribed (the star on their
+// figure), never until when: the end date is swapped for a boolean.
+function withSubscribed<T extends { paidUntil: Date | null }>(
+  person: T,
+): Omit<T, 'paidUntil'> & { subscribed: boolean } {
+  const { paidUntil, ...rest } = person;
+  return { ...rest, subscribed: isSubscribed({ paidUntil }) };
 }

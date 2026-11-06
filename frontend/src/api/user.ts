@@ -1,3 +1,4 @@
+import type { Gender } from '../gender';
 import { API_URL, ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPostForm, getToken } from './client';
 
 export interface Me {
@@ -25,13 +26,49 @@ export interface Me {
   hasPassword: boolean;
   hasGoogle: boolean;
   hasPaid: boolean;
+  // False until the current terms + privacy policy are accepted (TermsGate).
+  termsUpToDate: boolean;
+  // How texts speak about me; null = inclusive wording.
+  gender: Gender | null;
 }
 
 export const fetchMe = () => apiGet<Me>('/user/me');
 
+export const acceptTerms = () => apiPost<Me>('/user/me/accept-terms', {});
+
+// What my plan includes right now (GET /user/me/plan). The backend
+// enforces each rule; this only explains them and shows upgrade prompts.
+export interface Plan {
+  // Yearly subscription running right now.
+  hasPaid: boolean;
+  // Its end date (kept after it ends).
+  paidUntil: string | null;
+  // Whether the "pay" buttons work yet (simulated in dev, real later).
+  paymentAvailable: boolean;
+  freeAlertLimit: number;
+  // null = unlimited (subscription).
+  freeAlertsLeft: number | null;
+  deathNotice: boolean;
+  deathNoticePurchased: boolean;
+  groups: boolean;
+}
+
+export const getPlan = () => apiGet<Plan>('/user/me/plan');
+
+// One more year of subscription, for me or offered to someone I'm linked with.
+export const addSubscriptionYear = (forUserId?: string) =>
+  apiPost<{ userId: string; paidUntil: string }>('/user/me/subscription-year', { forUserId });
+
+// TEMPORARY dev/test affordance, like devSetHasPaid.
+export const devSetDeathNoticePurchased = (purchased: boolean) =>
+  apiPost<Plan>('/user/me/dev-death-notice-purchase', { purchased });
+
 export const updateProfile = (
   dto: Partial<
-    Pick<Me, 'firstName' | 'lastName' | 'userName' | 'isMajor' | 'publicStatus' | 'alertChatWithFirstCircle'>
+    Pick<
+      Me,
+      'firstName' | 'lastName' | 'userName' | 'isMajor' | 'publicStatus' | 'alertChatWithFirstCircle' | 'gender'
+    >
   >,
 ) => apiPatch<Me>('/user/me', dto);
 

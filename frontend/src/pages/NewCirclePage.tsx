@@ -4,6 +4,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { createCircle, createGroup, type Circle } from '../api/sentinel';
 import { Tile } from '../components/Tile';
+import { UpgradeNotice } from '../components/Upgrade';
+import { usePlan } from '../plan';
+import { IncludedStar } from '../components/SubscribedStar';
 
 // One page per creation flow (reached from My Circles), each with a short
 // explanation above the form. Both only take a name for now.
@@ -12,18 +15,33 @@ export function NewCirclePage() {
 }
 
 export function NewGroupPage() {
-  return <CreatePage i18nKey="newGroupPage" create={createGroup} />;
+  const { plan } = usePlan();
+  // Founding a group is paid (joining one stays free).
+  return (
+    <CreatePage
+      i18nKey="newGroupPage"
+      create={createGroup}
+      locked={plan !== null && !plan.groups}
+      included={!!plan?.hasPaid}
+    />
+  );
 }
 
 function CreatePage({
   i18nKey,
   create,
   expandAfter,
+  locked,
+  included,
 }: {
   i18nKey: 'newCirclePage' | 'newGroupPage';
   create: (label: string) => Promise<Circle>;
   // Opens the new circle's detail, ready to invite its first Sentinels.
   expandAfter?: boolean;
+  // A paid feature on a free account: explain instead of the form.
+  locked?: boolean;
+  // A paid feature I subscribe to: the gold star by the title.
+  included?: boolean;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -47,8 +65,14 @@ function CreatePage({
   return (
     <div>
       <Link to="/circles">{t('common.back')}</Link>
-      <h1>{t(`${i18nKey}.title`)}</h1>
+      <h1>
+        {t(`${i18nKey}.title`)}
+        {included && <IncludedStar />}
+      </h1>
       <p style={{ color: 'var(--text-muted)' }}>{t(`${i18nKey}.intro`)}</p>
+      {locked ? (
+        <UpgradeNotice reason="groups" />
+      ) : (
       <Tile>
         <form onSubmit={submit}>
           <label>
@@ -68,6 +92,7 @@ function CreatePage({
           {error && <p className="form-error">{error}</p>}
         </form>
       </Tile>
+      )}
     </div>
   );
 }

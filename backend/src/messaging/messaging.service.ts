@@ -1,3 +1,4 @@
+import { isConversationClosed } from '../common/conversation-closed';
 import {
   BadRequestException,
   ConflictException,
@@ -128,7 +129,9 @@ export class MessagingService {
       conversationId,
     );
     await this.assertNoDeceasedParticipant(conversationId);
-    if (conversation.closedAt) {
+    // An alert's chats close a few days after the alert (closedAt then
+    // lies in the future until that moment).
+    if (isConversationClosed(conversation.closedAt)) {
       throw new ConflictException('This conversation is closed');
     }
     // Alert-scoped conversations lock on close (checked above); a direct
@@ -197,6 +200,130 @@ export class MessagingService {
     });
   }
 
+  // Every alert chat I'm a participant of — the 1st-circle room ('room',
+  // the alert's first conversation) and each isolated chat with an outer-
+  // circle Sentinel ('circleChat') — for the Alerts section of Messages.
+  // Running alerts first, then the most recent activity. Names: whoever is
+  // in the alert's own team (the companion and the 1st circle) sees every
+  // sender; an outer-circle Sentinel only themself and the companion — the
+  // 1st circle's roster stays hidden from them, as in the alert itself.
+  async listMyAlertChats(userId: string) {
+    const participations = await this.prisma.conversationParticipant.findMany({
+      where: { userId, leftAt: null, conversation: { alertId: { not: null } } },
+      select: {
+        conversation: {
+          select: {
+            id: true,
+            closedAt: true,
+            createdAt: true,
+            participants: {
+              select: { user: { select: { id: true, firstName: true } } },
+            },
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              select: { body: true, type: true, createdAt: true },
+            },
+            alert: {
+              select: {
+                id: true,
+                label: true,
+                alertType: true,
+                alertStatus: true,
+                firstCircleId: true,
+                userCompanion: { select: { id: true, firstName: true } },
+                conversations: {
+                  orderBy: { createdAt: 'asc' },
+                  take: 1,
+                  select: { id: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const conversations = participations
+      .map((p) => p.conversation)
+      .filter((c) => c.alert !== null);
+    if (conversations.length === 0) return [];
+
+    // Who's in each alert's 1st circle (the team that may see every name).
+    const alertIds = [...new Set(conversations.map((c) => c.alert!.id))];
+    const roster = await this.prisma.alertParticipant.findMany({
+      where: { alertId: { in: alertIds } },
+      select: {
+        alertId: true,
+        circleId: true,
+        userSentinels: { select: { userSentinelId: true } },
+      },
+    });
+    const firstCircleOf = new Map<string, Set<string>>();
+    for (const conv of conversations) {
+      const alert = conv.alert!;
+      const ids = new Set(
+        roster
+          .filter(
+            (r) => r.alertId === alert.id && r.circleId === alert.firstCircleId,
+          )
+          .map((r) => r.userSentinels.userSentinelId),
+      );
+      firstCircleOf.set(alert.id, ids);
+    }
+
+    const unreadCounts = await this.notifications.getUnreadCountsByTarget(
+      userId,
+      conversations.map((c) => c.id),
+    );
+
+    return conversations
+      .map((conv) => {
+        const alert = conv.alert!;
+        const companionId = alert.userCompanion.id;
+        const firstCircle = firstCircleOf.get(alert.id) ?? new Set<string>();
+        const inTeam = userId === companionId || firstCircle.has(userId);
+        const isRoom = alert.conversations[0]?.id === conv.id;
+        // The outer-circle Sentinel this isolated chat was opened by.
+        const outsider = isRoom
+          ? null
+          : (conv.participants.find(
+              (p) => p.user.id !== companionId && !firstCircle.has(p.user.id),
+            )?.user ?? null);
+        const senders = conv.participants
+          .map((p) => p.user)
+          .filter(
+            (u) =>
+              inTeam ||
+              u.id === userId ||
+              u.id === companionId ||
+              u.id === outsider?.id,
+          );
+        return {
+          conversationId: conv.id,
+          alertId: alert.id,
+          alertLabel: alert.label,
+          alertType: alert.alertType,
+          alertStatus: alert.alertStatus,
+          companion: alert.userCompanion,
+          kind: isRoom ? ('room' as const) : ('circleChat' as const),
+          outsider,
+          // In the future: still writable until then (a closed alert's
+          // grace period). In the past: read-only.
+          closedAt: conv.closedAt,
+          lastMessage: conv.messages[0] ?? null,
+          unreadCount: unreadCounts[conv.id] ?? 0,
+          senders,
+        };
+      })
+      .sort((a, b) => {
+        const running = (x: typeof a) => (x.alertStatus === 'RESOLVED' ? 1 : 0);
+        if (running(a) !== running(b)) return running(a) - running(b);
+        const at = (x: typeof a) =>
+          (x.lastMessage?.createdAt ?? new Date(0)).getTime();
+        return at(b) - at(a);
+      });
+  }
+
   // Every direct (non-alert) conversation I'm an active participant of,
   // each with the other side's name, its latest message, and my unread
   // count — what MessagesPage needs to sort contacts by recency and show
@@ -214,7 +341,10 @@ export class MessagingService {
             id: true,
             participants: {
               where: { userId: { not: userId }, leftAt: null },
-              select: { userId: true, user: { select: { firstName: true } } },
+              select: {
+                userId: true,
+                user: { select: { firstName: true, gender: true } },
+              },
             },
             messages: {
               orderBy: { createdAt: 'desc' },
@@ -253,6 +383,8 @@ export class MessagingService {
           // For people outside my circles (the support account's inbox):
           // the list has no other way to name them.
           otherFirstName: other.user.firstName,
+          // How texts speak about them; null = inclusive wording.
+          otherGender: other.user.gender,
           lastMessage,
           unreadCount: unreadCounts[p.conversation.id] ?? 0,
         };

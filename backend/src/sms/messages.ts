@@ -1,3 +1,4 @@
+import type { Gender } from '@prisma/client';
 // Wording for every SMS the app sends. Kept in French only for now (the app
 // default language) since recipients may be non-app users with no locale — a
 // bilingual/Accept-Language pass is noted in Afaireplustard.txt (i18n backend).
@@ -36,7 +37,8 @@ export function sentinelInvitationSms(inviter: string): string {
     `${inviter} vous a choisi.e comme Sentinel sur ${APP}, ` +
     `un reseau d'entraide qui previent vos proches en cas d'urgence. ` +
     `Aucun compte n'est necessaire. ` +
-    `Repondez OUI pour accepter, NON pour refuser. ${SITE}`
+    `Repondez OUI pour accepter, NON pour refuser, ` +
+    `STOP pour ne plus etre contacte.e (votre numero sera efface). ${SITE}`
   );
 }
 
@@ -124,14 +126,20 @@ export function smsHelpSms(): string {
 
 // Sent to every 1st-circle Sentinel when an alert is raised for their
 // Companion. They answer from the app, never by SMS.
-// mapUrl: where the person is, when they shared it on raising the alert.
+// mapUrl: where the person is, when they shared it on raising the alert —
+// or, for an assistance alert raised by someone on the spot, where that
+// someone is (sharedBy = their first name).
 export function alertRaisedSms(
   companionFullName: string,
   mapUrl?: string,
+  sharedBy?: string,
 ): string {
+  const position = sharedBy
+    ? `Position de ${sharedBy} (qui a lance l'alerte) : ${mapUrl}\n`
+    : `Sa position : ${mapUrl}\n`;
   return (
     `${APP} : alerte pour ${companionFullName}, dont vous etes Sentinel.\n` +
-    (mapUrl ? `Sa position : ${mapUrl}\n` : '') +
+    (mapUrl ? position : '') +
     `Pouvez-vous vous en occuper maintenant ? Repondez dans l'app : ${LOGIN_LINK}`
   );
 }
@@ -146,9 +154,15 @@ export function alertRaisedToCompanionSms(raiserLabel: string): string {
 
 // Sent once an alert closes to the outer-circle Sentinels actually contacted;
 // the 1st circle gets the app notification.
-export function alertClosedSms(companionLabel: string): string {
+// finalWord: the closing words chosen by whoever stopped the alert.
+export function alertClosedSms(
+  companionLabel: string,
+  finalWord?: string | null,
+): string {
   return (
-    `L'alerte concernant ${companionLabel} sur ${APP} est terminee. Merci pour votre aide.\n` +
+    `L'alerte concernant ${companionLabel} sur ${APP} est terminee` +
+    (finalWord ? ` : ${finalWord}\n` : '. ') +
+    `Merci pour votre aide.\n` +
     `Envoyez INFO pour en savoir plus.\n${SITE}`
   );
 }
@@ -175,9 +189,11 @@ function alertReplyPrompt(kind: AlertQuestionKind): string {
 export function alertQuestionSms(
   companionFullName: string,
   kind: AlertQuestionKind,
+  // How to speak about them ("la voir" / "le voir"); unset = "la".
+  about?: { firstName: string; gender: Gender | null },
 ): string {
   return (
-    `${APP} : alerte ${companionFullName}\n${alertQuestionText(kind)}\n` +
+    `${APP} : alerte ${companionFullName}\n${alertQuestionText(kind, about)}\n` +
     alertReplyPrompt(kind)
   );
 }

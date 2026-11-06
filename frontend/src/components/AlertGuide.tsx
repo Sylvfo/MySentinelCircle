@@ -7,18 +7,19 @@ import { Modal } from './Modal';
 // right away what is theirs to do: a welcome pop-up the first time they
 // open the alert in a given role, a "Your role" banner with their steps,
 // and where the alert stands (launched → 1st circle → wider search →
-// found → over).
+// over).
 
-export type GuideRole = 'activeLead' | 'lead' | 'firstCircle' | 'found' | 'companion' | 'asked';
+export type GuideRole = 'activeLead' | 'lead' | 'firstCircle' | 'companion' | 'asked';
 
 // Where the alert stands, from its status: SENT/LAUNCHED = the 1st circle
-// was told, ACTIVE = other circles asked, CLOSING = found, RESOLVED = over.
+// was told, ACTIVE = other circles asked, RESOLVED = over. (CLOSING is no
+// longer used: an alert simply ends, with a closing word.)
 const STAGE: Record<AlertStatus, number> = {
   SENT: 1,
   LAUNCHED: 1,
   ACTIVE: 2,
-  CLOSING: 3,
-  RESOLVED: 4,
+  CLOSING: 2,
+  RESOLVED: 3,
 };
 
 export function AlertSteps({ status }: { status: AlertStatus }) {
@@ -42,8 +43,9 @@ export function AlertSteps({ status }: { status: AlertStatus }) {
 }
 
 // `vars`: name (the person the alert is about), lead (the responsible
-// Lead), followUp (what the Lead decided once the person was found).
-type GuideVars = { name: string; lead: string; followUp: string };
+// Lead).
+// context: 'female' / 'male' picks the gendered text variant (gender.ts).
+type GuideVars = { name: string; lead: string; context?: 'female' | 'male' | 'neutral' };
 
 export function RoleBanner({ role, vars }: { role: GuideRole; vars: GuideVars }) {
   const { t } = useTranslation();
@@ -51,15 +53,19 @@ export function RoleBanner({ role, vars }: { role: GuideRole; vars: GuideVars })
     ...vars,
     returnObjects: true,
   }) as string[];
+  // Only the role line shows; its steps open on a tap (the alert page
+  // has a lot to read).
   return (
-    <div className="role-banner">
-      <strong>{t(`alerts.guide.roles.${role}.banner`)}</strong>
+    <details className="role-banner">
+      <summary>
+        <strong>{t(`alerts.guide.roles.${role}.banner`, vars)}</strong>
+      </summary>
       <ol>
         {todo.map((item) => (
           <li key={item}>{item}</li>
         ))}
       </ol>
-    </div>
+    </details>
   );
 }
 

@@ -10,6 +10,7 @@ import {
 } from '../theme';
 import { SentinelIcon } from './SentinelIcon';
 import { PauseBadge } from './PauseBadge';
+import { SubscribedStar } from './SubscribedStar';
 import { useAvatarUrl } from '../avatars';
 import { useAuth } from '../auth/AuthContext';
 
@@ -168,6 +169,7 @@ export function CircleRing({
             />
             <MessageBadge on={canMessage} />
             {paused && <PauseBadge className="on-ring" />}
+            {m.linkAsSentinel.subscribed && <SubscribedStar className="on-ring" />}
             {showNames ? (
               <span className="circle-avatar-caption">
                 <span className="circle-avatar-name">{m.linkAsSentinel.firstName}</span>

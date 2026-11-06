@@ -1,4 +1,4 @@
-import { MarkFoundDto } from './dto/mark-found.dto';
+import { CloseAlertDto } from './dto/close-alert.dto';
 import {
   Body,
   Controller,
@@ -31,24 +31,19 @@ export class AlertController {
     return this.alert.raiseAlert(user.userId, dto);
   }
 
+  // Optional closing word (status, chats and the end-of-alert SMS).
   @Post(':id/close')
-  close(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
-    return this.alert.closeAlert(user.userId, id);
+  close(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: CloseAlertDto,
+  ) {
+    return this.alert.closeAlert(user.userId, id, dto.finalWord);
   }
 
   @Post(':id/claim-lead')
   claimLead(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
     return this.alert.claimLead(user.userId, id);
-  }
-
-  // Person found + what next — the responsible Lead only.
-  @Post(':id/found')
-  markFound(
-    @CurrentUser() user: { userId: string },
-    @Param('id') id: string,
-    @Body() dto: MarkFoundDto,
-  ) {
-    return this.alert.markFound(user.userId, id, dto);
   }
 
   @Post(':id/leave')

@@ -16,6 +16,7 @@ import {
 import { Modal } from './Modal';
 import { Link } from 'react-router-dom';
 import { getDirectConversation, sendMessage } from '../api/messaging';
+import { genderContext } from '../gender';
 
 type RequestKind = 'joinFirstCircle' | 'leaveFirstCircle' | 'becomeLead' | 'stopLead';
 
@@ -71,7 +72,7 @@ export function CompanionActions({
           move into their 1st circle needs saying here. */}
       {c.proposedCircle && (
         <section className="member-panel-section">
-          <p style={{ margin: 0 }}>{t('companions.circleMoveProposed', { who: c.companion.firstName })}</p>
+          <p style={{ margin: 0 }}>{t('companions.circleMoveProposed', { who: c.companion.firstName, context: genderContext(c.companion.gender) })}</p>
           <div className="row">
             <button onClick={() => setPendingMove('accept')}>{t('companions.acceptCircleMove')}</button>
             <button className="ghost" onClick={() => setPendingMove('decline')}>
@@ -120,7 +121,7 @@ export function CompanionActions({
       )}
       {asking && (
         <Modal title={t(`companions.requests.${asking}.button`, { name: c.companion.firstName })} onClose={() => setAsking(null)}>
-          <p>{t('companions.requests.explain', { name: c.companion.firstName })}</p>
+          <p>{t('companions.requests.explain', { name: c.companion.firstName, context: genderContext(c.companion.gender) })}</p>
           <blockquote className="request-preview">
             {t(`companions.requests.${asking}.message`, { name: c.companion.firstName })}
           </blockquote>
@@ -158,7 +159,7 @@ export function CompanionActions({
           Only they can put me back in a circle. */}
       {c.circle.isReserve ? (
         <section className="member-panel-section">
-          <p style={{ margin: 0 }}>{t('companions.reserve.inReserve', { name: c.companion.firstName })}</p>
+          <p style={{ margin: 0 }}>{t('companions.reserve.inReserve', { name: c.companion.firstName, context: genderContext(c.companion.gender) })}</p>
         </section>
       ) : (
         !c.circle.isGroup &&
@@ -170,7 +171,7 @@ export function CompanionActions({
               </button>
             ) : (
               <div className="remove-link-confirm">
-                <p>{t('companions.reserve.explain', { name: c.companion.firstName })}</p>
+                <p>{t('companions.reserve.explain', { name: c.companion.firstName, context: genderContext(c.companion.gender) })}</p>
                 <div className="row">
                   <button
                     onClick={() => {
@@ -270,7 +271,9 @@ function DeathNoticeControls({
   if (deathNotice.isDeceased) {
     return (
       <span className="row-actions">
-        <span className="badge">{t('companions.deathNotice.deceasedBadge')}</span>
+        <span className="badge">
+          {t('companions.deathNotice.deceasedBadge', { context: genderContext(companion.companion.gender) })}
+        </span>
         <button
           className="ghost"
           onClick={() =>

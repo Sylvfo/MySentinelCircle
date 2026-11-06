@@ -13,13 +13,18 @@ import {
 import { Modal } from '../components/Modal';
 import { PersonAvatar } from '../components/PersonAvatar';
 import { PauseNotice, PausePill } from '../components/PauseNotice';
+import { GiftYearButton } from '../components/Upgrade';
+import { NameStar } from '../components/SubscribedStar';
+import { usePlan } from '../plan';
 import { useAuth } from '../auth/AuthContext';
 import { companionColor, companionGold } from '../theme';
+import { genderContext } from '../gender';
 
 export function CompanionsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [companions, setCompanions] = useState<Companion[]>([]);
+  const { plan } = usePlan();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,13 +105,26 @@ export function CompanionsPage() {
                         userId={c.companion.id}
                         avatarPath={c.companion.avatarPath}
                         paused={c.companion.pausedForMe}
+                        subscribed={c.companion.subscribed}
                         sentinelColor={null}
                         companionColor={companionGold(!!c.leadSlot, c.circle.isPrimary) ?? companionColor(c.companion.id)}
                         size={72}
                       />
-                      <span className="companion-name">{c.companion.firstName}</span>
+                      <span className="companion-name">
+                        {c.companion.firstName}
+                        {c.companion.subscribed && <NameStar />}
+                      </span>
                       {needsAnswer(c) && (
                         <span className="companion-needs-answer">{t('companions.needsAnswer')}</span>
+                      )}
+                      {c.companion.freeAlertUsed && (
+                        <GiftYearButton
+                          userId={c.companion.id}
+                          name={c.companion.firstName}
+                          gender={c.companion.gender}
+                          plan={plan}
+                          onDone={() => void reload()}
+                        />
                       )}
                     </Link>
                   ))}
@@ -140,7 +158,10 @@ function InvitationsInbox({ invitations, onChange }: { invitations: Invitation[]
         <button key={inv.id} type="button" className="invitation-line" onClick={() => setOpen(inv)}>
           <span className="invitation-dot" aria-hidden="true" />
           <span className="invitation-text">
-            {t('companions.invitationLine', { who: inv.circle.userCompanion.firstName })}
+            {t('companions.invitationLine', {
+              who: inv.circle.userCompanion.firstName,
+              context: genderContext(inv.circle.userCompanion.gender),
+            })}
           </span>
           <span aria-hidden="true">›</span>
         </button>
@@ -156,7 +177,12 @@ function InvitationsInbox({ invitations, onChange }: { invitations: Invitation[]
             <dt>{t('companions.invitationRole')}</dt>
             <dd>{t(`sentinel.type.${invitationRole(open)}`)}</dd>
             <dt>{t('companions.invitationDuties')}</dt>
-            <dd>{t(`companions.duties.${invitationRole(open)}`, { who: open.circle.userCompanion.firstName })}</dd>
+            <dd>
+              {t(`companions.duties.${invitationRole(open)}`, {
+                who: open.circle.userCompanion.firstName,
+                context: genderContext(open.circle.userCompanion.gender),
+              })}
+            </dd>
           </dl>
           <div className="row">
             <button onClick={() => answer(() => acceptMembership(open.id))}>{t('companions.accept')}</button>

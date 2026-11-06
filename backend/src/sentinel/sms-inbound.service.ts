@@ -16,6 +16,7 @@ import type { SmsCommand } from '../sms/messages';
 import { findReplyTarget } from '../sms/sms-reply-target';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
+import { RetentionService } from '../privacy/retention.service';
 import { SentinelService } from './sentinel.service';
 import type { LinkWithParties } from './sentinel.service';
 
@@ -43,6 +44,7 @@ export class SmsInboundService {
   constructor(
     private readonly sentinel: SentinelService,
     private readonly alert: AlertService,
+    private readonly retention: RetentionService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
   ) {}
 
@@ -121,6 +123,9 @@ export class SmsInboundService {
 
   private async answerInvitation(link: LinkWithParties, accept: boolean) {
     await this.sentinel.answerInvitation(link, accept);
+    if (!accept && link.linkAsSentinel.phone) {
+      await this.retention.eraseStubIfUnused(link.linkAsSentinel.phone);
+    }
     return {
       matched: true as const,
       action: accept ? 'accepted' : 'declined',
@@ -154,6 +159,7 @@ export class SmsInboundService {
       return { matched: true as const, action: 'stop_choice_sent' };
     }
     const left = await this.sentinel.leaveLinkBySms(link);
+    if (left) await this.retention.eraseStubIfUnused(phone);
     return { matched: true as const, action: left ? 'left' : 'last_lead_kept' };
   }
 
