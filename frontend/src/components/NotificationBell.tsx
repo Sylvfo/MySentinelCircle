@@ -1,56 +1,66 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../auth/AuthContext';
-import { getUnreadCount, listNotifications, markNotificationRead, type NotificationItem } from '../api/notification';
+import { listNotifications, markNotificationRead, type NotificationItem } from '../api/notification';
+import { decrementUnreadCount, useUnreadCounts } from '../unreadCounts';
+import { genderContext } from '../gender';
 
 // Maps a notification to the page that already shows the entity it's
-// about — there's no per-entity route (e.g. no /alerts/:id) to deep-link
-// into, so this lands on the right page, not the right row.
+// about. A new message opens its conversation (with the sender); other
+// types have no per-entity route, so they land on the right page.
+// Where a notification leads: the alert itself, or the page of the person
+// it's about whenever we're still linked; else the list where it's handled.
+// targetId = the alert. A resolved one is redirected to History anyway.
+function alertDestination(item: NotificationItem): string {
+  if (!item.targetId) return '/running-alert';
+  return item.type === 'ALERT_CLOSED' ? `/history/${item.targetId}` : `/running-alert/${item.targetId}`;
+}
+
 function destinationFor(item: NotificationItem): string {
-  if (item.type.startsWith('ALERT_')) return '/alerts';
-  if (item.type === 'NEW_MESSAGE') return '/messages';
+  const actor = item.actorUserId;
+  if (item.type.startsWith('ALERT_')) return alertDestination(item);
+  if (item.type === 'NEW_MESSAGE') return actor ? `/messages/${actor}` : '/messages';
+  // Someone asks to watch over me: approved from My Circles' inbox.
+  if (item.type === 'SENTINEL_REQUEST_RECEIVED') return '/circles';
+  if (item.type === 'SENTINEL_GROUP_INVITED' || item.type === 'SENTINEL_LEFT') return '/circles';
+  // Accepted: we're now linked, their page shows it. Declined: no page.
+  if (item.type === 'SENTINEL_LINK_ANSWERED' && item.accepted && actor) return `/people/${actor}`;
+  // My companion asks me to move into their 1st circle.
+  if (item.type === 'CIRCLE_MOVE_PROPOSED' && actor) return `/people/${actor}?from=companion`;
+  // My Sentinel went to my reserve: their page, where I can move them back.
+  if (item.type === 'SENTINEL_TO_RESERVE' && actor) return `/people/${actor}?from=sentinel`;
+  // My Sentinel answered my move proposal.
+  if (item.type === 'CIRCLE_MOVE_ANSWERED' && actor) return `/people/${actor}?from=sentinel`;
+  // targetId = the companion the death notice is about: report / confirm /
+  // reject and the announcement live on their page.
+  if (item.type.startsWith('DEATH_NOTICE_') && item.targetId) return `/people/${item.targetId}?from=companion`;
+  // Invitations received (SENTINEL_INVITATION_RECEIVED) are answered there.
   return '/companions';
 }
 
-// SENTINEL_LINK_ANSWERED carries its outcome in `accepted`, not in a
-// separate type — split it into two translation keys here so the i18n
+// SENTINEL_LINK_ANSWERED and CIRCLE_MOVE_ANSWERED carry their outcome in
+// `accepted`, not in a separate type — split it into two translation keys here so the i18n
 // file can stay flat.
 function translationKey(item: NotificationItem): string {
   if (item.type === 'SENTINEL_LINK_ANSWERED') {
     return item.accepted ? 'SENTINEL_LINK_ACCEPTED' : 'SENTINEL_LINK_DECLINED';
+  }
+  if (item.type === 'CIRCLE_MOVE_ANSWERED') {
+    return item.accepted ? 'CIRCLE_MOVE_ACCEPTED' : 'CIRCLE_MOVE_DECLINED';
   }
   return item.type;
 }
 
 export function NotificationBell() {
   const { t } = useTranslation();
-  const { socket } = useAuth();
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [open, setOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  // Shared with the Messages tab badges (refreshed by AppShell); the bell's
+  // own count leaves new messages out — they live on the Messages tab.
+  const { count: unreadCount } = useUnreadCounts();
   const [items, setItems] = useState<NotificationItem[]>([]);
-
-  const reloadCount = () => {
-    getUnreadCount()
-      .then(({ count }) => setUnreadCount(count))
-      .catch(() => {});
-  };
-
-  useEffect(() => {
-    reloadCount();
-  }, []);
-
-  useEffect(() => {
-    if (!socket) return;
-    socket.on('notification:new', reloadCount);
-    return () => {
-      socket.off('notification:new', reloadCount);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket]);
 
   useEffect(() => {
     if (!open) return;
@@ -75,13 +85,14 @@ export function NotificationBell() {
 
   const handleItemClick = async (item: NotificationItem) => {
     setOpen(false);
-    if (!item.readAt) {
-      try {
-        await markNotificationRead(item.id);
-        setUnreadCount((count) => Math.max(0, count - 1));
-      } catch {
-        // navigation still proceeds even if marking it read failed
-      }
+    setItems((list) => list.filter((i) => i.id !== item.id));
+    // New messages never reach the bell (filtered server-side), so every
+    // item here is marked read on click.
+    try {
+      await markNotificationRead(item.id);
+      decrementUnreadCount();
+    } catch {
+      // navigation still proceeds even if marking it read failed
     }
     navigate(destinationFor(item));
   };
@@ -104,10 +115,13 @@ export function NotificationBell() {
               <button
                 type="button"
                 key={item.id}
-                className={`notification-item${item.readAt ? '' : ' unread'}`}
+                className="notification-item unread"
                 onClick={() => handleItemClick(item)}
               >
-                {t(`notifications.types.${translationKey(item)}`, { who: item.actorLabel ?? '' })}
+                {t(`notifications.types.${translationKey(item)}`, {
+                  who: item.actorLabel ?? '',
+                  context: genderContext(item.actorGender),
+                })}
               </button>
             ))
           )}

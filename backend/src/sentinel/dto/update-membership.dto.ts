@@ -1,5 +1,11 @@
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
-import { MessagingMode, SentinelType } from '@prisma/client';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+import { LeadSlot, SentinelType } from '@prisma/client';
 
 // "Me" adjusts an existing membership: change the Sentinel's type, the
 // Lead-slot request, the messaging settings, or move them to another of
@@ -18,20 +24,17 @@ export class UpdateMembershipDto {
   @IsString()
   circleId?: string;
 
-  // Messaging settings — only meaningful for account-holding Sentinels
-  // (see plan.txt CIRCLES & PERMISSIONS).
+  // Lead order (who is Lead 1, 2, 3 — Lead 1 is the responsible Lead when an
+  // alert starts). Only for a 1st-circle Lead; swaps with whoever holds the
+  // slot. A standalone action: other fields on the same call are ignored.
   @IsOptional()
-  @IsBoolean()
-  canMessageOwnCircle?: boolean;
+  @IsEnum(LeadSlot)
+  leadSlot?: LeadSlot;
 
+  // Manual outer-circle call rank (lower = called first) for batched alert
+  // escalation — see AlertService.requestCircle. Meaningless for the 1st
+  // circle (never batched) but harmless to set there.
   @IsOptional()
-  @IsEnum(MessagingMode)
-  firstCircleMessagingMode?: MessagingMode;
-
-  // The permanent Me<->Sentinel channel (separate from the two settings
-  // above, which only govern alert-time reach) — null = inherit the
-  // circle's (then the companion's) setting.
-  @IsOptional()
-  @IsBoolean()
-  canMessageMe?: boolean;
+  @IsInt()
+  callOrder?: number;
 }

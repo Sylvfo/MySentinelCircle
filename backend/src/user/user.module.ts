@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
 import { UserService } from './user.service';
+import { AccountDeletionService } from './account-deletion.service';
+import { PauseService } from './pause.service';
+import { AlertModule } from '../alert/alert.module';
+import { SentinelModule } from '../sentinel/sentinel.module';
 import { UserController } from './user.controller';
 import { EmailConfirmationController } from './email-confirmation.controller';
 import { OTP_SENDER } from '../auth/otp/otp-sender.interface';
@@ -8,8 +12,11 @@ import { EMAIL_SENDER } from '../email/email-sender.interface';
 import { ConsoleEmailSenderService } from '../email/console-email-sender.service';
 
 @Module({
+  imports: [SentinelModule, AlertModule],
   providers: [
     UserService,
+    AccountDeletionService,
+    PauseService,
     { provide: OTP_SENDER, useClass: ConsoleOtpSenderService },
     { provide: EMAIL_SENDER, useClass: ConsoleEmailSenderService },
   ],

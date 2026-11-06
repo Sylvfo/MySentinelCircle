@@ -1,7 +1,9 @@
+import { Gender } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  Equals,
+  IsEnum,
   IsOptional,
-  IsPhoneNumber,
   IsString,
   Matches,
   MaxLength,
@@ -22,8 +24,9 @@ export class SignupGoogleDto {
   @MaxLength(80)
   lastName?: string;
 
-  // Visible to other users (invitation target) — mandatory, unlike lastName
-  // and phone which can be filled in later.
+  // Visible to other users (invitation target) — mandatory, unlike lastName.
+  // No phone here: this path creates a UserType.UNCOMPLETE account, which
+  // adds and verifies its phone later (POST /user/phone/request).
   @ApiProperty({ minLength: 3, maxLength: 30 })
   @IsString()
   @MinLength(3)
@@ -37,10 +40,15 @@ export class SignupGoogleDto {
   @IsString()
   idToken: string;
 
-  // Optional at signup — an account without a phone is created as
-  // UserType.UNCOMPLETE and can browse, but can't have/be a Sentinel.
-  @ApiProperty({ required: false })
+  // Optional: how texts speak about me. Left empty = inclusive wording.
+  @ApiProperty({ required: false, enum: Gender })
   @IsOptional()
-  @IsPhoneNumber()
-  phone?: string;
+  @IsEnum(Gender)
+  gender?: Gender;
+
+  // The terms of use + privacy policy checkbox (nLPD / GDPR): refused
+  // unless explicitly true.
+  @ApiProperty({ enum: [true] })
+  @Equals(true)
+  acceptTerms: boolean;
 }

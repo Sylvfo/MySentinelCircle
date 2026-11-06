@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { CircleType, LinkStatus, MessagingMode } from '@prisma/client';
+import { CircleType, LinkStatus } from '@prisma/client';
 import { AppModule } from './../src/app.module';
 import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from './../src/email/email-sender.interface';
@@ -26,8 +26,6 @@ interface LinkBody {
   status: LinkStatus;
   circleId: string;
   leadSlot: string | null;
-  canMessageOwnCircle?: boolean;
-  firstCircleMessagingMode?: MessagingMode;
 }
 
 describe('Sentinel (e2e)', () => {
@@ -73,13 +71,13 @@ describe('Sentinel (e2e)', () => {
     await app.close();
   });
 
-  // Full, verified account via phone+OTP signup — used for both companions
+  // Full, verified account via phone+OTP — used for both companions
   // and account-holding Sentinels throughout this spec.
   async function signupAccount(firstName: string) {
     const phone = testPhone();
     const signupRes = await request(app.getHttpServer())
-      .post('/auth/signup/phone')
-      .send({ firstName, phone })
+      .post('/auth/otp/request')
+      .send({ phone })
       .expect(201);
     const signupBody = signupRes.body as AuthResponseBody;
     const code = sentOtps[sentOtps.length - 1].code;
@@ -88,6 +86,11 @@ describe('Sentinel (e2e)', () => {
       .send({ userId: signupBody.userId, code })
       .expect(201);
     const verifyBody = verifyRes.body as AuthResponseBody;
+    await request(app.getHttpServer())
+      .post('/user/me/complete-profile')
+      .set('Authorization', `Bearer ${verifyBody.accessToken}`)
+      .send({ firstName, password: 'password123' })
+      .expect(201);
     return {
       accessToken: verifyBody.accessToken as string,
       userId: signupBody.userId as string,
@@ -100,14 +103,8 @@ describe('Sentinel (e2e)', () => {
   }
 
   describe('Circles', () => {
-    it('always exposes the 1st and reserve circles, sorted FIRST -> BASIC -> RESERVED', async () => {
+    it('starts a new account with the default circles, sorted FIRST -> BASIC -> RESERVED', async () => {
       const { accessToken } = await signupAccount('Ada');
-
-      await request(app.getHttpServer())
-        .post('/sentinel/circles')
-        .set('Authorization', auth(accessToken))
-        .send({ label: 'Voisins' })
-        .expect(201);
 
       const res = await request(app.getHttpServer())
         .get('/sentinel/circles')
@@ -117,8 +114,57 @@ describe('Sentinel (e2e)', () => {
       expect(circles.map((c) => c.circleType)).toEqual([
         CircleType.FIRST,
         CircleType.BASIC,
+        CircleType.BASIC,
+        CircleType.BASIC,
         CircleType.RESERVED,
       ]);
+      expect(
+        circles
+          .filter((c) => c.circleType === CircleType.BASIC)
+          .map((c) => c.label)
+          .sort(),
+      ).toEqual(['Sport', 'Travail', 'Voisins']);
+    });
+
+    it('raises the security score as Sentinels accept, never counting a pending one', async () => {
+      const { accessToken } = await signupAccount('Ada');
+      const score = async () => {
+        const res = await request(app.getHttpServer())
+          .get('/sentinel/security-score')
+          .set('Authorization', auth(accessToken))
+          .expect(200);
+        return res.body as { score: number; missing: string[] };
+      };
+      expect(await score()).toMatchObject({
+        score: 11,
+        missing: ['lead', 'sentinel'],
+      });
+
+      const circles = await request(app.getHttpServer())
+        .get('/sentinel/circles')
+        .set('Authorization', auth(accessToken))
+        .expect(200);
+      const first = (circles.body as CircleBody[]).find(
+        (c) => c.circleType === CircleType.FIRST,
+      )!;
+      const lead = await signupAccount('Lea');
+      const invite = await request(app.getHttpServer())
+        .post(`/sentinel/circles/${first.id}/invite`)
+        .set('Authorization', auth(accessToken))
+        .send({ phone: lead.phone, name: 'Lea', requestedAsLead: true })
+        .expect(201);
+      expect((await score()).score).toBe(11);
+
+      await request(app.getHttpServer())
+        .post(`/sentinel/memberships/${(invite.body as LinkBody).id}/accept`)
+        .set('Authorization', auth(lead.accessToken))
+        .send({})
+        .expect(201);
+      expect(await score()).toMatchObject({
+        score: 22,
+        missing: ['sentinel'],
+      });
+      expect(JSON.stringify(await score())).not.toContain(lead.phone);
     });
 
     it('cannot delete the 1st or reserve circle', async () => {
@@ -217,7 +263,38 @@ describe('Sentinel (e2e)', () => {
         .send({})
         .expect(201);
       expect((acceptRes.body as LinkBody).status).toBe(LinkStatus.ACCEPTED);
-      expect(sentSms).toHaveLength(2); // companion notified of the acceptance
+      expect(sentSms).toHaveLength(1); // the companion gets an app notification
+    });
+
+    it('keeps an SMS-only person out of the 1st circle and from being a Companion', async () => {
+      const { accessToken } = await signupAccount('Ada');
+      const requester = await signupAccount('Bea');
+      const phone = testPhone();
+      const circles = await request(app.getHttpServer())
+        .get('/sentinel/circles')
+        .set('Authorization', auth(accessToken))
+        .expect(200);
+      const all = circles.body as CircleBody[];
+      const first = all.find((c) => c.circleType === CircleType.FIRST)!;
+      const outer = all.find((c) => c.circleType === CircleType.BASIC)!;
+
+      // an outer-circle invitation is fine, and leaves an SMS-only row behind
+      await request(app.getHttpServer())
+        .post(`/sentinel/circles/${outer.id}/invite`)
+        .set('Authorization', auth(accessToken))
+        .send({ phone, name: 'Sam' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/sentinel/circles/${first.id}/invite`)
+        .set('Authorization', auth(accessToken))
+        .send({ phone, name: 'Sam', requestedAsLead: true })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post('/sentinel/requests')
+        .set('Authorization', auth(requester.accessToken))
+        .send({ targetPhone: phone })
+        .expect(404);
     });
 
     it('rejects inviting a 1st-circle Sentinel with no account', async () => {
@@ -447,65 +524,44 @@ describe('Sentinel (e2e)', () => {
     });
   });
 
-  describe('Messaging settings', () => {
-    it('updates canMessageOwnCircle/firstCircleMessagingMode for an account-holding Sentinel', async () => {
+  describe('Alert chat with the 1st circle (per circle)', () => {
+    it('is allowed by default and can be switched off for a whole circle', async () => {
       const companion = await signupAccount('Ada');
-      const sentinel = await signupAccount('Bob');
       const circleRes = await request(app.getHttpServer())
         .post('/sentinel/circles')
         .set('Authorization', auth(companion.accessToken))
         .send({ label: 'Voisins' })
         .expect(201);
-      const circle = circleRes.body as CircleBody;
-      const inviteRes = await request(app.getHttpServer())
-        .post(`/sentinel/circles/${circle.id}/invite`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ phone: sentinel.phone, name: 'Bob' })
-        .expect(201);
-      const link = inviteRes.body as LinkBody;
-      await request(app.getHttpServer())
-        .post(`/sentinel/memberships/${link.id}/accept`)
-        .set('Authorization', auth(sentinel.accessToken))
-        .send({})
-        .expect(201);
+      const circle = circleRes.body as CircleBody & {
+        alertChatWithFirstCircle: boolean;
+      };
+      expect(circle.alertChatWithFirstCircle).toBe(true);
 
       const updateRes = await request(app.getHttpServer())
-        .patch(`/sentinel/memberships/${link.id}`)
+        .patch(`/sentinel/circles/${circle.id}`)
         .set('Authorization', auth(companion.accessToken))
-        .send({
-          canMessageOwnCircle: false,
-          firstCircleMessagingMode: MessagingMode.GROUP,
-        })
+        .send({ alertChatWithFirstCircle: false })
         .expect(200);
-      const updated = updateRes.body as LinkBody;
-      expect(updated.canMessageOwnCircle).toBe(false);
-      expect(updated.firstCircleMessagingMode).toBe(MessagingMode.GROUP);
+      expect(
+        (updateRes.body as { alertChatWithFirstCircle: boolean })
+          .alertChatWithFirstCircle,
+      ).toBe(false);
     });
 
-    it('rejects messaging settings on a Sentinel SMS link (no account)', async () => {
+    it('rejects the setting on the 1st circle — it has its own room', async () => {
       const companion = await signupAccount('Ada');
-      const sentinelPhone = testPhone();
-      const circleRes = await request(app.getHttpServer())
-        .post('/sentinel/circles')
+      const circlesRes = await request(app.getHttpServer())
+        .get('/sentinel/circles')
         .set('Authorization', auth(companion.accessToken))
-        .send({ label: 'Voisins' })
-        .expect(201);
-      const circle = circleRes.body as CircleBody;
-      const inviteRes = await request(app.getHttpServer())
-        .post(`/sentinel/circles/${circle.id}/invite`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ phone: sentinelPhone, name: 'Bob' })
-        .expect(201);
-      const link = inviteRes.body as LinkBody;
-      await request(app.getHttpServer())
-        .post('/sentinel/sms/inbound')
-        .send({ from: sentinelPhone, body: 'OUI' })
-        .expect(201);
+        .expect(200);
+      const firstCircle = (circlesRes.body as CircleBody[]).find(
+        (c) => c.circleType === CircleType.FIRST,
+      )!;
 
       await request(app.getHttpServer())
-        .patch(`/sentinel/memberships/${link.id}`)
+        .patch(`/sentinel/circles/${firstCircle.id}`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ firstCircleMessagingMode: MessagingMode.INDIVIDUAL })
+        .send({ alertChatWithFirstCircle: false })
         .expect(400);
     });
   });
@@ -605,7 +661,7 @@ describe('Sentinel (e2e)', () => {
         .expect(201);
       expect(res.body).toEqual({
         matched: false,
-        reason: 'unrecognized_reply',
+        reason: 'no_actionable_link',
       });
     });
   });

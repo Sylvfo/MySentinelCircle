@@ -1,3 +1,4 @@
+import { CloseAlertDto } from './dto/close-alert.dto';
 import {
   Body,
   Controller,
@@ -10,7 +11,8 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AlertService } from './alert.service';
-import { CreateAlertDto } from './dto/create-alert.dto';
+import { AlertLocationDto, CreateAlertDto } from './dto/create-alert.dto';
+import { AskQuestionDto } from './dto/ask-question.dto';
 import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
 import { UpdateAlertStatusDto } from './dto/update-alert-status.dto';
@@ -29,9 +31,24 @@ export class AlertController {
     return this.alert.raiseAlert(user.userId, dto);
   }
 
+  // Optional closing word (status, chats and the end-of-alert SMS).
   @Post(':id/close')
-  close(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
-    return this.alert.closeAlert(user.userId, id);
+  close(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: CloseAlertDto,
+  ) {
+    return this.alert.closeAlert(user.userId, id, dto.finalWord);
+  }
+
+  @Post(':id/claim-lead')
+  claimLead(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+    return this.alert.claimLead(user.userId, id);
+  }
+
+  @Post(':id/leave')
+  leave(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+    return this.alert.leaveAlert(user.userId, id);
   }
 
   @Post(':id/request-circle')
@@ -41,6 +58,15 @@ export class AlertController {
     @Body() dto: RequestCircleDto,
   ) {
     return this.alert.requestCircle(user.userId, id, dto);
+  }
+
+  @Post(':id/questions')
+  askQuestion(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: AskQuestionDto,
+  ) {
+    return this.alert.askQuestion(user.userId, id, dto);
   }
 
   @Post(':id/respond')
@@ -59,6 +85,16 @@ export class AlertController {
     @Body() dto: UpdateAlertStatusDto,
   ) {
     return this.alert.updateStatus(user.userId, id, dto);
+  }
+
+  // The person the alert is about shares an updated GPS position.
+  @Patch(':id/location')
+  updateLocation(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: AlertLocationDto,
+  ) {
+    return this.alert.updateLocation(user.userId, id, dto);
   }
 
   @Patch(':id/label')

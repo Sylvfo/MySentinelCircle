@@ -13,9 +13,10 @@ export class UpdateCircleDto {
   @MaxLength(60)
   label?: string;
 
-  // null = inherit the companion's allowMessagingByDefault. Rejected on the
-  // 1st circle — always reachable, no override possible there.
+  // During an alert, may this circle's Sentinels chat with the 1st circle?
+  // Only applies when the companion's general switch (User.
+  // alertChatWithFirstCircle) is on. Rejected on the 1st circle itself.
   @IsOptional()
   @IsBoolean()
-  canMessageMe?: boolean;
+  alertChatWithFirstCircle?: boolean;
 }

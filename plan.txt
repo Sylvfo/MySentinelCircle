@@ -62,8 +62,62 @@ ACCOUNTS & BILLING
   registered account; otherwise the invite is refused until they sign up.
   This account requirement applies only to the 1st circle — outer circles
   stay account-free / SMS-only.
-- Billing mechanics (plans, what exactly is gated) still TBD — see
-  basedb.txt "a reconcilier".
+- What's gated — DECIDED:
+  - Always free: being a Sentinel (any role), responding to alerts,
+    messaging, configuring your own 1st circle (no safety net at all
+    without it, so no reason to ever charge for it).
+  - Free trial, lifetime (not reset annually): 1 alert (3 before
+    2026-11-06, lowered by Sylvie: an alert costs SMS) as
+    Companion, free forever — payment required beyond that. Lets someone
+    experience a real alert escalating before committing money, important
+    for trust in a safety app.
+  - Paid: being an ongoing Companion beyond the 1-alert trial; the
+    `AlertType.TRAVEL` type (added to the schema, not yet migrated) as a
+    specialized/premium alert type; **founding** a Group Circle (see
+    GROUP CIRCLES below) — joining someone *else's* group circle stays
+    free (you're the Sentinel-equivalent there), founding one requires
+    paid Companion status (you're the Companion-equivalent for that group).
+  - Private users' plans (2026-11-06, organisations come later):
+    - Free: everything "Always free" above + the 1-alert trial.
+      After the trial, a new alert about the person is REFUSED until they
+      subscribe (Sylvie's call, kept deliberately).
+    - Subscription (yearly, price TBD), each person for themself:
+      `User.paidUntil` (replaced `hasPaid`), active while in the future;
+      renewing adds a year from the current end. Includes unlimited
+      alerts with SMS included (fair use), founding group circles, the
+      death notice, travel mode (not built yet), no ads.
+    - Offering: anyone can offer a year to someone they're linked with
+      (`POST /user/me/subscription-year { forUserId }`). No family plan
+      (Sylvie's call, 2026-11-06).
+    - Raising an alert about someone past their free alert and without a
+      subscription: the raiser chooses to offer them a year (dearer) or to
+      pay for this single alert (`payForThisAlert`, recorded as
+      `Alert.paidById`). Same choice for oneself.
+    - Payment is simulated (only with ALLOW_DEV_ROUTES) until a real
+      provider exists — see deployment_plan.txt.
+    - Death notice alone: a one-time purchase
+      (`User.deathNoticePurchasedAt`) for someone staying free; also
+      included in the subscription. Only PREPARING it is gated
+      (`PATCH /user/death-notice[...]`); sending a prepared one after the
+      death is never blocked.
+    - Ads: only in-house (our own promotion, hand-picked partners), no ad
+      network, only on free accounts, never during an alert, in messages
+      or around a death notice. Not built yet.
+    - Rules live in `backend/src/user/plan.util.ts`; `GET /user/me/plan`
+      tells the frontend what's included (Plans page `/plans`, upgrade
+      prompts).
+  - `User.hasPaid` already exists in the schema for this but is enforced
+    nowhere in code yet — that's deliberately separate future work, to be
+    done once a real payment provider is wired in (see below).
+- Billing mechanics (the payment provider integration itself) still TBD —
+  see basedb.txt "a reconcilier". Technically: nothing about the current
+  architecture blocks adding an external payment provider (e.g. Stripe) —
+  it's the same REST + webhook pattern already used for SMS (pluggable
+  provider interface, a webhook controller). Use the provider's own hosted
+  checkout (Stripe Checkout/Elements) rather than handling card data
+  directly, and remember the webhook endpoint needs the same signature
+  verification already flagged as missing on the SMS inbound webhook
+  (DEV-ONLY STUBS, below) — don't repeat that gap for payments.
 
 CIRCLES & PERMISSIONS
 ----------------------
@@ -147,6 +201,11 @@ CIRCLES & PERMISSIONS
   reserve instead of being force-removed). A Sentinel link can NEVER land in
   the reserve circle at creation (invite or request) — it's reachable only
   by a deliberate move afterward (manual pause, or a circle deletion cascade).
+  The Sentinel can also put themself there ("not available for now",
+  POST /sentinel/memberships/:id/reserve): immediate, "Me" is notified, the
+  link stays; a Lead gives up their slot, refused for "Me"'s only Lead and
+  while they take part in an alert about "Me" in progress; not for a group
+  link. Only "Me" moves them back out.
   No Lead slot can exist there (Lead is 1st-circle-only, same rule as any
   other outer circle). Once the alert module exists, the reserve circle must
   be excluded from any circle-escalation/broadcast logic — it never receives
@@ -206,6 +265,26 @@ CORE FEATURES (MVP)
      before use in alerts. A phone-only account with no other credential
      has no recovery path today if the phone is lost — open gap, not yet
      designed.
+   - Who can raise an alert. For yourself: your own verified phone and a
+     Lead Sentinel with a phone. For a companion: you must be their accepted
+     Sentinel; a Lead also needs another Sentinel with a phone to answer, a
+     plain Sentinel needs a Lead with a phone. The caller's own Sentinels
+     don't matter.
+   - Strength of the safety net (score bar, Dashboard + My Circles, working
+     name): 11% each for your verified phone, a Lead with a phone, and
+     another Sentinel with a phone, so the minimum sits at 33%. Then it
+     grows with accepted Sentinels with a phone, outside the reserve
+     circle: 10 reach 80%, 20 reach 100%. It's informative only; the rules
+     above are what block an alert.
+   - Account deletion (self-service, Settings): immediate and final, after
+     a fresh identity check. The row is never removed: everything that
+     identifies the person is wiped (status DELETED, firstName "Compte
+     supprimé"), active links are REMOVED, circles CLOSED, groups left or
+     deleted. Messages and alert history stay readable, signed "Compte
+     supprimé". Refused while an alert concerns the person or they lead one;
+     a Lead may leave a companion with no Lead, who is warned by SMS and
+     notification. The phone number is freed, so the person can sign up
+     again from scratch, and a block on the old account doesn't follow them.
    - Known accepted gap in `claimOrCreateByPhone` (auth.service.ts): a
      narrow race between the read and the write if two signups for the
      same phone land concurrently. The create-fresh path is protected by
@@ -324,6 +403,13 @@ CORE FEATURES (MVP)
      corroborating data), but stop collecting further "seen" sightings for
      the same day once 3 people have confirmed one. At alert close, every
      Sentinel who participated receives a closing message — no exceptions.
+     Whoever stops the alert (the companion or anyone in the 1st circle)
+     can add a few closing words, picked from ready-made ones (all fine /
+     found, will give news / false alarm / sad news) or written freely:
+     they become the status, are posted in the alert's chats and go out in
+     the end-of-alert SMS. There is no separate "person found → what next"
+     step (removed 2026-11-06, Sylvie's call): the alert simply ends.
+     The alert's chats stay writable 7 days after it ends, then read-only.
 
 4. Messagerie Me <-> Sentinels
    - Outside of any active alert, "Me" can always reach any of their
@@ -402,8 +488,7 @@ DATA MODEL (sketch)
 - AlertNotification  : one row per contact notified for a given alert,
                        including the target User themselves (they're
                        always notified directly, not only their circle);
-                       delivery status, availabilityCode (the 0-6/10 SMS
-                       reply scale — see Alert lifecycle), respondedAt.
+                       delivery status, respondedAt.
 - Conversation       : a generic thread, reused for all 3 messaging
                        contexts instead of a separate AlertChat model.
                        Attached via an optional unique conversationId on
@@ -460,6 +545,103 @@ BACKEND MODULES (NestJS, sketch)
                 here vs Sentinel-type-gated and request-based during an
                 alert).
 
+ALERT REPLIES & INBOUND SMS
+
+Replaces the 0-10 availability scale. The texts are the reference page of
+messages; the lists live in backend/src/alert/alert-replies.ts.
+- 1st circle: replies by logging in only (GOING, LATER, UNAVAILABLE). It
+  gets an SMS asking it to log in, and never answers by SMS.
+- Outer circles: the Lead picks one of 4 preset questions, sent to the next
+  batch by request-circle, then to anyone already contacted by
+  POST /alert/:id/questions. Several questions per person are allowed; each
+  is one AlertQuestion row. Limits to decide later: each question costs an SMS.
+    CAN_VISIT   1 Oui, 2 Plus tard, 3 Non
+    LAST_NEWS   1 Aujourd'hui, 2 Cette semaine, 3 Avant
+    SEEMED_OK   1 Oui, 2 Non, 3 Je ne sais pas
+    WHERE_SEEN  free text
+- With one request waiting, an SMS reply answers it. The latest answer wins
+  until the alert closes.
+- With several people waiting (alert questions or invitations), the reply
+  starts with at least 3 letters of the first name: "Gabriel 1", "Gab 1",
+  "Johan OUI". Without a name, nothing is recorded and an SMS explains how to
+  answer. Two identical first names can only be told apart on /a.
+- Every Sentinel message offers both ways: log in, or reply by SMS.
+- Keywords, from any Sentinel at any time: INFO lists the people followed;
+  STOP / QUITTER / ARRETER removes them (STOP 2 picks one among several). A
+  plain NON never removes anyone.
+- A Sentinel without an account logs in with their number and an SMS code,
+  and lands on /a: open alerts with reply buttons and death notices, with no
+  profile or password required.
+- Invitations are answered by SMS. Sentinel requests, circle moves and their
+  answers go through app notifications only.
+
+GROUP CIRCLES
+------------------
+- A circle shared between several Sentinels at once (e.g. a choir), not
+  owned by a single companion like every other circle — a mutual mesh:
+  joining makes the new member Sentinel for every existing member, and
+  every existing member Sentinel for them too.
+- Invite-only (no asking to join, for now). Any member can invite, two
+  ways: pick one of their contacts (someone they already have an accepted
+  link with), or enter anyone's phone number + first name. A number with
+  no account gets a stand-in User (as for a circle invitation) and an SMS
+  asking them to create their account with that number; the invitation
+  then waits for them in the app. An account holder gets the notification
+  + an SMS. The inviter gets the same answer either way, so a number can't
+  be tested to find out who uses the app.
+- A member must hold a real account (not SMS-only) to *accept* — the mesh
+  needs everyone to act as both companion and Sentinel, which an SMS-only
+  contact can't do.
+- Model: no separate "group" table — `CircleType.GROUP` + a nullable
+  self-relation (`Circle.groupRootId`). The founder's own circle has
+  `groupRootId: null` and *is* the group; every other member's own circle
+  points at it. `SentinelGroupInvitation` is the one new table, needed
+  because `LinkSentinels` allows only one relationship ever per pair —
+  since joining requires already being connected to the inviter, that
+  pair's one allowed row already exists elsewhere, so the pending invite
+  can't be a second `LinkSentinels` row.
+- Leaving undoes only the relationships the group itself created (a
+  relationship predating the group, or living in some other circle, is
+  left alone). The founder can instead delete the whole group, which
+  cascades the same way to every member.
+- Billing: founding a group requires paid Companion status; joining
+  someone else's group stays free either way — see ACCOUNTS & BILLING.
+
+GENDER (how texts speak about someone)
+--------------------------------------
+- Optional `User.gender` (FEMALE / MALE / NEUTRAL), set only by the person
+  themself (Settings > Profile, or at signup). Never set by an inviter; a
+  person known only by SMS stays unset.
+- Linked people get it wherever they get the first name (circles,
+  companions, alerts, conversations, invitations) to word texts about that
+  person: i18n variants `_female` / `_male` / `_neutral`, base text when
+  unset. SMS questions too (`alert-replies.ts` byGender).
+- Rule (Sylvie, 2026-11-06): pronouns le/la, il/elle default to "la" /
+  "elle" when unset; MALE -> "le" / "il"; NEUTRAL -> rephrase with the first
+  name. Plain agreements (retrouve.e, Seul.e) stay inclusive when unset.
+- Texts addressed to me agree with MY gender through the `{{_e}}` i18n
+  variable ("e" / "" / ".e", set from the profile in AuthContext).
+
+PAUSE
+------------------
+- Two independent switches in Settings, both can be on at once. Stored as
+  two booleans on `User` (`pausedForMe`, `pausedForOthers`), not as a
+  `UserStatus` value: `status` stays for the account lifecycle (active,
+  deleted, deceased), and a death notice still works on a paused account.
+- Pause for me: nobody else can raise an alert about me. I can still raise
+  one about myself.
+- Pause for others: I can't be asked to take part in any alert — I'm left
+  out of the 1st circle's fan-out, out of outer-circle batches and later
+  questions, and my SMS replies to alert questions are ignored. Turning it
+  on takes me out of every alert in progress at once (participation
+  CLOSED, same as leaving the alert). A Lead on an alert in progress can't
+  turn it on until they've handed the lead over and left that alert —
+  same rule as account deletion.
+- If every Lead of a 1st circle is paused for others, no alert can be
+  raised for that companion.
+- Paused people are shown with a dashed avatar and a "||" badge wherever
+  people appear.
+
 TECH STACK (confirmed)
 ------------------------
 - Backend      : NestJS + TypeScript
@@ -485,6 +667,17 @@ OPEN POINTS / TO REVISIT
   manual-trigger only).
 - Push notifications on top of SMS for registered app users (nice-to-have,
   not blocking MVP).
+- Small AI assistant (later, not blocking MVP) — three roles: (1) answers
+  visitor questions / presents the site, (2) helps fill things in
+  correctly during setup (e.g. "you need at least N Sentinels") — much of
+  this is already plain rule-based UI hints, not actual AI, (3) reassures
+  (not informs) a worried companion during an active alert — this third
+  one needs careful content/safety design (never invent information,
+  always disclose it's automated), more a product-writing task than a
+  coding one. Decided: call a hosted AI API (e.g. Claude) from the
+  backend rather than self-hosting a model — self-hosting would need real
+  infra and open-source models are weaker for the sensitive reassurance
+  role specifically.
 - SMS provider selection (Twilio vs alternatives) — deferred.
 - Can an Organization become a member of one of "Me"'s circles (not just
   raise ad hoc phone-only alerts) — e.g. a hotel/camp as a temporary
@@ -497,9 +690,17 @@ OPEN POINTS / TO REVISIT
 - Default wait window before an unresponsive Lead Sentinel's leadership
   passes to the next in succession order — needs a default value (tunable
   per "Me"?).
-- How many circles / how many people within a circle to alert
-  simultaneously during a search, and whether it's worth soliciting
-  everyone every time — still open.
+- How many people within one outer circle to alert simultaneously during a
+  search: DECIDED — at most 2 at a time, in a manually settable order
+  (random if not set). The 1st circle can ask for 2 more at any time, with
+  no enforced wait; the only automation is a one-time notification to the
+  1st circle after 4h of silence suggesting it try more people — never an
+  automatic contact. The 1st circle itself is unaffected: it still notifies
+  everyone at once. Implemented in `AlertService.requestCircle`/
+  `pickNextCircleBatch`/`remindStaleCircleBatches`.
+  How many *circles* to solicit at once (e.g. asking two outer circles in
+  parallel) is still open — `requestCircle` targets one circle per call,
+  nothing yet governs asking several at the same time.
 - Follow-up policy on stale sightings (e.g. someone replies "seen 5 days
   ago") — how far back is still useful, when to stop chasing it — still
   open.
@@ -521,7 +722,12 @@ caller-side changes needed once that happens):
 - Email sending (password reset link) — `ConsoleEmailSenderService` only,
   logs the email to the backend console instead of sending it. Needs a
   real provider (SendGrid, Mailgun, Amazon SES, etc.) behind
-  `EmailSender`/`EMAIL_SENDER`.
+  `EmailSender`/`EMAIL_SENDER` — no code changes elsewhere once one is
+  picked, same swap-in pattern as `SmsSender`. Decided: Sylvie will create
+  one dedicated Google account for the project (not her personal Gmail,
+  currently used for `GOOGLE_CLIENT_ID`'s OAuth project) and use it for
+  both Google Sign-In's Cloud project ownership and signing up with
+  whichever email provider is chosen.
 - SMS sending (OTP codes, Sentinel invitations, alerts) —
   `ConsoleSmsSenderService` only, logs to the backend console instead of
   sending it. Needs a real operator/provider (Twilio likely default, see

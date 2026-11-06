@@ -7,6 +7,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AlertParticipantStatus,
+  AlertStatus,
   CircleStatus,
   CircleType,
   LeadSlot,
@@ -16,34 +18,43 @@ import {
   Prisma,
   SentinelType,
   User,
+  UserStatus,
   UserType,
+  Gender,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
-import { AlertService } from '../alert/alert.service';
 import { NotificationService } from '../notification/notification.service';
 import {
-  circleMoveAnsweredSms,
-  circleMoveProposedSms,
-  circleMovedSms,
-  invitationAnsweredSms,
-  parseSmsReply,
-  requestAnsweredSms,
+  deathNoticeSms,
+  lastLeadCannotLeaveSms,
+  lastLeadLeftSms,
+  lastLeadWantsToLeaveSms,
   sentinelAcceptedSms,
   sentinelDeclinedSms,
+  groupInvitationSms,
   sentinelInvitationSms,
   sentinelLeaveConfirmSms,
-  sentinelLeftSms,
-  sentinelRequestSms,
 } from '../sms/messages';
+import { assertNotDeceased } from '../user/user-status.util';
+import {
+  FREE_ALERT_TRIAL_LIMIT,
+  GROUP_NEEDS_PAID,
+  isSubscribed,
+} from '../user/plan.util';
+import { computeSecurityScore } from './security-score';
 import { CreateCircleDto } from './dto/create-circle.dto';
 import { UpdateCircleDto } from './dto/update-circle.dto';
 import { InviteSentinelDto } from './dto/invite-sentinel.dto';
 import { RequestSentinelDto } from './dto/request-sentinel.dto';
 import { UpdateMembershipDto } from './dto/update-membership.dto';
+import { CreateGroupDto } from './dto/create-group.dto';
+import { InviteToGroupDto } from './dto/invite-to-group.dto';
 
 const ACTIVE_STATUSES: LinkStatus[] = [LinkStatus.PENDING, LinkStatus.ACCEPTED];
+// A 1st circle handles an alert together, live: kept small (Sylvie's call).
+const FIRST_CIRCLE_MAX = 6;
 const LEAD_SLOTS: LeadSlot[] = [
   LeadSlot.LEAD_1,
   LeadSlot.LEAD_2,
@@ -56,16 +67,22 @@ const LINK_WITH_PARTIES = {
   circle: true,
 } as const;
 
-type LinkWithParties = Prisma.LinkSentinelsGetPayload<{
+export type LinkWithParties = Prisma.LinkSentinelsGetPayload<{
   include: typeof LINK_WITH_PARTIES;
 }>;
+
+type LeadCheckLink = {
+  id: string;
+  circleId: string;
+  leadSlot: LeadSlot | null;
+  circle: { circleType: CircleType };
+};
 
 @Injectable()
 export class SentinelService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
-    private readonly alert: AlertService,
     private readonly notifications: NotificationService,
   ) {}
 
@@ -89,14 +106,32 @@ export class SentinelService {
   async listCircles(userId: string) {
     await this.ensurePrimaryCircle(userId);
     await this.ensureReserveCircle(userId);
+    // Deleted circles are only CLOSED (never hard-deleted): leave them out.
     const circles = await this.prisma.circle.findMany({
-      where: { userCompanionId: userId },
+      where: { userCompanionId: userId, status: CircleStatus.ACTIVE },
       orderBy: { createdAt: 'asc' },
       include: {
         userSentinels: {
           include: {
             linkAsSentinel: {
-              select: { id: true, firstName: true, phone: true },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                phone: true,
+                // Photo's file name, only a cache key: the file itself is
+                // served by GET /user/:id/avatar after a link check.
+                avatarPath: true,
+                // Visible to the people linked to them (see listCompanions).
+                publicStatus: true,
+                // Shown on their avatar: can't be asked to take part in alerts.
+                pausedForOthers: true,
+                // How texts speak about them; null = inclusive wording.
+                gender: true,
+                // Only turned into `subscribed` below: the end date itself
+                // stays private.
+                paidUntil: true,
+              },
             },
           },
           orderBy: { createdAt: 'asc' },
@@ -107,17 +142,25 @@ export class SentinelService {
     // sort it here instead.
     const rank = (t: CircleType) =>
       t === CircleType.FIRST ? 0 : t === CircleType.RESERVED ? 2 : 1;
-    return circles.sort((a, b) => rank(a.circleType) - rank(b.circleType));
+    return circles
+      .sort((a, b) => rank(a.circleType) - rank(b.circleType))
+      .map((circle) => ({
+        ...circle,
+        userSentinels: circle.userSentinels.map((m) => ({
+          ...m,
+          linkAsSentinel: withSubscribed(m.linkAsSentinel),
+        })),
+      }));
   }
 
   async updateCircle(userId: string, circleId: string, dto: UpdateCircleDto) {
     const circle = await this.ensureCircleOwned(userId, circleId);
     if (
-      dto.canMessageMe !== undefined &&
+      dto.alertChatWithFirstCircle !== undefined &&
       circle.circleType === CircleType.FIRST
     ) {
       throw new BadRequestException(
-        'The 1st circle is always reachable — canMessageMe can’t be overridden there',
+        'The 1st circle always has its own alert chat — this setting is for other circles',
       );
     }
     return this.prisma.circle.update({ where: { id: circleId }, data: dto });
@@ -155,6 +198,486 @@ export class SentinelService {
     return { deleted: true, movedToReserve: activeLinks.length };
   }
 
+  // ---- Groups (mutual mesh, invite-by-connection only) -----------------------
+  //
+  // A group (e.g. a choir) isn't its own table — the founder's own GROUP
+  // circle *is* the group (groupRootId: null), and every other member gets
+  // their own GROUP circle pointing at it (groupRootId: <founder's circle
+  // id>), permanently stable even if the founder later leaves. Joining
+  // makes the new member Sentinel for every existing member and vice versa
+  // (full mesh) — but LinkSentinels allows only one relationship ever per
+  // pair, so a pair already connected from outside the group is left alone,
+  // not duplicated. See SentinelGroupInvitation for why the pending invite
+  // can't just be a LinkSentinels row: the inviter and invitee are already
+  // connected (that's the eligibility rule below), so that pair's one
+  // allowed row already exists elsewhere.
+
+  async createGroup(userId: string, dto: CreateGroupDto) {
+    const founder = await this.getUser(userId);
+    this.assertCompleteAccount(founder);
+    // Founding a group is paid (joining one someone else founded stays
+    // free), per plan.txt ACCOUNTS & BILLING — no trial exception here.
+    if (!isSubscribed(founder)) {
+      throw new ForbiddenException(GROUP_NEEDS_PAID);
+    }
+    return this.prisma.circle.create({
+      data: {
+        userCompanionId: userId,
+        label: dto.label,
+        circleType: CircleType.GROUP,
+      },
+    });
+  }
+
+  // "My" groups, each with its member list (companion id + firstName).
+  async listMyGroups(userId: string) {
+    const myGroupCircles = await this.prisma.circle.findMany({
+      where: {
+        userCompanionId: userId,
+        circleType: CircleType.GROUP,
+        status: CircleStatus.ACTIVE,
+      },
+    });
+    if (myGroupCircles.length === 0) return [];
+
+    const rootIds = myGroupCircles.map((c) => c.groupRootId ?? c.id);
+    const allMemberCircles = await this.prisma.circle.findMany({
+      where: {
+        status: CircleStatus.ACTIVE,
+        OR: rootIds.flatMap((rootId) => [
+          { id: rootId },
+          { groupRootId: rootId },
+        ]),
+      },
+      include: { userCompanion: { select: { id: true, firstName: true } } },
+    });
+    return rootIds.map((rootId, i) => ({
+      rootId,
+      label: allMemberCircles.find((c) => c.id === rootId)?.label ?? '',
+      // The founder's own circle is the root (groupRootId: null) — only
+      // they can delete the whole group, everyone else can only leave.
+      isFounder: myGroupCircles[i].groupRootId === null,
+      members: allMemberCircles
+        .filter((c) => c.id === rootId || c.groupRootId === rootId)
+        .map((c) => c.userCompanion),
+    }));
+  }
+
+  // Two ways in (InviteToGroupDto):
+  // - targetUserId: someone I'm already connected to (my contacts list);
+  // - phone + name: anyone. No account behind the number: a stand-in User
+  //   is created (as for a circle invitation), claimed when they sign up
+  //   with that number — the invitation then waits for them in the app.
+  // The answer is the same whether the number has an account or not, so
+  // nobody can test numbers to find out who uses the app.
+  async inviteToGroup(
+    userId: string,
+    groupRootId: string,
+    dto: InviteToGroupDto,
+  ) {
+    const inviter = await this.getUser(userId);
+    this.assertCompleteAccount(inviter);
+
+    const myCircle = await this.prisma.circle.findFirst({
+      where: {
+        userCompanionId: userId,
+        status: CircleStatus.ACTIVE,
+        OR: [{ id: groupRootId }, { groupRootId }],
+      },
+    });
+    if (!myCircle) {
+      throw new ForbiddenException('You are not a member of this group');
+    }
+
+    const target = dto.phone
+      ? await this.groupTargetByPhone(inviter, dto.phone, dto.name)
+      : await this.groupTargetFromContacts(userId, dto.targetUserId);
+
+    const alreadyMember = await this.prisma.circle.findFirst({
+      where: {
+        userCompanionId: target.id,
+        status: CircleStatus.ACTIVE,
+        OR: [{ id: groupRootId }, { groupRootId }],
+      },
+    });
+    if (alreadyMember) {
+      throw new ConflictException(
+        'This person is already a member of the group',
+      );
+    }
+
+    const existingInvitation =
+      await this.prisma.sentinelGroupInvitation.findUnique({
+        where: {
+          groupRootId_invitedUserId: {
+            groupRootId,
+            invitedUserId: target.id,
+          },
+        },
+      });
+    if (existingInvitation?.status === LinkStatus.PENDING) {
+      throw new ConflictException('This person has already been invited');
+    }
+
+    const invitation = existingInvitation
+      ? await this.prisma.sentinelGroupInvitation.update({
+          where: { id: existingInvitation.id },
+          data: { status: LinkStatus.PENDING, invitedById: userId },
+        })
+      : await this.prisma.sentinelGroupInvitation.create({
+          data: {
+            groupRootId,
+            invitedUserId: target.id,
+            invitedById: userId,
+          },
+        });
+
+    await this.notifications.create({
+      userId: target.id,
+      type: NotificationType.SENTINEL_GROUP_INVITED,
+      actorUserId: userId,
+      actorLabel: this.label(inviter),
+      targetId: invitation.id,
+    });
+    // Always an SMS too: with no account, it's the only way they hear of it.
+    if (target.phone) {
+      const root = await this.prisma.circle.findUnique({
+        where: { id: groupRootId },
+        select: { label: true },
+      });
+      await this.sms.send(
+        target.phone,
+        groupInvitationSms(
+          this.label(inviter),
+          root?.label ?? '',
+          target.userType !== UserType.ONLY_SMS,
+        ),
+      );
+    }
+    return invitation;
+  }
+
+  // Anyone, by phone: the existing account, or a stand-in created for them.
+  private async groupTargetByPhone(
+    inviter: User,
+    rawPhone: string,
+    name: string | undefined,
+  ) {
+    const phone = rawPhone.trim();
+    if (!name?.trim()) {
+      throw new BadRequestException('A first name is required');
+    }
+    if (inviter.phone === phone) {
+      throw new BadRequestException('You cannot invite yourself');
+    }
+    return this.findOrCreateUserByPhone(phone, name.trim());
+  }
+
+  // Picked from my contacts: someone I already have an accepted link with,
+  // holding a real account.
+  private async groupTargetFromContacts(
+    userId: string,
+    targetUserId: string | undefined,
+  ) {
+    if (!targetUserId) {
+      throw new BadRequestException('Choose someone or enter a phone number');
+    }
+    if (targetUserId === userId) {
+      throw new BadRequestException('You cannot invite yourself');
+    }
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+    if (!target) throw new NotFoundException('User not found');
+    if (target.userType === UserType.ONLY_SMS) {
+      throw new BadRequestException(
+        'A group member must already have an account',
+      );
+    }
+    const alreadyLinked = await this.prisma.linkSentinels.findFirst({
+      where: {
+        status: LinkStatus.ACCEPTED,
+        OR: [
+          { userSentinelId: userId, userCompanionId: targetUserId },
+          { userSentinelId: targetUserId, userCompanionId: userId },
+        ],
+      },
+    });
+    if (!alreadyLinked) {
+      throw new ForbiddenException(
+        'You can only invite someone you are already connected to',
+      );
+    }
+    return target;
+  }
+
+  async respondToGroupInvitation(
+    userId: string,
+    invitationId: string,
+    accept: boolean,
+  ) {
+    const invitation = await this.prisma.sentinelGroupInvitation.findUnique({
+      where: { id: invitationId },
+      include: { groupRoot: true },
+    });
+    if (!invitation) throw new NotFoundException('Invitation not found');
+    if (invitation.invitedUserId !== userId) {
+      throw new ForbiddenException('This invitation is not addressed to you');
+    }
+    if (invitation.status !== LinkStatus.PENDING) {
+      throw new ConflictException('This invitation has already been answered');
+    }
+
+    if (!accept) {
+      return this.prisma.sentinelGroupInvitation.update({
+        where: { id: invitationId },
+        data: { status: LinkStatus.DECLINED },
+      });
+    }
+
+    // Invited by phone with no account: an SMS-only login can see the
+    // invitation but the mesh needs a full account (watched over too).
+    const invitee = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { userType: true },
+    });
+    if (invitee?.userType === UserType.ONLY_SMS) {
+      throw new ForbiddenException(
+        'Create your account with this phone number to join the group',
+      );
+    }
+
+    const members = await this.prisma.circle.findMany({
+      where: {
+        status: CircleStatus.ACTIVE,
+        OR: [
+          { id: invitation.groupRootId },
+          { groupRootId: invitation.groupRootId },
+        ],
+      },
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.sentinelGroupInvitation.update({
+        where: { id: invitationId },
+        data: { status: LinkStatus.ACCEPTED },
+      });
+
+      // A member who left and got re-invited already has a (closed) circle
+      // for this group — @@unique([userCompanionId, groupRootId]) means it
+      // must be reactivated, not duplicated.
+      const previousCircle = await tx.circle.findUnique({
+        where: {
+          userCompanionId_groupRootId: {
+            userCompanionId: userId,
+            groupRootId: invitation.groupRootId,
+          },
+        },
+      });
+      const myCircle = previousCircle
+        ? await tx.circle.update({
+            where: { id: previousCircle.id },
+            data: { status: CircleStatus.ACTIVE, closedAt: null },
+          })
+        : await tx.circle.create({
+            data: {
+              userCompanionId: userId,
+              label: invitation.groupRoot.label,
+              circleType: CircleType.GROUP,
+              groupRootId: invitation.groupRootId,
+            },
+          });
+
+      // Each direction is its own row (@@unique is per directed pair) and
+      // can be in a different state — handled independently: none yet ->
+      // create; REMOVED/DECLINED (e.g. left this same group before) ->
+      // reactivate; BLOCKED -> never touched, permanent; PENDING/ACCEPTED
+      // (already connected, from this group or from outside it) -> leave
+      // as-is.
+      const connect = async (
+        sentinelId: string,
+        companionId: string,
+        circleId: string,
+      ) => {
+        const existing = await tx.linkSentinels.findUnique({
+          where: {
+            userSentinelId_userCompanionId: {
+              userSentinelId: sentinelId,
+              userCompanionId: companionId,
+            },
+          },
+        });
+        if (!existing) {
+          await tx.linkSentinels.create({
+            data: {
+              userSentinelId: sentinelId,
+              userCompanionId: companionId,
+              circleId,
+              status: LinkStatus.ACCEPTED,
+              initiatedBy: LinkInitiator.COMPANION,
+              sentinelType: SentinelType.SENTINEL,
+            },
+          });
+          return;
+        }
+        if (
+          existing.status === LinkStatus.REMOVED ||
+          existing.status === LinkStatus.DECLINED
+        ) {
+          await tx.linkSentinels.update({
+            where: { id: existing.id },
+            data: { status: LinkStatus.ACCEPTED, circleId },
+          });
+        }
+        // BLOCKED, PENDING or ACCEPTED: leave untouched either way.
+      };
+
+      for (const member of members) {
+        await connect(userId, member.userCompanionId, member.id);
+        await connect(member.userCompanionId, userId, myCircle.id);
+      }
+
+      return myCircle;
+    });
+  }
+
+  // Closes the caller's own GROUP circle and undoes the mesh — but only the
+  // relationships the group itself created (circleId is one of the group's
+  // own circles). A relationship that predates the group, or lives in some
+  // other circle, is left untouched.
+  // Closes one member's own circle and undoes only the relationships the
+  // group itself created with each of `otherMembers` (circleId is one of
+  // the group's own circles) — a relationship that predates the group, or
+  // lives in some other circle, is left untouched. Shared by leaveGroup
+  // (one member, themself) and deleteGroup (every member, in turn).
+  private async leaveGroupCircle(
+    tx: Prisma.TransactionClient,
+    memberUserId: string,
+    memberCircleId: string,
+    otherMembers: { id: string; userCompanionId: string }[],
+    groupCircleIds: Set<string>,
+  ) {
+    await tx.circle.update({
+      where: { id: memberCircleId },
+      data: { status: CircleStatus.CLOSED, closedAt: new Date() },
+    });
+
+    for (const other of otherMembers) {
+      const links = await tx.linkSentinels.findMany({
+        where: {
+          status: LinkStatus.ACCEPTED,
+          OR: [
+            {
+              userSentinelId: memberUserId,
+              userCompanionId: other.userCompanionId,
+            },
+            {
+              userSentinelId: other.userCompanionId,
+              userCompanionId: memberUserId,
+            },
+          ],
+        },
+      });
+      for (const link of links) {
+        if (!groupCircleIds.has(link.circleId)) continue;
+        await tx.linkSentinels.update({
+          where: { id: link.id },
+          data: { status: LinkStatus.REMOVED },
+        });
+      }
+    }
+  }
+
+  async leaveGroup(userId: string, groupRootId: string) {
+    const myCircle = await this.prisma.circle.findFirst({
+      where: {
+        userCompanionId: userId,
+        status: CircleStatus.ACTIVE,
+        OR: [{ id: groupRootId }, { groupRootId }],
+      },
+    });
+    if (!myCircle) {
+      throw new NotFoundException('You are not a member of this group');
+    }
+
+    const members = await this.prisma.circle.findMany({
+      where: {
+        status: CircleStatus.ACTIVE,
+        OR: [{ id: groupRootId }, { groupRootId }],
+      },
+    });
+    const groupCircleIds = new Set(members.map((m) => m.id));
+    const others = members.filter((m) => m.id !== myCircle.id);
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.leaveGroupCircle(
+        tx,
+        userId,
+        myCircle.id,
+        others,
+        groupCircleIds,
+      );
+      return { left: true };
+    });
+  }
+
+  // Only the founder (whose own circle *is* the group's root) can delete
+  // the whole group — every member's circle closes and every group-created
+  // relationship unwinds, not just the founder's own. A regular member
+  // uses leaveGroup instead, which only ever affects their own membership.
+  async deleteGroup(userId: string, groupRootId: string) {
+    const root = await this.prisma.circle.findUnique({
+      where: { id: groupRootId },
+    });
+    if (
+      !root ||
+      root.circleType !== CircleType.GROUP ||
+      root.groupRootId !== null
+    ) {
+      throw new NotFoundException('Group not found');
+    }
+    if (root.userCompanionId !== userId) {
+      throw new ForbiddenException('Only the group’s founder can delete it');
+    }
+    if (root.status !== CircleStatus.ACTIVE) {
+      throw new ConflictException('This group is already closed');
+    }
+
+    const members = await this.prisma.circle.findMany({
+      where: {
+        status: CircleStatus.ACTIVE,
+        OR: [{ id: groupRootId }, { groupRootId }],
+      },
+    });
+    const groupCircleIds = new Set(members.map((m) => m.id));
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const member of members) {
+        const others = members.filter((m) => m.id !== member.id);
+        await this.leaveGroupCircle(
+          tx,
+          member.userCompanionId,
+          member.id,
+          others,
+          groupCircleIds,
+        );
+      }
+      return { deleted: true };
+    });
+  }
+
+  // Group invitations addressed to me, awaiting my answer.
+  listMyGroupInvitations(userId: string) {
+    return this.prisma.sentinelGroupInvitation.findMany({
+      where: { invitedUserId: userId, status: LinkStatus.PENDING },
+      include: {
+        groupRoot: { select: { id: true, label: true } },
+        invitedBy: { select: { id: true, firstName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   // ---- Me -> Sentinel invitation (site only) --------------------------------
 
   async inviteSentinel(
@@ -164,6 +687,7 @@ export class SentinelService {
   ) {
     const inviter = await this.getUser(userId);
     this.assertCompleteAccount(inviter);
+    assertNotDeceased(inviter, 'Your account');
     const circle = await this.ensureAssignableCircle(userId, circleId);
     const phone = dto.phone.trim();
 
@@ -172,10 +696,16 @@ export class SentinelService {
       throw new BadRequestException('You cannot add yourself as a Sentinel');
     }
     // 1st-circle Sentinels must have an account (plan.txt ACCOUNTS & BILLING).
-    if (circle.circleType === CircleType.FIRST && !linkedUser) {
+    // Leads included: a lead slot only exists in the 1st circle.
+    const hasAccount = linkedUser && linkedUser.userType !== UserType.ONLY_SMS;
+    if (circle.circleType === CircleType.FIRST && !hasAccount) {
       throw new BadRequestException(
         'A 1st-circle Sentinel must already have an account',
       );
+    }
+
+    if (circle.circleType === CircleType.FIRST) {
+      await this.assertFirstCircleHasRoom(circle.id);
     }
 
     const sentinelUser = await this.findOrCreateUserByPhone(phone, dto.name);
@@ -208,8 +738,11 @@ export class SentinelService {
     const target = await this.prisma.user.findUnique({
       where: { phone: targetPhone },
     });
-    if (!target)
+    // An ONLY_SMS user can only be a Sentinel, never someone's Companion. Same
+    // answer as an unknown number, so this never reveals who is in the app.
+    if (!target || target.userType === UserType.ONLY_SMS)
       throw new NotFoundException('No account with this phone number');
+    assertNotDeceased(target, 'This companion');
     if (target.id === requesterId) {
       throw new BadRequestException(
         'You cannot request to be your own Sentinel',
@@ -232,7 +765,6 @@ export class SentinelService {
       requestedAsLead: false,
     });
 
-    await this.sms.send(targetPhone, sentinelRequestSms(this.label(requester)));
     await this.notifications.create({
       userId: target.id,
       type: NotificationType.SENTINEL_REQUEST_RECEIVED,
@@ -258,7 +790,16 @@ export class SentinelService {
           select: {
             id: true,
             label: true,
-            userCompanion: { select: { id: true, email: true, phone: true } },
+            userCompanion: {
+              select: {
+                id: true,
+                firstName: true,
+                email: true,
+                phone: true,
+                // "invites you to be their / her / his Sentinel".
+                gender: true,
+              },
+            },
           },
         },
       },
@@ -295,6 +836,7 @@ export class SentinelService {
       include: LINK_WITH_PARTIES,
     });
     if (!link) throw new NotFoundException('Membership not found');
+    assertNotDeceased(link.userCompanion, 'This companion');
     if (link.status !== LinkStatus.PENDING) {
       throw new ConflictException('This invitation has already been answered');
     }
@@ -354,81 +896,34 @@ export class SentinelService {
 
   // ---- Respond by SMS (no account required) ---------------------------------
 
-  // Handles every SMS-driven action, since Sentinels don't need an account:
-  //  - OUI/NON to answer a pending link, either direction. The responder is
-  //    identified by phone: an invited Sentinel (linkAsSentinel.phone)
-  //    answering a Me->Sentinel invitation, or a target "Me"
-  //    (userCompanion.phone) approving a Sentinel->Me request.
-  //  - NON/STOP/QUITTER from an already-accepted Sentinel = opt out of the
-  //    link. Pending links take priority if the number has both.
-  // Most recent match wins when several apply to the same number.
-  async handleInboundSms(from: string, body: string) {
-    const intent = parseSmsReply(body);
-    if (intent === 'unknown') {
-      return { matched: false as const, reason: 'unrecognized_reply' };
-    }
-    const phone = from.trim();
+  // SmsInboundService decides which of these applies to a received SMS.
 
-    const pending = await this.prisma.linkSentinels.findFirst({
+  // Sentinel->Me requests are answered in the app, so an SMS only ever answers
+  // an invitation. Newest first.
+  listInvitationsByPhone(phone: string) {
+    return this.prisma.linkSentinels.findMany({
       where: {
         status: LinkStatus.PENDING,
-        OR: [
-          { initiatedBy: LinkInitiator.COMPANION, linkAsSentinel: { phone } },
-          { initiatedBy: LinkInitiator.SENTINEL, userCompanion: { phone } },
-        ],
+        initiatedBy: LinkInitiator.COMPANION,
+        linkAsSentinel: { phone },
       },
       include: LINK_WITH_PARTIES,
       orderBy: { createdAt: 'desc' },
     });
-    if (pending) {
-      await this.applyResponse(pending, intent === 'accept', true);
-      return {
-        matched: true as const,
-        action: intent === 'accept' ? 'accepted' : 'declined',
-      };
-    }
+  }
 
-    // No fresh pending link: check for a 1st-circle move awaiting this
-    // Sentinel's answer (only ever set on an already-ACCEPTED link).
-    const moveProposal = await this.prisma.linkSentinels.findFirst({
-      where: {
-        status: LinkStatus.ACCEPTED,
-        proposedCircleId: { not: null },
-        linkAsSentinel: { phone },
-      },
+  answerInvitation(link: LinkWithParties, accept: boolean) {
+    return this.applyResponse(link, accept, true);
+  }
+
+  // Oldest first, so the numbers in an INFO reply stay the same between two
+  // messages.
+  listActiveLinksByPhone(phone: string) {
+    return this.prisma.linkSentinels.findMany({
+      where: { status: LinkStatus.ACCEPTED, linkAsSentinel: { phone } },
       include: LINK_WITH_PARTIES,
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
     });
-    if (moveProposal) {
-      await this.applyCircleMoveResponse(moveProposal, intent === 'accept');
-      return {
-        matched: true as const,
-        action:
-          intent === 'accept' ? 'circle_move_accepted' : 'circle_move_declined',
-      };
-    }
-
-    // No sentinel-link-domain match: maybe this phone has a live alert ask
-    // waiting on them. Checked *before* the blanket "NON means leave" fallback
-    // below — a time-boxed alert question is a more specific match than that
-    // catch-all, same precedence logic as the two checks above it.
-    const alertMatch = await this.alert.tryHandleInboundSms(phone, body);
-    if (alertMatch) return alertMatch;
-
-    // No pending link/proposal/alert ask: a NON/STOP from an active Sentinel means "remove me".
-    if (intent === 'decline') {
-      const active = await this.prisma.linkSentinels.findFirst({
-        where: { status: LinkStatus.ACCEPTED, linkAsSentinel: { phone } },
-        include: LINK_WITH_PARTIES,
-        orderBy: { createdAt: 'desc' },
-      });
-      if (active) {
-        await this.leaveLink(active, true);
-        return { matched: true as const, action: 'left' };
-      }
-    }
-
-    return { matched: false as const, reason: 'no_actionable_link' };
   }
 
   // A Sentinel who does have an account can also opt out from the app.
@@ -447,6 +942,333 @@ export class SentinelService {
     return this.leaveLink(link, false);
   }
 
+  // "Not available for now": the Sentinel puts themself in the companion's
+  // reserve without ending the link — same as the companion moving them
+  // there (immediate, no consent). Only the companion brings them back.
+  // A Lead gives up their slot, unless they're the companion's only Lead;
+  // refused while they take part in an alert about this companion.
+  async moveSelfToReserve(userId: string, linkId: string) {
+    const link = await this.prisma.linkSentinels.findUnique({
+      where: { id: linkId },
+      include: LINK_WITH_PARTIES,
+    });
+    if (!link) throw new NotFoundException('Membership not found');
+    if (link.userSentinelId !== userId) {
+      throw new ForbiddenException('You are not the Sentinel of this link');
+    }
+    if (link.status !== LinkStatus.ACCEPTED) {
+      throw new ConflictException('This link is not active');
+    }
+    if (link.circle.circleType === CircleType.RESERVED) {
+      throw new ConflictException('You are already in their reserve');
+    }
+    if (link.circle.circleType === CircleType.GROUP) {
+      throw new BadRequestException('Leave the group instead');
+    }
+    await this.assertLeadPreserved(link);
+    const inAlert = await this.prisma.alertParticipant.count({
+      where: {
+        userSentinelsId: link.id,
+        status: { not: AlertParticipantStatus.CLOSED },
+        alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+      },
+    });
+    if (inAlert > 0) {
+      throw new ConflictException(
+        'Leave the alert in progress before going to the reserve',
+      );
+    }
+
+    const reserve = await this.ensureReserveCircle(link.userCompanionId);
+    const updated = await this.prisma.linkSentinels.update({
+      where: { id: link.id },
+      data: {
+        circleId: reserve.id,
+        leadSlot: null,
+        requestedAsLead: false,
+        proposedCircleId: null,
+        callOrder: null,
+      },
+    });
+    await this.notifications.create({
+      userId: link.userCompanionId,
+      type: NotificationType.SENTINEL_TO_RESERVE,
+      actorUserId: link.userSentinelId,
+      actorLabel: this.label(link.linkAsSentinel),
+      targetId: link.id,
+    });
+    return updated;
+  }
+
+  // ---- Death notice (report / confirm / reject) ------------------------------
+  //
+  // A permanent state, deliberately outside the Alert model — Alert is a
+  // resolvable, time-boxed emergency, a death never "resolves." No new
+  // tables either: the report/confirm flow and announcement text are flat
+  // fields on User (like Alert's own launchedAt/closedAt), and recipient
+  // opt-in + personal message are flat fields on LinkSentinels (alongside
+  // canSendPhone) — a literal "memorial circle" doesn't work
+  // since a Sentinel/Companion pair has only one LinkSentinels row ever.
+
+  // Who could serve as the SECOND confirmer for `circleId`'s pending report,
+  // excluding the original reporter: every other Lead, or — only when that
+  // circle currently has exactly one Lead at all — any other accepted
+  // Sentinel of it. Shared by the fan-out on report and the eligibility
+  // check on confirm/reject.
+  private async getEligibleConfirmerIds(
+    circleId: string,
+    reportedById: string,
+  ): Promise<string[]> {
+    const leads = await this.prisma.linkSentinels.findMany({
+      where: {
+        circleId,
+        status: LinkStatus.ACCEPTED,
+        leadSlot: { not: null },
+      },
+      select: { userSentinelId: true },
+    });
+    const otherLeadIds = leads
+      .map((l) => l.userSentinelId)
+      .filter((id) => id !== reportedById);
+    if (leads.length > 1) return otherLeadIds;
+
+    const others = await this.prisma.linkSentinels.findMany({
+      where: {
+        circleId,
+        status: LinkStatus.ACCEPTED,
+        userSentinelId: { not: reportedById },
+      },
+      select: { userSentinelId: true },
+    });
+    return others.map((l) => l.userSentinelId);
+  }
+
+  private async assertCanSecondConfirm(
+    circleId: string,
+    callerId: string,
+    reportedById: string,
+  ) {
+    if (callerId === reportedById) {
+      throw new ForbiddenException(
+        'The reporter cannot confirm or reject their own report',
+      );
+    }
+    const eligible = await this.getEligibleConfirmerIds(circleId, reportedById);
+    if (!eligible.includes(callerId)) {
+      throw new ForbiddenException(
+        'Not authorized to confirm or reject this death report',
+      );
+    }
+  }
+
+  // The companion's active 1st circle, or null — death-notice report/
+  // confirm/reject all key off it, same as raiseAlert's own Lead check.
+  private async findFirstCircle(companionId: string) {
+    return this.prisma.circle.findFirst({
+      where: {
+        userCompanionId: companionId,
+        circleType: CircleType.FIRST,
+        status: CircleStatus.ACTIVE,
+      },
+    });
+  }
+
+  async reportDeath(callerId: string, companionId: string) {
+    const companion = await this.getUser(companionId);
+    if (companion.status === UserStatus.DECEASED) {
+      throw new ConflictException('This companion is already deceased');
+    }
+    if (companion.deathReportedAt) {
+      throw new ConflictException(
+        'A death report is already pending for this companion',
+      );
+    }
+
+    const circle = await this.findFirstCircle(companionId);
+    const callerLink = circle
+      ? await this.prisma.linkSentinels.findFirst({
+          where: {
+            circleId: circle.id,
+            userSentinelId: callerId,
+            status: LinkStatus.ACCEPTED,
+            leadSlot: { not: null },
+          },
+        })
+      : null;
+    if (!circle || !callerLink) {
+      throw new ForbiddenException(
+        'Only a Lead Sentinel of this companion’s 1st circle can report a death',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: companionId },
+      data: { deathReportedAt: new Date(), deathReportedById: callerId },
+    });
+
+    const reporter = await this.getUser(callerId);
+    const confirmerIds = await this.getEligibleConfirmerIds(
+      circle.id,
+      callerId,
+    );
+    for (const confirmerId of confirmerIds) {
+      await this.notifications.create({
+        userId: confirmerId,
+        type: NotificationType.DEATH_NOTICE_REPORTED,
+        actorUserId: callerId,
+        actorLabel: this.label(reporter),
+        targetId: companionId,
+      });
+    }
+    return { reported: true };
+  }
+
+  async confirmDeath(callerId: string, companionId: string) {
+    const companion = await this.getUser(companionId);
+    if (!companion.deathReportedAt || !companion.deathReportedById) {
+      throw new ConflictException('No pending death report for this companion');
+    }
+    const circle = await this.findFirstCircle(companionId);
+    if (!circle) throw new NotFoundException('1st circle not found');
+    await this.assertCanSecondConfirm(
+      circle.id,
+      callerId,
+      companion.deathReportedById,
+    );
+
+    await this.prisma.user.update({
+      where: { id: companionId },
+      data: {
+        status: UserStatus.DECEASED,
+        deceasedAt: new Date(),
+        deathConfirmedById: callerId,
+      },
+    });
+
+    await this.fanOutDeathAnnouncement(companionId);
+    return { confirmed: true };
+  }
+
+  async rejectDeathReport(callerId: string, companionId: string) {
+    const companion = await this.getUser(companionId);
+    if (!companion.deathReportedAt || !companion.deathReportedById) {
+      throw new ConflictException('No pending death report for this companion');
+    }
+    const circle = await this.findFirstCircle(companionId);
+    if (!circle) throw new NotFoundException('1st circle not found');
+    await this.assertCanSecondConfirm(
+      circle.id,
+      callerId,
+      companion.deathReportedById,
+    );
+
+    const { deathReportedById } = companion;
+    await this.prisma.user.update({
+      where: { id: companionId },
+      data: { deathReportedAt: null, deathReportedById: null },
+    });
+
+    await this.notifications.create({
+      userId: deathReportedById,
+      type: NotificationType.DEATH_NOTICE_REJECTED,
+      actorUserId: callerId,
+      targetId: companionId,
+    });
+    return { rejected: true };
+  }
+
+  // Best-effort fan-out to every opted-in, still-accepted recipient. The SMS
+  // only asks them to log in: the name and announcement wait behind it, read
+  // through getDeathNoticeAnnouncement. Mirrors AlertService's
+  // notifyParticipants (Promise.allSettled, don't block on delivery).
+  private async fanOutDeathAnnouncement(companionId: string) {
+    const recipients = await this.prisma.linkSentinels.findMany({
+      where: {
+        userCompanionId: companionId,
+        status: LinkStatus.ACCEPTED,
+        notifyOnDeath: true,
+      },
+      include: {
+        linkAsSentinel: { select: { id: true, phone: true } },
+      },
+    });
+    if (recipients.length === 0) return;
+
+    await Promise.allSettled(
+      recipients
+        .filter((r) => r.linkAsSentinel.phone)
+        .map((r) =>
+          this.sms.send(r.linkAsSentinel.phone as string, deathNoticeSms()),
+        ),
+    );
+    for (const r of recipients) {
+      await this.notifications.create({
+        userId: r.linkAsSentinel.id,
+        type: NotificationType.DEATH_NOTICE_CONFIRMED,
+        targetId: companionId,
+      });
+    }
+    await this.prisma.linkSentinels.updateMany({
+      where: { id: { in: recipients.map((r) => r.id) } },
+      data: { deathNotifiedAt: new Date() },
+    });
+  }
+
+  // Recipient-facing read: only someone this companion actually notified
+  // (opted-in link, fan-out already happened) can see the announcement.
+  async getDeathNoticeAnnouncement(callerId: string, companionId: string) {
+    const link = await this.prisma.linkSentinels.findFirst({
+      where: {
+        userSentinelId: callerId,
+        userCompanionId: companionId,
+        notifyOnDeath: true,
+        deathNotifiedAt: { not: null },
+      },
+    });
+    if (!link) {
+      throw new ForbiddenException(
+        'You were not notified of this announcement',
+      );
+    }
+    const companion = await this.prisma.user.findUnique({
+      where: { id: companionId },
+      select: { deathAnnouncementMessage: true },
+    });
+    return {
+      announcementMessage: companion?.deathAnnouncementMessage ?? '',
+      personalMessage: link.deathPersonalMessage,
+    };
+  }
+
+  // Every announcement sent to me: the only place someone without an account
+  // can read one.
+  async listMyDeathNotices(userId: string) {
+    const links = await this.prisma.linkSentinels.findMany({
+      where: {
+        userSentinelId: userId,
+        notifyOnDeath: true,
+        deathNotifiedAt: { not: null },
+      },
+      include: {
+        userCompanion: {
+          select: {
+            firstName: true,
+            lastName: true,
+            deathAnnouncementMessage: true,
+          },
+        },
+      },
+      orderBy: { deathNotifiedAt: 'desc' },
+    });
+    return links.map(({ userCompanion, deathPersonalMessage }) => ({
+      companionName: [userCompanion.firstName, userCompanion.lastName]
+        .filter(Boolean)
+        .join(' '),
+      announcementMessage: userCompanion.deathAnnouncementMessage ?? '',
+      personalMessage: deathPersonalMessage,
+    }));
+  }
+
   // ---- Companions (reverse view: people I watch over) -----------------------
 
   async listCompanions(userId: string) {
@@ -461,7 +1283,24 @@ export class SentinelService {
             id: true,
             label: true,
             circleType: true,
-            userCompanion: { select: { id: true, email: true, phone: true } },
+            userCompanion: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                userName: true,
+                email: true,
+                phone: true,
+                avatarPath: true,
+                publicStatus: true,
+                pausedForMe: true,
+                paidUntil: true,
+                gender: true,
+                status: true,
+                deathReportedAt: true,
+                deathReportedById: true,
+              },
+            },
           },
         },
       },
@@ -482,21 +1321,186 @@ export class SentinelService {
       : [];
     const proposedById = new Map(proposedCircles.map((c) => [c.id, c]));
 
-    return links.map((l) => ({
-      linkId: l.id,
-      sentinelType: l.sentinelType,
-      leadSlot: l.leadSlot,
-      circle: {
-        id: l.circle.id,
-        label: l.circle.label,
-        isPrimary: l.circle.circleType === CircleType.FIRST,
-        isReserve: l.circle.circleType === CircleType.RESERVED,
+    // Death-notice eligibility only applies to 1st-circle links with a
+    // pending report. A Sentinel/Companion pair has at most one
+    // LinkSentinels row ever, so `l` already carries this caller's only
+    // possible leadSlot for this companion — no separate lookup needed for
+    // "is the caller a Lead here." The single-Lead fallback (any other
+    // accepted Sentinel may confirm) does need each circle's current Lead
+    // count, batched in one query.
+    const pendingFirstCircleIds = links
+      .filter(
+        (l) =>
+          l.circle.circleType === CircleType.FIRST &&
+          l.circle.userCompanion.deathReportedAt,
+      )
+      .map((l) => l.circle.id);
+    const leadCounts = pendingFirstCircleIds.length
+      ? await this.prisma.linkSentinels.groupBy({
+          by: ['circleId'],
+          where: {
+            circleId: { in: pendingFirstCircleIds },
+            status: LinkStatus.ACCEPTED,
+            leadSlot: { not: null },
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const leadCountByCircle = new Map(
+      leadCounts.map((c) => [c.circleId, c._count._all]),
+    );
+    const reporterIds = [
+      ...new Set(
+        links
+          .map((l) => l.circle.userCompanion.deathReportedById)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const reporters = reporterIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: reporterIds } },
+          select: { id: true, firstName: true, phone: true },
+        })
+      : [];
+    const reporterById = new Map(reporters.map((r) => [r.id, r]));
+
+    // A 1st-circle Sentinel sees who else shares that 1st circle with them
+    // (accepted members only, names only) — batched in one query.
+    const firstCircleIds = links
+      .filter((l) => l.circle.circleType === CircleType.FIRST)
+      .map((l) => l.circle.id);
+    const firstCircleLinks = firstCircleIds.length
+      ? await this.prisma.linkSentinels.findMany({
+          where: {
+            circleId: { in: firstCircleIds },
+            status: LinkStatus.ACCEPTED,
+            userSentinelId: { not: userId },
+          },
+          select: {
+            circleId: true,
+            leadSlot: true,
+            linkAsSentinel: {
+              // publicStatus: co-members of a 1st circle see each other's
+              // status (as do the companion and its Sentinels).
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                publicStatus: true,
+                pausedForOthers: true,
+                paidUntil: true,
+                gender: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
+    const firstCircleMembersByCircle = new Map<
+      string,
+      {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        publicStatus: string | null;
+        pausedForOthers: boolean;
+        subscribed: boolean;
+        gender: Gender | null;
+        isLead: boolean;
+      }[]
+    >();
+    for (const m of firstCircleLinks) {
+      const list = firstCircleMembersByCircle.get(m.circleId) ?? [];
+      list.push({
+        ...withSubscribed(m.linkAsSentinel),
+        isLead: m.leadSlot !== null,
+      });
+      firstCircleMembersByCircle.set(m.circleId, list);
+    }
+
+    // Free alert already used? Lets a Sentinel offer them a year before an
+    // emergency rather than during one.
+    const alertCounts = await this.prisma.alert.groupBy({
+      by: ['userCompanionId'],
+      where: {
+        userCompanionId: { in: links.map((l) => l.circle.userCompanion.id) },
       },
-      proposedCircle: l.proposedCircleId
-        ? (proposedById.get(l.proposedCircleId) ?? null)
-        : null,
-      companion: l.circle.userCompanion,
-    }));
+      _count: { _all: true },
+    });
+    const alertCountByCompanion = new Map(
+      alertCounts.map((c) => [c.userCompanionId, c._count._all]),
+    );
+
+    return links.map((l) => {
+      const companion = l.circle.userCompanion;
+      const isPrimary = l.circle.circleType === CircleType.FIRST;
+      const isDeceased = companion.status === UserStatus.DECEASED;
+      const reportedById = companion.deathReportedById;
+      const pending =
+        isPrimary && companion.deathReportedAt && reportedById
+          ? {
+              reportedAt: companion.deathReportedAt,
+              reportedByLabel: reporterById.get(reportedById)
+                ? this.label(reporterById.get(reportedById)!)
+                : 'Sentinel',
+              canConfirmOrReject:
+                userId !== reportedById &&
+                (l.leadSlot !== null ||
+                  leadCountByCircle.get(l.circle.id) === 1),
+            }
+          : null;
+
+      return {
+        linkId: l.id,
+        sentinelType: l.sentinelType,
+        leadSlot: l.leadSlot,
+        circle: {
+          id: l.circle.id,
+          label: l.circle.label,
+          isPrimary,
+          isReserve: l.circle.circleType === CircleType.RESERVED,
+          // A group link is left by leaving the group, not via the reserve.
+          isGroup: l.circle.circleType === CircleType.GROUP,
+        },
+        proposedCircle: l.proposedCircleId
+          ? (proposedById.get(l.proposedCircleId) ?? null)
+          : null,
+        companion: {
+          id: companion.id,
+          firstName: companion.firstName,
+          lastName: companion.lastName,
+          userName: companion.userName,
+          email: companion.email,
+          phone: companion.phone,
+          avatarPath: companion.avatarPath,
+          publicStatus: companion.publicStatus,
+          // Nobody but them may raise an alert about them right now.
+          pausedForMe: companion.pausedForMe,
+          // How texts speak about them; null = inclusive wording.
+          gender: companion.gender,
+          // Yearly subscription running: an alert can always be raised.
+          subscribed: isSubscribed(companion),
+          // No subscription and the free alert is used: the next alert
+          // needs paying (or a year offered).
+          freeAlertUsed:
+            !isSubscribed(companion) &&
+            (alertCountByCompanion.get(companion.id) ?? 0) >=
+              FREE_ALERT_TRIAL_LIMIT,
+        },
+        firstCircleMembers: isPrimary
+          ? (firstCircleMembersByCircle.get(l.circle.id) ?? [])
+          : [],
+        deathNotice: {
+          isDeceased,
+          pending,
+          canReport:
+            isPrimary &&
+            l.leadSlot !== null &&
+            !isDeceased &&
+            !companion.deathReportedAt,
+        },
+      };
+    });
   }
 
   // ---- Membership management (companion side) --------------------------------
@@ -512,6 +1516,8 @@ export class SentinelService {
         'Only an accepted membership can be updated',
       );
     }
+
+    if (dto.leadSlot) return this.setLeadOrder(link, dto.leadSlot);
 
     let circleId = link.circleId;
     let targetIsFirst = link.circle.circleType === CircleType.FIRST;
@@ -530,24 +1536,23 @@ export class SentinelService {
 
       // The 1st circle needs the Sentinel's consent — they stay exactly
       // where they are, awaiting an answer, instead of moving right away.
-      // Any other circle (including reserve) moves them immediately, just
-      // with a heads-up SMS. This is a standalone action: other fields on
+      // Any other circle (including reserve) moves them immediately. This is a standalone action: other fields on
       // this same call (sentinelType/requestedAsLead) are ignored here.
       const companion = await this.getUser(userId);
       if (targetIsFirst) {
-        await this.sendSms(
-          link.linkAsSentinel.phone,
-          circleMoveProposedSms(this.label(companion)),
-        );
+        await this.assertFirstCircleHasRoom(target.id);
+        await this.notifications.create({
+          userId: link.userSentinelId,
+          type: NotificationType.CIRCLE_MOVE_PROPOSED,
+          actorUserId: userId,
+          actorLabel: this.label(companion),
+          targetId: link.id,
+        });
         return this.prisma.linkSentinels.update({
           where: { id: link.id },
           data: { proposedCircleId: target.id },
         });
       }
-      await this.sendSms(
-        link.linkAsSentinel.phone,
-        circleMovedSms(target.label, this.label(companion)),
-      );
       circleId = target.id;
     }
 
@@ -577,19 +1582,6 @@ export class SentinelService {
       await this.assertLeadPreserved(link);
     }
 
-    // Messaging settings only mean anything for an account-holding Sentinel
-    // — Sentinel SMS is always predefined-replies-only, regardless.
-    if (
-      (dto.canMessageOwnCircle !== undefined ||
-        dto.firstCircleMessagingMode !== undefined ||
-        dto.canMessageMe !== undefined) &&
-      link.linkAsSentinel.userType === UserType.ONLY_SMS
-    ) {
-      throw new BadRequestException(
-        'Messaging settings only apply to an account-holding Sentinel',
-      );
-    }
-
     return this.prisma.linkSentinels.update({
       where: { id: link.id },
       data: {
@@ -597,11 +1589,7 @@ export class SentinelService {
         sentinelType: dto.sentinelType ?? link.sentinelType,
         requestedAsLead,
         leadSlot,
-        canMessageOwnCircle:
-          dto.canMessageOwnCircle ?? link.canMessageOwnCircle,
-        firstCircleMessagingMode:
-          dto.firstCircleMessagingMode ?? link.firstCircleMessagingMode,
-        canMessageMe: dto.canMessageMe ?? link.canMessageMe,
+        callOrder: dto.callOrder ?? link.callOrder,
       },
     });
   }
@@ -635,16 +1623,59 @@ export class SentinelService {
     return { blocked: true };
   }
 
+  // ---- A whole relationship, both directions (person page) -----------------
+  //
+  // Two people can be linked both ways (one LinkSentinels row per direction:
+  // they watch over me, I watch over them). From someone's page, "end the
+  // link" and "block" act on both at once. Nothing is hard-deleted: ending
+  // marks the rows REMOVED (reactivatable by a new invite), blocking marks
+  // them BLOCKED (permanent — createOrReactivateLink refuses them). The
+  // last-Lead guard is checked on both rows before anything changes, so a
+  // refusal never leaves one direction ended and not the other.
+  async endRelationship(userId: string, otherUserId: string, block: boolean) {
+    const live = block
+      ? { not: LinkStatus.BLOCKED }
+      : { in: [LinkStatus.PENDING, LinkStatus.ACCEPTED] };
+    const links = await this.prisma.linkSentinels.findMany({
+      where: {
+        status: live,
+        OR: [
+          { userCompanionId: userId, userSentinelId: otherUserId },
+          { userCompanionId: otherUserId, userSentinelId: userId },
+        ],
+      },
+      include: LINK_WITH_PARTIES,
+    });
+    if (links.length === 0) {
+      throw new NotFoundException('No link with this person');
+    }
+    for (const link of links) {
+      if (link.status === LinkStatus.ACCEPTED) {
+        await this.assertLeadPreserved(link);
+      }
+    }
+    for (const link of links) {
+      const iAmTheirSentinel = link.userSentinelId === userId;
+      if (!block && iAmTheirSentinel && link.status === LinkStatus.ACCEPTED) {
+        // Same as leaving from the app: they're told I left.
+        await this.leaveLink(link, false);
+      } else {
+        await this.prisma.linkSentinels.update({
+          where: { id: link.id },
+          data: { status: block ? LinkStatus.BLOCKED : LinkStatus.REMOVED },
+        });
+      }
+    }
+    return { ended: links.length, blocked: block };
+  }
+
   // ---- Messaging permission (permanent Me<->Sentinel channel) ---------------
 
-  // Resolves whether the permanent Me<->Sentinel channel is open between
-  // these two — most specific non-null setting wins: LinkSentinels
-  // .canMessageMe > Circle.canMessageMe > User.allowMessagingByDefault.
-  // Direction-agnostic: whichever of the two is "Me" in the underlying
-  // LinkSentinels row drives the resolution. The 1st circle is always
-  // reachable, no override possible there. Not an accepted Sentinel of
-  // each other at all -> false. Separate from canMessageOwnCircle/
-  // firstCircleMessagingMode, which only govern alert-time reach.
+  // Whether the permanent Me<->Sentinel channel is open between these two:
+  // always, as long as one is an accepted Sentinel of the other (either
+  // direction) — Sylvie's call (2026-11), matching plan.txt §4: "Me" can
+  // always reach each of their Sentinels 1:1. There is no circle-wide
+  // chat outside of an alert.
   async canSendDirectMessage(
     userAId: string,
     userBId: string,
@@ -657,16 +1688,32 @@ export class SentinelService {
           { userCompanionId: userBId, userSentinelId: userAId },
         ],
       },
-      include: {
-        circle: { select: { circleType: true, canMessageMe: true } },
-        userCompanion: { select: { allowMessagingByDefault: true } },
-      },
+      select: { id: true },
     });
-    if (!link) return false;
-    if (link.circle.circleType === CircleType.FIRST) return true;
-    if (link.canMessageMe !== null) return link.canMessageMe;
-    if (link.circle.canMessageMe !== null) return link.circle.canMessageMe;
-    return link.userCompanion.allowMessagingByDefault;
+    return link !== null;
+  }
+
+  // Counts Sentinels who can actually be reached and are currently active:
+  // no pending invitations, no one parked in the reserve circle.
+  async getSecurityScore(userId: string) {
+    const user = await this.getUser(userId);
+    const links = await this.prisma.linkSentinels.findMany({
+      where: {
+        userCompanionId: userId,
+        status: LinkStatus.ACCEPTED,
+        linkAsSentinel: { phone: { not: null } },
+        circle: {
+          status: CircleStatus.ACTIVE,
+          circleType: { not: CircleType.RESERVED },
+        },
+      },
+      select: { leadSlot: true },
+    });
+    return computeSecurityScore({
+      hasVerifiedPhone: Boolean(user.phone && user.phoneVerifiedAt),
+      hasLeadWithPhone: links.some((link) => link.leadSlot !== null),
+      sentinelsWithPhone: links.length,
+    });
   }
 
   // ---- Internals ------------------------------------------------------------
@@ -680,6 +1727,13 @@ export class SentinelService {
     name: string,
   ): Promise<User> {
     const existing = await this.prisma.user.findUnique({ where: { phone } });
+    // A number that only ever started a phone login has no name yet.
+    if (existing?.firstName === '') {
+      return this.prisma.user.update({
+        where: { id: existing.id },
+        data: { firstName: name },
+      });
+    }
     if (existing) return existing;
     return this.prisma.user.create({
       data: { phone, firstName: name, userType: UserType.ONLY_SMS },
@@ -751,25 +1805,54 @@ export class SentinelService {
 
   // Sets an accepted link to REMOVED (opted out, as opposed to DECLINED —
   // never having accepted) and notifies both sides.
-  private async leaveLink(link: LinkWithParties, viaSms: boolean) {
+  async leaveLink(link: LinkWithParties, viaSms: boolean) {
     await this.assertLeadPreserved(link);
+    const { otherLeads } = await this.countOtherMembers(link);
+    const isLastLead = otherLeads === 0;
     const updated = await this.prisma.linkSentinels.update({
       where: { id: link.id },
       data: { status: LinkStatus.REMOVED },
     });
 
     const sentinelLabel = this.label(link.linkAsSentinel);
-    await this.sendSms(
-      link.userCompanion.phone,
-      sentinelLeftSms(sentinelLabel),
-    );
+    await this.notifications.create({
+      userId: link.userCompanionId,
+      type: NotificationType.SENTINEL_LEFT,
+      actorUserId: link.userSentinelId,
+      actorLabel: sentinelLabel,
+      targetId: link.id,
+    });
     if (viaSms) {
       await this.sendSms(
         link.linkAsSentinel.phone,
         sentinelLeaveConfirmSms(this.label(link.userCompanion)),
       );
     }
+    if (isLastLead) {
+      await this.sendSms(link.userCompanion.phone, lastLeadLeftSms());
+    }
     return updated;
+  }
+
+  // An SMS has no error screen: a last Lead who can't leave yet is told why,
+  // and "Me" is asked to pick another Lead. False when nothing changed.
+  async leaveLinkBySms(link: LinkWithParties) {
+    const { otherActive, otherLeads } = await this.countOtherMembers(link);
+    if (otherActive > 0 && otherLeads === 0) {
+      const companionLabel = this.label(link.userCompanion);
+      const sentinelLabel = this.label(link.linkAsSentinel);
+      await this.sendSms(
+        link.linkAsSentinel.phone,
+        lastLeadCannotLeaveSms(companionLabel),
+      );
+      await this.sendSms(
+        link.userCompanion.phone,
+        lastLeadWantsToLeaveSms(sentinelLabel),
+      );
+      return false;
+    }
+    await this.leaveLink(link, true);
+    return true;
   }
 
   // No auto-Lead on acceptance — same reasoning as respondToMembership's
@@ -778,6 +1861,8 @@ export class SentinelService {
     link: LinkWithParties,
     accept: boolean,
   ) {
+    // Proposals aren't counted in the circle, so it may have filled up since.
+    if (accept) await this.assertFirstCircleHasRoom(link.proposedCircleId!);
     const updated = await this.prisma.linkSentinels.update({
       where: { id: link.id },
       data: accept
@@ -788,10 +1873,14 @@ export class SentinelService {
           }
         : { proposedCircleId: null }, // decline: nothing else changes
     });
-    await this.sendSms(
-      link.userCompanion.phone,
-      circleMoveAnsweredSms(this.label(link.linkAsSentinel), accept),
-    );
+    await this.notifications.create({
+      userId: link.userCompanionId,
+      type: NotificationType.CIRCLE_MOVE_ANSWERED,
+      actorUserId: link.userSentinelId,
+      actorLabel: this.label(link.linkAsSentinel),
+      accepted: accept,
+      targetId: link.id,
+    });
     return updated;
   }
 
@@ -812,24 +1901,13 @@ export class SentinelService {
     const companionLabel = this.label(link.userCompanion);
     const sentinelLabel = this.label(link.linkAsSentinel);
 
-    if (link.initiatedBy === LinkInitiator.COMPANION) {
-      // Notify the inviter ("Me") of the outcome; if the Sentinel answered by
-      // SMS, also send them a confirmation since they have no app feedback.
-      await this.sendSms(
-        link.userCompanion.phone,
-        invitationAnsweredSms(sentinelLabel, accept),
-      );
-      if (viaSms) {
-        const smsBody = accept
-          ? sentinelAcceptedSms(companionLabel)
-          : sentinelDeclinedSms(companionLabel);
-        await this.sendSms(link.linkAsSentinel.phone, smsBody);
-      }
-    } else {
-      // Sentinel -> Me request answered by the target: notify the requester.
+    // A Sentinel who answered by SMS has no app feedback.
+    if (viaSms) {
       await this.sendSms(
         link.linkAsSentinel.phone,
-        requestAnsweredSms(companionLabel, accept),
+        accept
+          ? sentinelAcceptedSms(companionLabel)
+          : sentinelDeclinedSms(companionLabel),
       );
     }
 
@@ -885,6 +1963,64 @@ export class SentinelService {
   // - explicit === undefined: bootstrap — the first Sentinel of a 1st circle
   //   with no Lead yet becomes one automatically.
   // - explicit === true: assign the next free slot, or reject if all 3 taken.
+  // A 1st circle stays small — it handles an alert together, live — so at
+  // most FIRST_CIRCLE_MAX people (accepted or invited). Throws when full.
+  private async assertFirstCircleHasRoom(circleId: string) {
+    const count = await this.prisma.linkSentinels.count({
+      where: { circleId, status: { in: ACTIVE_STATUSES } },
+    });
+    if (count >= FIRST_CIRCLE_MAX) {
+      throw new ConflictException(
+        `A 1st circle can have at most ${FIRST_CIRCLE_MAX} people — add them to another circle`,
+      );
+    }
+  }
+
+  // Lead order: give this 1st-circle Lead the requested slot, swapping with
+  // whoever holds it (in one transaction; null first because of the
+  // [circleId, leadSlot] unique constraint).
+  private async setLeadOrder(
+    link: {
+      id: string;
+      circleId: string;
+      leadSlot: LeadSlot | null;
+      circle: { circleType: CircleType };
+    },
+    slot: LeadSlot,
+  ) {
+    if (link.circle.circleType !== CircleType.FIRST || !link.leadSlot) {
+      throw new BadRequestException('Only a 1st-circle Lead has a Lead order');
+    }
+    if (link.leadSlot === slot) return link;
+    const holder = await this.prisma.linkSentinels.findFirst({
+      where: {
+        circleId: link.circleId,
+        leadSlot: slot,
+        status: { in: ACTIVE_STATUSES },
+      },
+      select: { id: true },
+    });
+    const results = await this.prisma.$transaction([
+      this.prisma.linkSentinels.update({
+        where: { id: link.id },
+        data: { leadSlot: null },
+      }),
+      ...(holder
+        ? [
+            this.prisma.linkSentinels.update({
+              where: { id: holder.id },
+              data: { leadSlot: link.leadSlot },
+            }),
+          ]
+        : []),
+      this.prisma.linkSentinels.update({
+        where: { id: link.id },
+        data: { leadSlot: slot },
+      }),
+    ]);
+    return results[results.length - 1];
+  }
+
   private async resolveLeadSlot(
     circle: { id: string; circleType: CircleType },
     explicit: boolean | undefined,
@@ -917,13 +2053,19 @@ export class SentinelService {
   // The 1st circle must always keep at least one occupied Lead slot while it
   // still has other active members. Throws if vacating `link`'s slot would
   // strand the circle with members but no Lead.
-  private async assertLeadPreserved(link: {
-    id: string;
-    circleId: string;
-    leadSlot: LeadSlot | null;
-    circle: { circleType: CircleType };
-  }) {
-    if (link.circle.circleType !== CircleType.FIRST || !link.leadSlot) return;
+  private async assertLeadPreserved(link: LeadCheckLink) {
+    const { otherActive, otherLeads } = await this.countOtherMembers(link);
+    if (otherActive > 0 && otherLeads === 0) {
+      throw new ConflictException(
+        'Designate another Lead Sentinel before removing this one',
+      );
+    }
+  }
+
+  private async countOtherMembers(link: LeadCheckLink) {
+    if (link.circle.circleType !== CircleType.FIRST || !link.leadSlot) {
+      return { otherActive: 0, otherLeads: 1 };
+    }
     const [otherActive, otherLeads] = await Promise.all([
       this.prisma.linkSentinels.count({
         where: {
@@ -941,11 +2083,7 @@ export class SentinelService {
         },
       }),
     ]);
-    if (otherActive > 0 && otherLeads === 0) {
-      throw new ConflictException(
-        'Designate another Lead Sentinel before removing this one',
-      );
-    }
+    return { otherActive, otherLeads };
   }
 
   // The single 1st circle for a companion, created on demand if missing.
@@ -1010,6 +2148,9 @@ export class SentinelService {
         'Add a phone number to your account before using Sentinels',
       );
     }
+    if (user.userType === UserType.ONLY_SMS) {
+      throw new ForbiddenException('Complete your profile first');
+    }
   }
 
   private async getUser(userId: string): Promise<User> {
@@ -1028,4 +2169,13 @@ export class SentinelService {
     if (!phone) return;
     await this.sms.send(phone, body);
   }
+}
+
+// Linked people see whether someone is subscribed (the star on their
+// figure), never until when: the end date is swapped for a boolean.
+function withSubscribed<T extends { paidUntil: Date | null }>(
+  person: T,
+): Omit<T, 'paidUntil'> & { subscribed: boolean } {
+  const { paidUntil, ...rest } = person;
+  return { ...rest, subscribed: isSubscribed({ paidUntil }) };
 }

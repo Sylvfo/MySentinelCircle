@@ -1,5 +1,5 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { SentinelService } from './sentinel.service';
+import { SmsInboundService } from './sms-inbound.service';
 import { InboundSmsDto } from './dto/inbound-sms.dto';
 
 // Inbound SMS webhook — deliberately unauthenticated (the SMS provider calls
@@ -7,10 +7,10 @@ import { InboundSmsDto } from './dto/inbound-sms.dto';
 // check. Lets a Sentinel accept/decline an invitation by replying OUI / NON.
 @Controller('sentinel/sms')
 export class SentinelSmsController {
-  constructor(private readonly sentinel: SentinelService) {}
+  constructor(private readonly smsInbound: SmsInboundService) {}
 
   @Post('inbound')
   inbound(@Body() dto: InboundSmsDto) {
-    return this.sentinel.handleInboundSms(dto.from, dto.body);
+    return this.smsInbound.handle(dto.from, dto.body);
   }
 }

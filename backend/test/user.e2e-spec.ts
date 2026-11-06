@@ -69,34 +69,31 @@ describe('User (e2e)', () => {
     return { accessToken: signupBody.accessToken as string, email };
   }
 
-  // Signs up with a password AND a phone (goes through OTP verify), so the
-  // resulting account has both a step-up method (password) and an existing
-  // phone/email — needed to exercise change-email/change-phone.
+  // Signs up with a password, then adds and verifies a phone, so the resulting
+  // account has both a step-up method (password) and an existing phone/email
+  // — needed to exercise change-email/change-phone.
   async function signupWithPasswordAndPhone() {
     const email = testEmail();
     const password = 'password123';
     const phone = testPhone();
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({
-        firstName: 'Ada',
-        userName: testUsername(),
-        email,
-        password,
-        phone,
-      })
+      .send({ firstName: 'Ada', userName: testUsername(), email, password })
       .expect(201);
     const signupBody = signupRes.body as UserResponseBody;
-    const verifyRes = await request(app.getHttpServer())
-      .post('/auth/otp/verify')
-      .send({
-        userId: signupBody.userId,
-        code: sentOtps[sentOtps.length - 1].code,
-      })
+    const accessToken = signupBody.accessToken as string;
+    await request(app.getHttpServer())
+      .post('/user/phone/request')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ phone })
       .expect(201);
-    const verifyBody = verifyRes.body as UserResponseBody;
+    await request(app.getHttpServer())
+      .post('/user/phone/verify')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ code: sentOtps[sentOtps.length - 1].code })
+      .expect(201);
     return {
-      accessToken: verifyBody.accessToken as string,
+      accessToken,
       email,
       password,
       phone,
@@ -137,7 +134,7 @@ describe('User (e2e)', () => {
     expect(meAfterBody.phone).toBe(phone);
   });
 
-  it('claims an existing ONLY_SMS Sentinel stub when adding its phone', async () => {
+  it('claims an existing ONLY_SMS Sentinel stub only once the code is verified', async () => {
     const companion = await prisma.user.create({
       data: {
         firstName: 'Companion',
@@ -173,6 +170,22 @@ describe('User (e2e)', () => {
       .send({ phone: stubPhone })
       .expect(201);
 
+    // nothing moves on the strength of a typed number alone
+    const untouchedLink = await prisma.linkSentinels.findUnique({
+      where: { id: link.id },
+    });
+    expect(untouchedLink?.userSentinelId).toBe(stub.id);
+    const untouchedStub = await prisma.user.findUnique({
+      where: { id: stub.id },
+    });
+    expect(untouchedStub?.phone).toBe(stubPhone);
+
+    await request(app.getHttpServer())
+      .post('/user/phone/verify')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ code: sentOtps[sentOtps.length - 1].code })
+      .expect(201);
+
     const updatedLink = await prisma.linkSentinels.findUnique({
       where: { id: link.id },
     });
@@ -183,6 +196,200 @@ describe('User (e2e)', () => {
     });
     expect(updatedStub?.phone).toBeNull();
     expect(updatedStub?.status).toBe('DELETED');
+  });
+
+  it('keeps the links of an invited Sentinel who completes an account', async () => {
+    const companion = await prisma.user.create({
+      data: {
+        firstName: 'Companion',
+        phone: testPhone(),
+        userType: UserType.ACCOUNT,
+      },
+    });
+    const circle = await prisma.circle.create({
+      data: { label: 'Test Circle', userCompanionId: companion.id },
+    });
+    const phone = testPhone();
+    const stub = await prisma.user.create({
+      data: { firstName: 'Lea', phone, userType: UserType.ONLY_SMS },
+    });
+    const link = await prisma.linkSentinels.create({
+      data: {
+        userSentinelId: stub.id,
+        userCompanionId: companion.id,
+        circleId: circle.id,
+        initiatedBy: LinkInitiator.COMPANION,
+      },
+    });
+
+    const requestRes = await request(app.getHttpServer())
+      .post('/auth/otp/request')
+      .send({ phone })
+      .expect(201);
+    expect((requestRes.body as UserResponseBody).userId).toBe(stub.id);
+
+    const verifyRes = await request(app.getHttpServer())
+      .post('/auth/otp/verify')
+      .send({ userId: stub.id, code: sentOtps[sentOtps.length - 1].code })
+      .expect(201);
+    const accessToken = (verifyRes.body as UserResponseBody)
+      .accessToken as string;
+
+    // not an account yet: no Sentinel action until the profile is complete
+    await request(app.getHttpServer())
+      .post('/sentinel/requests')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ targetPhone: companion.phone })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post('/user/me/complete-profile')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ firstName: 'Lea', password: 'password123' })
+      .expect(201);
+
+    const account = await prisma.user.findUnique({ where: { id: stub.id } });
+    expect(account?.userType).toBe(UserType.ACCOUNT);
+    const keptLink = await prisma.linkSentinels.findUnique({
+      where: { id: link.id },
+    });
+    expect(keptLink?.userSentinelId).toBe(stub.id);
+
+    // the code that opened this session also allows a new password
+    await request(app.getHttpServer())
+      .post('/user/me/set-password')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ newPassword: 'newpassword456' })
+      .expect(201);
+    await prisma.user.update({
+      where: { id: stub.id },
+      data: { stepUpVerifiedAt: null },
+    });
+    await request(app.getHttpServer())
+      .post('/user/me/set-password')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ newPassword: 'newpassword789' })
+      .expect(401);
+
+    // a complete account can't go through it twice
+    await request(app.getHttpServer())
+      .post('/user/me/complete-profile')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ firstName: 'Lea', password: 'password123' })
+      .expect(403);
+  });
+
+  it('anonymizes a deleted account and cuts its access', async () => {
+    const { accessToken, email } = await signupWithPasswordAndPhone();
+    const me = await request(app.getHttpServer())
+      .get('/user/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const { id, phone } = me.body as { id: string; phone: string };
+
+    await request(app.getHttpServer())
+      .delete('/user/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post('/user/me/step-up/password')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ password: 'password123' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .delete('/user/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const row = await prisma.user.findUnique({ where: { id } });
+    expect(row).toMatchObject({
+      status: 'DELETED',
+      firstName: 'Compte supprimé',
+      email: null,
+      phone: null,
+      passwordHash: null,
+    });
+
+    await request(app.getHttpServer())
+      .get('/user/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password: 'password123' })
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/auth/login/phone')
+      .send({ phone, password: 'password123' })
+      .expect(401);
+
+    // the number is free again, for a brand-new account
+    const again = await request(app.getHttpServer())
+      .post('/auth/otp/request')
+      .send({ phone })
+      .expect(201);
+    expect((again.body as UserResponseBody).userId).not.toBe(id);
+  });
+
+  it('does not let a code sent elsewhere validate a pending phone', async () => {
+    const stubPhone = testPhone();
+    const stub = await prisma.user.create({
+      data: {
+        firstName: 'Stub',
+        phone: stubPhone,
+        userType: UserType.ONLY_SMS,
+      },
+    });
+    const { accessToken } = await signupWithoutPhone();
+
+    await request(app.getHttpServer())
+      .post('/user/phone/request')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ phone: stubPhone })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/user/me/step-up/code/request')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ channel: 'email' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/user/phone/verify')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ code: sentEmails[sentEmails.length - 1].body })
+      .expect(401);
+
+    const untouchedStub = await prisma.user.findUnique({
+      where: { id: stub.id },
+    });
+    expect(untouchedStub?.phone).toBe(stubPhone);
+  });
+
+  it('keeps the current phone until a new one is verified', async () => {
+    const { accessToken } = await signupWithPasswordAndPhone();
+    const before = await request(app.getHttpServer())
+      .get('/user/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const currentPhone = (before.body as { phone: string }).phone;
+
+    await request(app.getHttpServer())
+      .post('/user/me/step-up/password')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ password: 'password123' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/user/phone/request')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ phone: testPhone() })
+      .expect(201);
+
+    const after = await request(app.getHttpServer())
+      .get('/user/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect((after.body as { phone: string }).phone).toBe(currentPhone);
   });
 
   it('requires a fresh step-up before changing an already-set phone', async () => {

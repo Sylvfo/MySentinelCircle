@@ -80,6 +80,10 @@ entry mapping `host.docker.internal` to the host gateway — so just run
 with no extra config. `backend/.env`'s own value above is only used in
 host-mode dev; it's irrelevant when running via `docker compose`.
 
+Replies go the other way, and the backend container has no port on your
+machine: run `make nosmsnow-docker`, which sends them through nginx
+(`https://localhost:4444`). Plain `make nosmsnow` only works in host mode.
+
 ## Typical dev loop
 
 1. `cd nosmsnow && npm start`

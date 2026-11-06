@@ -4,6 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AlertStatus, AlertType, CircleType } from '@prisma/client';
 import { AppModule } from './../src/app.module';
+import { PrismaService } from './../src/prisma/prisma.service';
 import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from './../src/email/email-sender.interface';
 import { SMS_SENDER } from './../src/sms/sms-sender.interface';
@@ -45,7 +46,7 @@ interface AlertParticipantBody {
   circleName: string;
   response: string | null;
   canSendPhoneAtAlert: boolean | null;
-  canMessageOwnCircleAtAlert: boolean | null;
+  alertChatWithFirstCircleAtAlert: boolean | null;
   userSentinelsId: string;
   requestedBy: { id: string; firstName: string } | null;
   userSentinels: {
@@ -79,8 +80,11 @@ interface AlertDetailBody extends AlertBody {
   }[];
 }
 
+const byString = (a: string, b: string) => a.localeCompare(b);
+
 describe('Alert (e2e)', () => {
   let app: INestApplication<App>;
+  let prisma: PrismaService;
   let sentOtps: { phone: string; code: string }[];
   let sentSms: { phone: string; body: string }[];
 
@@ -109,6 +113,7 @@ describe('Alert (e2e)', () => {
       })
       .compile();
 
+    prisma = moduleFixture.get(PrismaService);
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
@@ -123,8 +128,8 @@ describe('Alert (e2e)', () => {
   async function signupAccount(firstName: string) {
     const phone = testPhone();
     const signupRes = await request(app.getHttpServer())
-      .post('/auth/signup/phone')
-      .send({ firstName, phone })
+      .post('/auth/otp/request')
+      .send({ phone })
       .expect(201);
     const signupBody = signupRes.body as AuthResponseBody;
     const code = sentOtps[sentOtps.length - 1].code;
@@ -133,6 +138,11 @@ describe('Alert (e2e)', () => {
       .send({ userId: signupBody.userId, code })
       .expect(201);
     const verifyBody = verifyRes.body as AuthResponseBody;
+    await request(app.getHttpServer())
+      .post('/user/me/complete-profile')
+      .set('Authorization', `Bearer ${verifyBody.accessToken}`)
+      .send({ firstName, password: 'password123' })
+      .expect(201);
     return {
       accessToken: verifyBody.accessToken as string,
       userId: signupBody.userId as string,
@@ -225,6 +235,32 @@ describe('Alert (e2e)', () => {
   }
 
   describe('POST /alert (raise)', () => {
+    it('refuses to delete the account of its companion or Lead while it runs', async () => {
+      const companion = await signupAccount('Ada');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+      await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: 'Besoin d’aide',
+        })
+        .expect(201);
+
+      for (const { accessToken } of [companion, sentinels[0]]) {
+        await request(app.getHttpServer())
+          .post('/user/me/step-up/password')
+          .set('Authorization', auth(accessToken))
+          .send({ password: 'password123' })
+          .expect(201);
+        await request(app.getHttpServer())
+          .delete('/user/me')
+          .set('Authorization', auth(accessToken))
+          .expect(409);
+      }
+    });
+
     it('raises an alert for the companion themself, notifies the 1st circle, and opens its conversation', async () => {
       const companion = await signupAccount('Ada');
       const { sentinels } = await buildFirstCircle(companion.accessToken, 2);
@@ -245,8 +281,8 @@ describe('Alert (e2e)', () => {
 
       // One SMS per 1st-circle Sentinel, none to the companion (they raised it themself).
       expect(sentSms).toHaveLength(2);
-      expect(sentSms.map((s) => s.phone).sort()).toEqual(
-        sentinels.map((s) => s.phone).sort(),
+      expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
+        sentinels.map((s) => s.phone).sort(byString),
       );
 
       const detailRes = await request(app.getHttpServer())
@@ -255,17 +291,18 @@ describe('Alert (e2e)', () => {
         .expect(200);
       const detail = detailRes.body as AlertDetailBody;
       expect(detail.participants).toHaveLength(2);
-      expect(detail.participants.map((p) => p.isLead).sort()).toEqual([
-        false,
-        true,
-      ]);
+      expect(
+        detail.participants
+          .map((p) => p.isLead)
+          .sort((a, b) => Number(a) - Number(b)),
+      ).toEqual([false, true]);
       expect(detail.conversations).toHaveLength(1);
       expect(detail.conversations[0].closedAt).toBeNull();
     });
 
     it('lets an accepted 1st-circle Sentinel raise it on the companion’s behalf, and also notifies the companion', async () => {
       const companion = await signupAccount('Ada');
-      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 2);
       sentSms.length = 0;
 
       await request(app.getHttpServer())
@@ -279,10 +316,27 @@ describe('Alert (e2e)', () => {
         .expect(201);
 
       // The circle + the companion.
-      expect(sentSms).toHaveLength(2);
-      expect(sentSms.map((s) => s.phone).sort()).toEqual(
-        [sentinels[0].phone, companion.phone].sort(),
+      expect(sentSms).toHaveLength(3);
+      expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
+        [sentinels[0].phone, sentinels[1].phone, companion.phone].sort(
+          byString,
+        ),
       );
+    });
+
+    it('refuses a Lead alone, with nobody else to answer', async () => {
+      const companion = await signupAccount('Ada');
+      const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
+
+      await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(sentinels[0].accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.NOCONTACT,
+          reason: 'Sans nouvelles depuis 2 jours',
+        })
+        .expect(409);
     });
 
     it('lets an accepted outer-circle Sentinel raise it too — it still notifies the 1st circle', async () => {
@@ -320,8 +374,8 @@ describe('Alert (e2e)', () => {
       expect((res.body as AlertBody).launchedById).toBe(outerSentinel.userId);
 
       // Notifies the 1st circle (not the "Travail" circle itself) + the companion.
-      expect(sentSms.map((s) => s.phone).sort()).toEqual(
-        [sentinels[0].phone, companion.phone].sort(),
+      expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
+        [sentinels[0].phone, companion.phone].sort(byString),
       );
     });
 
@@ -396,15 +450,9 @@ describe('Alert (e2e)', () => {
         .expect(409);
     });
 
-    it('excludes a 1st-circle Sentinel with canMessageOwnCircle: false from the group chat, while still notifying and tracking them', async () => {
+    it('seats every 1st-circle Sentinel in the 1st circle room', async () => {
       const companion = await signupAccount('Ada');
       const { sentinels } = await buildFirstCircle(companion.accessToken, 2);
-      await request(app.getHttpServer())
-        .patch(`/sentinel/memberships/${sentinels[1].linkId}`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ canMessageOwnCircle: false })
-        .expect(200);
-      sentSms.length = 0;
 
       const res = await request(app.getHttpServer())
         .post('/alert/raise')
@@ -415,31 +463,19 @@ describe('Alert (e2e)', () => {
           reason: 'x',
         })
         .expect(201);
-      const alert = res.body as AlertBody;
-
-      // Still notified by SMS and tracked as a participant either way.
-      expect(sentSms).toHaveLength(2);
-      expect(sentSms.map((s) => s.phone).sort()).toEqual(
-        sentinels.map((s) => s.phone).sort(),
-      );
       const detailRes = await request(app.getHttpServer())
-        .get(`/alert/${alert.id}`)
+        .get(`/alert/${(res.body as AlertBody).id}`)
         .set('Authorization', auth(companion.accessToken))
         .expect(200);
-      const detail = detailRes.body as AlertDetailBody;
-      expect(detail.participants).toHaveLength(2);
-      const conversationId = detail.conversations[0].id;
+      const conversationId = (detailRes.body as AlertDetailBody)
+        .conversations[0].id;
 
-      // The excluded Sentinel has no seat in the chat...
-      await request(app.getHttpServer())
-        .get(`/messaging/conversations/${conversationId}/messages`)
-        .set('Authorization', auth(sentinels[1].accessToken))
-        .expect(403);
-      // ...the other one does.
-      await request(app.getHttpServer())
-        .get(`/messaging/conversations/${conversationId}/messages`)
-        .set('Authorization', auth(sentinels[0].accessToken))
-        .expect(200);
+      for (const sentinel of sentinels) {
+        await request(app.getHttpServer())
+          .get(`/messaging/conversations/${conversationId}/messages`)
+          .set('Authorization', auth(sentinel.accessToken))
+          .expect(200);
+      }
     });
   });
 
@@ -580,13 +616,13 @@ describe('Alert (e2e)', () => {
       const detailRes = await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
       const detail = detailRes.body as AlertDetailBody;
 
       expect(detail.alertStatus).toBe(AlertStatus.ACTIVE);
-      expect(sentSms.map((s) => s.phone).sort()).toEqual(
-        outerSentinels.map((s) => s.phone).sort(),
+      expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
+        outerSentinels.map((s) => s.phone).sort(byString),
       );
       const outerParticipants = detail.participants.filter(
         (p) => p.circleId === outerCircle.id,
@@ -595,6 +631,67 @@ describe('Alert (e2e)', () => {
       expect(outerParticipants.every((p) => p.status === 'CONTACTED')).toBe(
         true,
       );
+    });
+
+    it('takes SMS replies in full: a digit, a change of mind, then a further question', async () => {
+      const companion = await signupAccount('Noah');
+      await buildFirstCircle(companion.accessToken, 1);
+      const { circle: outerCircle, sentinels: outerSentinels } =
+        await buildOuterCircle(companion.accessToken, 'Sport', 1);
+      const raiseRes = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.MISSING,
+          reason: 'Introuvable',
+        })
+        .expect(201);
+      const alert = raiseRes.body as AlertBody;
+      const detailRes = await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/request-circle`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
+        .expect(201);
+      const participant = (detailRes.body as AlertDetailBody).participants.find(
+        (p) => p.circleId === outerCircle.id,
+      )!;
+
+      const reply = (body: string) =>
+        request(app.getHttpServer())
+          .post('/sentinel/sms/inbound')
+          .send({ from: outerSentinels[0].phone, body })
+          .expect(201);
+      const latestResponse = async () =>
+        (
+          await prisma.alertParticipant.findUnique({
+            where: { id: participant.id },
+          })
+        )?.response;
+
+      await reply('1');
+      expect(await latestResponse()).toBe('YES');
+
+      await reply('2');
+      expect(await latestResponse()).toBe('LATER');
+
+      await request(app.getHttpServer())
+        .post(`/alert/${alert.id}/questions`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ questionKind: 'WHERE_SEEN', participantIds: [participant.id] })
+        .expect(201);
+
+      await reply('a la gare, hier');
+      expect(await latestResponse()).toBe('a la gare, hier');
+
+      const questions = await prisma.alertQuestion.findMany({
+        where: { alertParticipantId: participant.id },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(questions.map((q) => q.response)).toEqual([
+        'LATER',
+        'a la gare, hier',
+      ]);
     });
 
     it('records an outer-circle Sentinel’s SMS OUI/NON reply, without it being misread as "leave the circle"', async () => {
@@ -615,7 +712,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-il chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
       sentSms.length = 0;
 
@@ -637,7 +734,7 @@ describe('Alert (e2e)', () => {
         (p) => p.circleId === outerCircle.id,
       )!;
       expect(participant.status).toBe('RESPONDED');
-      expect(participant.response).toBe('NON');
+      expect(participant.response).toBe('NO');
 
       // The Sentinel must still be an active member of the circle — a NON
       // meant for the alert question must never be read as "remove me".
@@ -679,20 +776,27 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-il chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       // respond() returns the updated participant directly, not the full
       // getAlert() detail — an outer-circle Sentinel isn't allowed to view
       // that (only "Me" or the 1st circle are).
+      const participation = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}/my-participation`)
+        .set('Authorization', auth(outerSentinels[0].accessToken))
+        .expect(200);
+      const { questions } = participation.body as {
+        questions: { id: string }[];
+      };
       const respondRes = await request(app.getHttpServer())
         .post(`/alert/${alert.id}/respond`)
         .set('Authorization', auth(outerSentinels[0].accessToken))
-        .send({ accepted: true })
+        .send({ reply: 'YES', questionId: questions[0].id })
         .expect(201);
       const participant = respondRes.body as AlertParticipantBody;
       expect(participant.status).toBe('RESPONDED');
-      expect(participant.response).toBe('OUI');
+      expect(participant.response).toBe('YES');
 
       const detailRes = await request(app.getHttpServer())
         .get(`/alert/${alert.id}`)
@@ -703,7 +807,7 @@ describe('Alert (e2e)', () => {
         (p) => p.circleId === outerCircle.id,
       )!;
       expect(updated.status).toBe('RESPONDED');
-      expect(updated.response).toBe('OUI');
+      expect(updated.response).toBe('YES');
     });
 
     it('rejects responding when the caller has no pending request on this alert', async () => {
@@ -723,7 +827,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${(raiseRes.body as AlertBody).id}/respond`)
         .set('Authorization', auth(stranger.accessToken))
-        .send({ accepted: true })
+        .send({ reply: 'GOING' })
         .expect(403);
     });
 
@@ -749,7 +853,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${(raiseRes.body as AlertBody).id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: othersCircle.id, question: 'x' })
+        .send({ circleId: othersCircle.id, questionKind: 'CAN_VISIT' })
         .expect(400);
     });
 
@@ -775,7 +879,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${(raiseRes.body as AlertBody).id}/request-circle`)
         .set('Authorization', auth(stranger.accessToken))
-        .send({ circleId: outerCircle.id, question: 'x' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(403);
     });
   });
@@ -799,7 +903,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       // The full alert is off-limits to them...
@@ -854,14 +958,8 @@ describe('Alert (e2e)', () => {
       const { circle: outerCircle, sentinels: outerSentinels } =
         await buildOuterCircle(companion.accessToken, 'Voisins', 1);
 
-      // Authorize this outer-circle link for the 1st-circle chat — the
-      // default is NONE, so without this the request below would 403.
-      await request(app.getHttpServer())
-        .patch(`/sentinel/memberships/${outerSentinels[0].linkId}`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ firstCircleMessagingMode: 'INDIVIDUAL' })
-        .expect(200);
-
+      // Allowed by default: the companion's general switch and the
+      // circle's own setting both start on.
       const raiseRes = await request(app.getHttpServer())
         .post('/alert/raise')
         .set('Authorization', auth(companion.accessToken))
@@ -875,7 +973,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       const openRes = await request(app.getHttpServer())
@@ -944,11 +1042,23 @@ describe('Alert (e2e)', () => {
       expect(closedIsolated.closedAt).not.toBeNull();
     });
 
-    it('rejects an outer-circle Sentinel whose link is not authorized for it (firstCircleMessagingMode NONE, the default)', async () => {
+    it.each([
+      ['their circle is not allowed', 'circle'],
+      ['the companion switched it off for every circle', 'user'],
+    ])('rejects an outer-circle Sentinel when %s', async (_label, where) => {
       const companion = await signupAccount('Ada');
       await buildFirstCircle(companion.accessToken, 1);
       const { circle: outerCircle, sentinels: outerSentinels } =
         await buildOuterCircle(companion.accessToken, 'Amis', 1);
+      await request(app.getHttpServer())
+        .patch(
+          where === 'circle'
+            ? `/sentinel/circles/${outerCircle.id}`
+            : '/user/me',
+        )
+        .set('Authorization', auth(companion.accessToken))
+        .send({ alertChatWithFirstCircle: false })
+        .expect(200);
 
       const raiseRes = await request(app.getHttpServer())
         .post('/alert/raise')
@@ -963,7 +1073,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'x' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -992,7 +1102,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -1107,7 +1217,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       // sentinels[1] is not the Lead (leadCount: 1) — still allowed, any
@@ -1183,7 +1293,7 @@ describe('Alert (e2e)', () => {
   });
 
   describe('GET /alert/:id — attribution and message history', () => {
-    it('shows who requested each circle, and lets the companion read the 1st-circle chat without being a participant of it', async () => {
+    it('shows who requested each circle, and lets the companion read the 1st-circle chat they’re seated in', async () => {
       const companion = await signupAccount('Lea');
       const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
       const { circle: outerCircle } = await buildOuterCircle(
@@ -1216,7 +1326,7 @@ describe('Alert (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/request-circle`)
         .set('Authorization', auth(sentinels[0].accessToken))
-        .send({ circleId: outerCircle.id, question: 'Est-elle chez vous ?' })
+        .send({ circleId: outerCircle.id, questionKind: 'CAN_VISIT' })
         .expect(201);
 
       detailRes = await request(app.getHttpServer())
@@ -1237,14 +1347,14 @@ describe('Alert (e2e)', () => {
         .send({ body: 'On est sur place.' })
         .expect(201);
 
-      // The companion isn't a participant of that conversation (by design)
-      // and still gets 403 calling messaging directly...
+      // The companion is seated in the 1st circle room (they write there
+      // too), so messaging lets them read it directly...
       await request(app.getHttpServer())
         .get(`/messaging/conversations/${conversationId}/messages`)
         .set('Authorization', auth(companion.accessToken))
-        .expect(403);
+        .expect(200);
 
-      // ...but reads the full message history as part of the alert detail.
+      // ...and the alert detail carries the same history.
       detailRes = await request(app.getHttpServer())
         .get(`/alert/${alert.id}`)
         .set('Authorization', auth(companion.accessToken))

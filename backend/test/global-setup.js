@@ -1,4 +1,5 @@
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
+const path = require('path');
 
 module.exports = async function globalSetup() {
   const url = process.env.DATABASE_URL || '';
@@ -13,10 +14,13 @@ module.exports = async function globalSetup() {
   }
 
   console.log('[e2e] Resetting mysentinelcircle_test schema...');
-  execSync('npx prisma migrate reset --force --skip-generate', {
-    cwd: __dirname + '/..',
-    stdio: 'inherit',
-    env: process.env,
-  });
+  // execFileSync with an explicit binary path (not `npx`, which resolves
+  // the command to run via PATH) so schema reset never depends on which
+  // "prisma" happens to be first on PATH.
+  execFileSync(
+    path.join(__dirname, '..', 'node_modules', '.bin', 'prisma'),
+    ['migrate', 'reset', '--force', '--skip-generate'],
+    { cwd: __dirname + '/..', stdio: 'inherit', env: process.env },
+  );
   console.log('[e2e] Schema reset complete.');
 };

@@ -1,25 +1,34 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import {
-  acceptCircleMove,
   acceptMembership,
-  declineCircleMove,
   declineMembership,
-  leaveMembership,
   listCompanions,
   listMyInvitations,
-  requestToBeSentinel,
   type Companion,
   type Invitation,
 } from '../api/sentinel';
+import { Modal } from '../components/Modal';
+import { PersonAvatar } from '../components/PersonAvatar';
+import { PauseNotice, PausePill } from '../components/PauseNotice';
+import { GiftYearButton } from '../components/Upgrade';
+import { NameStar } from '../components/SubscribedStar';
+import { usePlan } from '../plan';
+import { useAuth } from '../auth/AuthContext';
+import { companionColor, companionGold } from '../theme';
+import { genderContext } from '../gender';
 
 export function CompanionsPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [companions, setCompanions] = useState<Companion[]>([]);
+  const { plan } = usePlan();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { linkId } = useParams();
 
   const reload = async () => {
     setError(null);
@@ -38,114 +47,151 @@ export function CompanionsPage() {
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
 
+  // Anything waiting on me goes first: a pending circle-move proposal or a
+  // death report to confirm. Invitations received sit above the list anyway.
+  const needsAnswer = (c: Companion) => !!c.proposedCircle || !!c.deathNotice.pending?.canConfirmOrReject;
+  const sorted = [...companions].sort((a, b) => Number(needsAnswer(b)) - Number(needsAnswer(a)));
+  // Grouped by my role towards them, closest first. Empty groups are skipped.
+  const groups = [
+    { key: 'lead', items: sorted.filter((c) => c.leadSlot) },
+    { key: 'firstCircle', items: sorted.filter((c) => !c.leadSlot && c.circle.isPrimary) },
+    { key: 'others', items: sorted.filter((c) => !c.leadSlot && !c.circle.isPrimary) },
+  ];
+
+  // /companions/:linkId: one companion's details and actions, like a
+  // circle's own page on My Circles.
+  // Old /companions/:linkId links: a companion's details now live on their
+  // person page (PersonPage).
+  if (linkId) {
+    const c = companions.find((x) => x.linkId === linkId);
+    return <Navigate to={c ? `/people/${c.companion.id}?from=companion` : '/companions'} replace />;
+  }
+
   return (
-    <div>
-      <h1>{t('companions.title')}</h1>
-      <p style={{ color: 'var(--text-muted)' }}>{t('companions.intro')}</p>
-      {error && <p className="form-error">{error}</p>}
+    <div className="page-bleed sticky-header-page companion-page">
+      <div className="sticky-header">
+        <h1>
+          {t('companions.title')} <PausePill which="forOthers" />
+        </h1>
+        <p style={{ color: 'var(--text-muted)' }}>{t('companions.intro')}</p>
+        <PauseNotice which="forOthers" />
+        {error && <p className="form-error">{error}</p>}
+        <div className="header-actions">
+          <Link to="/companions/new" className="button-link">
+            {t('companions.new')}
+          </Link>
+        </div>
+      </div>
 
       <InvitationsInbox invitations={invitations} onChange={reload} />
-      <RequestForm onError={setError} />
 
       {companions.length === 0 ? (
         <div className="empty-state">{t('companions.empty')}</div>
       ) : (
-        <section className="panel">
-          {companions.map((c) => (
-            <div key={c.linkId} className="row member-row">
-              <span>
-                {c.companion.email || c.companion.phone}
-                <span className="badge">{t('companions.inCircle', { label: c.circle.label })}</span>
-                <span className="badge">{t(`sentinel.type.${c.sentinelType}`)}</span>
-              </span>
-              {c.proposedCircle ? (
-                <span className="row-actions">
-                  <span>
-                    {t('companions.circleMoveProposed', {
-                      who: c.companion.email || c.companion.phone,
-                    })}
-                  </span>
-                  <button onClick={() => acceptCircleMove(c.linkId).then(reload)}>
-                    {t('companions.acceptCircleMove')}
-                  </button>
-                  <button className="ghost" onClick={() => declineCircleMove(c.linkId).then(reload)}>
-                    {t('companions.declineCircleMove')}
-                  </button>
-                </span>
-              ) : (
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    if (window.confirm(t('companions.confirmLeave'))) void leaveMembership(c.linkId).then(reload);
-                  }}
-                >
-                  {t('companions.leave')}
-                </button>
-              )}
-            </div>
-          ))}
-        </section>
+        groups.map(
+          (g) =>
+            g.items.length > 0 && (
+              <section key={g.key} className="companion-group">
+                {/* Thin labelled separator: my role towards everyone below it. */}
+                <h2 className="companion-group-sep">{t(`companions.groups.${g.key}`)}</h2>
+                {/* What this role means if something happens. */}
+                <p className="companion-group-hint">{t(`companions.groupHints.${g.key}`)}</p>
+                {/* Greyed while I'm on pause for others — still usable. */}
+                <div className={`companion-grid${user?.pausedForOthers ? ' area-paused' : ''}`}>
+                  {g.items.map((c) => (
+                    <Link key={c.linkId} to={`/people/${c.companion.id}?from=companion`} className="companion-card">
+                      {/* Their own blue-violet shade; the outline turns gold when I.m in their 1st circle (darker for a Lead). */}
+                      <PersonAvatar
+                        userId={c.companion.id}
+                        avatarPath={c.companion.avatarPath}
+                        paused={c.companion.pausedForMe}
+                        subscribed={c.companion.subscribed}
+                        sentinelColor={null}
+                        companionColor={companionGold(!!c.leadSlot, c.circle.isPrimary) ?? companionColor(c.companion.id)}
+                        size={72}
+                      />
+                      <span className="companion-name">
+                        {c.companion.firstName}
+                        {c.companion.subscribed && <NameStar />}
+                      </span>
+                      {needsAnswer(c) && (
+                        <span className="companion-needs-answer">{t('companions.needsAnswer')}</span>
+                      )}
+                      {c.companion.freeAlertUsed && (
+                        <GiftYearButton
+                          userId={c.companion.id}
+                          name={c.companion.firstName}
+                          gender={c.companion.gender}
+                          plan={plan}
+                          onDone={() => void reload()}
+                        />
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ),
+        )
       )}
     </div>
   );
 }
 
+// The role an invitation offers: a Lead request wins over the base type.
+const invitationRole = (inv: Invitation) => (inv.requestedAsLead ? 'LEAD' : inv.sentinelType);
+
+// One small line per invitation; clicking it opens the details (circle, role,
+// what that role involves) with Accept / Decline.
 function InvitationsInbox({ invitations, onChange }: { invitations: Invitation[]; onChange: () => void }) {
   const { t } = useTranslation();
+  const [open, setOpen] = useState<Invitation | null>(null);
   if (invitations.length === 0) return null;
 
-  return (
-    <section className="panel">
-      <h2>{t('companions.invitations')}</h2>
-      {invitations.map((inv) => (
-        <div key={inv.id} className="row">
-          <span>
-            {t('companions.invitedBy', { who: inv.circle.userCompanion.email || inv.circle.userCompanion.phone })} — {inv.circle.label}
-          </span>
-          <span className="row-actions">
-            <button onClick={() => acceptMembership(inv.id).then(onChange)}>{t('companions.accept')}</button>
-            <button className="ghost" onClick={() => declineMembership(inv.id).then(onChange)}>
-              {t('companions.decline')}
-            </button>
-          </span>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function RequestForm({ onError }: { onError: (m: string) => void }) {
-  const { t } = useTranslation();
-  const [phone, setPhone] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [info, setInfo] = useState<string | null>(null);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setInfo(null);
-    try {
-      await requestToBeSentinel(phone.trim());
-      setPhone('');
-      setInfo(t('companions.requestSent'));
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
+  const answer = (action: () => Promise<unknown>) => {
+    setOpen(null);
+    void action().then(onChange);
   };
 
   return (
-    <form className="panel inline-form" onSubmit={submit}>
-      <h2>{t('companions.requestTitle')}</h2>
-      <p style={{ color: 'var(--text-muted)' }}>{t('companions.requestIntro')}</p>
-      <div className="row">
-        <input type="tel" required placeholder={t('companions.targetPhone')} value={phone} onChange={(e) => setPhone(e.target.value)} />
-        <button type="submit" disabled={submitting || !phone.trim()}>
-          {t('companions.sendRequest')}
+    <div className="invitation-lines">
+      {invitations.map((inv) => (
+        <button key={inv.id} type="button" className="invitation-line" onClick={() => setOpen(inv)}>
+          <span className="invitation-dot" aria-hidden="true" />
+          <span className="invitation-text">
+            {t('companions.invitationLine', {
+              who: inv.circle.userCompanion.firstName,
+              context: genderContext(inv.circle.userCompanion.gender),
+            })}
+          </span>
+          <span aria-hidden="true">›</span>
         </button>
-      </div>
-      {info && <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{info}</p>}
-    </form>
+      ))}
+      {open && (
+        <Modal
+          title={t('companions.invitationTitle', { who: open.circle.userCompanion.firstName })}
+          onClose={() => setOpen(null)}
+        >
+          <dl className="invitation-details">
+            <dt>{t('companions.invitationCircle')}</dt>
+            <dd>{open.circle.label}</dd>
+            <dt>{t('companions.invitationRole')}</dt>
+            <dd>{t(`sentinel.type.${invitationRole(open)}`)}</dd>
+            <dt>{t('companions.invitationDuties')}</dt>
+            <dd>
+              {t(`companions.duties.${invitationRole(open)}`, {
+                who: open.circle.userCompanion.firstName,
+                context: genderContext(open.circle.userCompanion.gender),
+              })}
+            </dd>
+          </dl>
+          <div className="row">
+            <button onClick={() => answer(() => acceptMembership(open.id))}>{t('companions.accept')}</button>
+            <button className="ghost" onClick={() => answer(() => declineMembership(open.id))}>
+              {t('companions.decline')}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }

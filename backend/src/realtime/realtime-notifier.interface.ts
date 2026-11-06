@@ -7,4 +7,5 @@ export interface RealtimeNotifier {
   notifyNewMessage(userId: string, conversationId: string): void;
   notifyAlertChanged(userId: string, alertId: string): void;
   notifyNotificationNew(userId: string): void;
+  disconnectUser(userId: string): void;
 }

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EmailSender } from './email-sender.interface';
+import { isProduction, maskEmail } from '../common/log-redact';
 
 // Dev stub — logs the email instead of sending it, and best-effort forwards
 // to NoSMSNow (nosmsnow/) if NOSMSNOW_URL is set, so it shows up in the same
@@ -13,7 +14,12 @@ export class ConsoleEmailSenderService implements EmailSender {
   constructor(private readonly config: ConfigService) {}
 
   async send(to: string, subject: string, body: string): Promise<void> {
-    this.logger.log(`Email to ${to} [${subject}]: ${body}`);
+    // The body holds reset/confirmation links: never in production logs.
+    this.logger.log(
+      isProduction()
+        ? `Email to ${maskEmail(to)} [${subject}]`
+        : `Email to ${to} [${subject}]: ${body}`,
+    );
 
     const nosmsnowUrl = this.config.get<string>('NOSMSNOW_URL');
     if (!nosmsnowUrl) return;

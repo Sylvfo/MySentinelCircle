@@ -1,22 +1,22 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { devLogin, linkGoogle, loginEmail, loginGoogle, requestOtp } from '../api/auth';
+import { PasswordInput } from '../components/PasswordInput';
+import { linkGoogle, loginEmail, loginGoogle, loginPhone, requestOtp } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
+import { LegalLinks } from './legal/LegalPage';
 
 interface LocationState {
   pendingGoogleIdToken?: string;
 }
 
 export function LoginPage() {
-  const [mode, setMode] = useState<'password' | 'phone'>('password');
-  const [email, setEmail] = useState('');
+  // One field for both: an "@" means an email, anything else a phone number.
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [devPhone, setDevPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const { applyToken } = useAuth();
@@ -25,13 +25,21 @@ export function LoginPage() {
   const { t } = useTranslation();
   const pendingGoogleIdToken = (location.state as LocationState | null)?.pendingGoogleIdToken;
 
-  const handlePasswordSubmit = async (e: FormEvent) => {
+  const isEmail = identifier.includes('@');
+  // "+41 79 123 45 67" → "+41791234567", as the backend expects.
+  const phone = identifier.replace(/[\s.()-]/g, '');
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      const { accessToken } = await loginEmail(email, password);
+      const { accessToken } = isEmail
+        ? await loginEmail(identifier.trim(), password)
+        : await loginPhone(phone, password);
       await applyToken(accessToken);
+      // Signing in with Google for the first time on an existing account:
+      // link it now that we know who they are.
       if (pendingGoogleIdToken) {
         await linkGoogle(pendingGoogleIdToken).catch((linkErr) => {
           console.error('linkGoogle failed:', linkErr);
@@ -59,32 +67,19 @@ export function LoginPage() {
     }
   };
 
-  const handlePhoneSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  // First time, or forgot the password: a code by SMS logs them in.
+  const handleCodeRequest = async () => {
     setError(null);
+    if (!identifier.trim() || isEmail) {
+      setError(t('auth.smsCodeNeedsPhone'));
+      return;
+    }
     setSubmitting(true);
     try {
       const { userId } = await requestOtp(phone);
       navigate('/otp', { state: { userId, phone } });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Dev-only quick login (no password/OTP) — import.meta.env.DEV is false
-  // in a production build, so this block never ships.
-  const handleDevLoginSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const { accessToken } = await devLogin(devPhone);
-      await applyToken(accessToken);
-      navigate('/dashboard');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.login'));
     } finally {
       setSubmitting(false);
     }
@@ -101,53 +96,36 @@ export function LoginPage() {
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('auth.linkGooglePrompt')}</p>
       )}
 
-      {mode === 'password' ? (
-        <form onSubmit={handlePasswordSubmit}>
-          <label>
-            {t('auth.email')}
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
-          <label>
-            {t('auth.password')}
-            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          </label>
-          {error && <p className="form-error">{error}</p>}
-          <button type="submit" disabled={submitting}>
-            {t('auth.login')}
-          </button>
-          <p className="switch-link">
-            <Link to="/forgot-password">{t('auth.forgotPassword')}</Link>
-          </p>
-        </form>
-      ) : (
-        <form onSubmit={handlePhoneSubmit}>
-          <label>
-            {t('auth.phone')}
-            <input
-              type="tel"
-              required
-              placeholder="+33612345678"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </label>
-          {error && <p className="form-error">{error}</p>}
-          <button type="submit" disabled={submitting}>
-            {t('auth.requestCode')}
-          </button>
-        </form>
-      )}
-
-      <p className="switch-link">
-        <button
-          type="button"
-          className="google-btn-placeholder"
-          style={{ width: '100%', border: 'none', marginBottom: '0.5rem' }}
-          onClick={() => setMode(mode === 'password' ? 'phone' : 'password')}
-        >
-          {mode === 'password' ? t('auth.switchToPhone') : t('auth.switchToPassword')}
+      <form onSubmit={handleSubmit}>
+        <label>
+          {t('auth.phoneOrEmail')}
+          <input
+            type="text"
+            required
+            autoComplete="username"
+            placeholder={t('auth.phoneOrEmailPlaceholder')}
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+          />
+        </label>
+        <label>
+          {t('auth.password')}
+          <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
+        {error && <p className="form-error">{error}</p>}
+        <button type="submit" disabled={submitting}>
+          {t('auth.login')}
         </button>
-      </p>
+      </form>
+
+      {/* Two ways in without the password: a code by SMS (phone), or the
+          reset link by email (ForgotPasswordPage). */}
+      <div className="login-help">
+        <button type="button" className="link-button" disabled={submitting} onClick={handleCodeRequest}>
+          {t('auth.getSmsCode')}
+        </button>
+        <Link to="/forgot-password">{t('auth.forgotPasswordEmail')}</Link>
+      </div>
 
       <div className="auth-divider">{t('common.or')}</div>
       <GoogleSignInButton
@@ -158,23 +136,7 @@ export function LoginPage() {
       <p className="switch-link">
         {t('auth.noAccount')} <Link to="/signup">{t('auth.createAccount')}</Link>
       </p>
-
-      {import.meta.env.DEV && (
-        <div style={{ marginTop: '1rem' }}>
-          <div className="auth-divider">{t('auth.devLogin.divider')}</div>
-          <form onSubmit={handleDevLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <input
-              type="tel"
-              placeholder={t('auth.devLogin.placeholder')}
-              value={devPhone}
-              onChange={(e) => setDevPhone(e.target.value)}
-            />
-            <button type="submit" disabled={submitting || !devPhone.trim()}>
-              {t('auth.devLogin.submit')}
-            </button>
-          </form>
-        </div>
-      )}
+      <LegalLinks />
     </div>
   );
 }

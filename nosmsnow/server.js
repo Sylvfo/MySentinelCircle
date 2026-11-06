@@ -85,7 +85,12 @@ async function simulateInboundSms(from, body) {
       signal: AbortSignal.timeout(5000),
     });
     const result = await res.json().catch(() => null);
-    console.log(`[${timestamp()}] inbound SMS from ${from} -> backend responded ${res.status}:`, result);
+    // JSON.stringify escapes any CR/LF as literal "\n"/"\r" text instead of
+    // real line breaks, so typed input can't forge extra log lines.
+    console.log(
+      `[${timestamp()}] inbound SMS from ${JSON.stringify(from)} -> backend responded ${res.status}:`,
+      result,
+    );
   } catch (err) {
     console.log(`[${timestamp()}] failed to reach backend at ${BACKEND_URL}: ${err.message}`);
   }

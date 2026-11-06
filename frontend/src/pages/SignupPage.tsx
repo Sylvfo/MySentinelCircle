@@ -6,6 +6,10 @@ import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
+import { TermsCheckbox } from '../components/TermsGate';
+import { GenderSelect } from '../components/GenderSelect';
+import type { Gender } from '../gender';
+import { LegalLinks } from './legal/LegalPage';
 
 function suggestUsername(firstName: string): string {
   const base = firstName.trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
@@ -25,8 +29,9 @@ export function SignupPage() {
   const [lastName, setLastName] = useState('');
   const [userName, setUserName] = useState('');
   const [usernameEdited, setUsernameEdited] = useState(false);
-  const [phone, setPhone] = useState('');
 
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [gender, setGender] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const { applyToken } = useAuth();
@@ -51,11 +56,11 @@ export function SignupPage() {
 
   const handleStep2Submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!credential) return;
+    if (!credential || !termsAccepted) return;
     setError(null);
     setSubmitting(true);
     try {
-      const result =
+      const { accessToken } =
         credential.method === 'email'
           ? await signupEmail(
               firstName.trim(),
@@ -63,22 +68,18 @@ export function SignupPage() {
               userName.trim(),
               credential.email,
               credential.password,
-              phone.trim() || undefined,
+              (gender || undefined) as Gender | undefined,
             )
           : await signupGoogle(
               firstName.trim(),
               lastName.trim() || undefined,
               userName.trim(),
-              phone.trim() || undefined,
               credential.idToken,
+              (gender || undefined) as Gender | undefined,
             );
 
-      if ('accessToken' in result) {
-        await applyToken(result.accessToken);
-        navigate('/dashboard');
-        return;
-      }
-      navigate('/otp', { state: { userId: result.userId, phone, justSignedUp: true } });
+      await applyToken(accessToken);
+      navigate('/dashboard');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('auth.errors.signup'));
     } finally {
@@ -150,17 +151,13 @@ export function SignupPage() {
           </label>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('auth.usernameHint')}</p>
           <label>
-            {t('auth.phone')}
-            <input
-              type="tel"
-              placeholder="+33612345678"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
+            {t('gender.label')}
+            <GenderSelect value={gender} onChange={setGender} />
           </label>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('auth.phoneHint')}</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('gender.hint')}</p>
+          <TermsCheckbox checked={termsAccepted} onChange={setTermsAccepted} />
           {error && <p className="form-error">{error}</p>}
-          <button type="submit" disabled={submitting}>
+          <button type="submit" disabled={submitting || !termsAccepted}>
             {t('auth.continue')}
           </button>
           <p className="switch-link">
@@ -174,6 +171,7 @@ export function SignupPage() {
       <p className="switch-link">
         {t('auth.haveAccount')} <Link to="/login">{t('auth.signIn')}</Link>
       </p>
+      <LegalLinks />
     </div>
   );
 }

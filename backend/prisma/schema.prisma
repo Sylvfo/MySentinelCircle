@@ -10,15 +10,15 @@ datasource db {
 enum UserType {
   ONLY_SMS
   ACCOUNT
-  PAID_ACCOUNT
   ORGANISATION
   UNCOMPLETE
 }
 
 enum UserStatus {
   ACTIVE
-  PAUSED
+  //PAUSED
   DELETED
+  DECEASED
 }
 
 enum SentinelType {
@@ -47,6 +47,7 @@ enum CircleType {
   FIRST
   ORGANISATION
   RESERVED
+  GROUP
 }
 
 enum CircleStatus {
@@ -60,11 +61,12 @@ enum LeadSlot {
   LEAD_3
 }
 
+/*
 enum MessagingMode {
   NONE
   INDIVIDUAL
   GROUP
-}
+}*/
 
 enum AlertStatus {
   SENT
@@ -82,6 +84,7 @@ enum AlertType {
   UNKNOWN
   EMERGENCY
   NOCONTACT
+  TRAVEL
 }
 
 enum AlertParticipantStatus {
@@ -105,10 +108,26 @@ enum NotificationType {
   ALERT_ESCALATED
   ALERT_RESPONSE
   ALERT_CLOSED
+  ALERT_CIRCLE_NO_RESPONSE
+  ALERT_LEAD_CLAIMED
+  SENTINEL_GROUP_INVITED
   NEW_MESSAGE
   SENTINEL_INVITATION_RECEIVED
   SENTINEL_REQUEST_RECEIVED
   SENTINEL_LINK_ANSWERED
+  DEATH_NOTICE_REPORTED
+  DEATH_NOTICE_CONFIRMED
+  DEATH_NOTICE_REJECTED
+  SENTINEL_LEFT
+  CIRCLE_MOVE_PROPOSED
+  CIRCLE_MOVE_ANSWERED
+  SENTINEL_TO_RESERVE
+}
+
+enum Gender {
+  FEMALE
+  MALE
+  NEUTRAL
 }
 
 model User {
@@ -124,23 +143,35 @@ model User {
   userName     String? @unique
   email        String? @unique
   passwordHash String?
+  loginAttempts    Int       @default(0)
+  loginLockedUntil DateTime?
+  gender Gender? // how texts speak about me; null = inclusive wording
+
+
   googleId     String? @unique
   avatarPath String?
   stepUpVerifiedAt        DateTime?
   pendingEmail             String?
   pendingEmailTokenHash    String?   @unique
   pendingEmailExpiresAt    DateTime?  
-  allowMessagingByDefault Boolean @default(true) // companion-wide fallback
-
+  //allowMessagingByDefault Boolean @default(true) // companion-wide fallback
+  alertChatWithFirstCircle Boolean @default(true) // master switch: if false, no Sentinel of mine may chat with my 1st circle during an alert
+  pausedForMe     Boolean @default(false) // nobody else may raise an alert about me
+  pausedForOthers Boolean @default(false) // I can't be asked to take part in any alert
+  
   phone           String? @unique
   phoneVerifiedAt DateTime?
+  pendingPhone String?
 
   isMajor      Boolean @default(true)
   publicStatus String?
 
   userType         UserType @default(ONLY_SMS)
-  hasPaid          Boolean  @default(false)
+ //hasPaid          Boolean  @default(false)
   confirmedByOwner Boolean  @default(false)
+  paidUntil              DateTime? // yearly subscription: active while in the future (replaces hasPaid)
+  deathNoticePurchasedAt DateTime? // one-time purchase of the death notice (without a subscription)
+  alertsPaid             Alert[]   @relation("AlertPaidBy")
 
   otpCodeHash  String?
   otpExpiresAt DateTime?
@@ -149,12 +180,17 @@ model User {
   passwordResetTokenHash  String?   @unique
   passwordResetExpiresAt  DateTime?
 
+  deceasedAt DateTime?
+  deathAnnouncementMessage String?
 
   myCircles   Circle[]        @relation("MyCirclesAsCompanion")
   myUserSentinels LinkSentinels[] @relation("SentinelCompanion")
   myAlerts    Alert[]         @relation("MyAlertsAsCompanion")
 
   linksAsSentinel LinkSentinels[] @relation("LinkAsSentinel")
+
+  alertQuestionsAsked AlertQuestion[] @relation("AlertQuestionAskedBy")
+
 
   launchedAlerts Alert[]      @relation("AlertLaunchedBy")
   closedAlerts   Alert[]      @relation("AlertClosedBy")
@@ -164,10 +200,24 @@ model User {
 
   notifications      Notification[] @relation("NotificationRecipient")
   actorNotifications Notification[] @relation("NotificationActor")
-
+  groupInvitationsReceived SentinelGroupInvitation[] @relation("GroupInvited")
+  groupInvitationsSent     SentinelGroupInvitation[] @relation("GroupInviter")
 
   conversationMemberships ConversationParticipant[]
   sentMessages            Message[]
+
+  termsAcceptedAt DateTime? // when the person accepted the terms + privacy policy
+  termsVersion    String?   // which version they accepted, e.g. "2026-11"
+
+  deathReportedAt    DateTime?      // NEW — set when a Lead reports; cleared back to null on reject
+  deathReportedById  String?        // NEW
+  deathReportedBy    User?          @relation("DeathReportedBy", fields: [deathReportedById], references: [id], onDelete: Restrict)  // NEW
+  deathReportsFiled  User[]         @relation("DeathReportedBy")  // NEW — reverse side of the self-relation
+
+  deathConfirmedById    String?     // NEW
+  deathConfirmedBy      User?       @relation("DeathConfirmedBy", fields: [deathConfirmedById], references: [id], onDelete: Restrict)  // NEW
+  deathConfirmationsMade User[]     @relation("DeathConfirmedBy")  // NEW — reverse side
+
 }
 
 model Circle {
@@ -180,9 +230,8 @@ model Circle {
   circleType CircleType   @default(BASIC)
   status     CircleStatus @default(ACTIVE)
 
-  groupChat    Boolean @default(false)
-  canSendPhone Boolean @default(false)
-  canMessageMe Boolean? // null = inherit the companion's default; ignored/always-true for circleType FIRST
+  //canMessageMe Boolean? // whole circle may chat with the 1st circle during an alert, if the User switch allows it; ignored for circleType FIRST
+  alertChatWithFirstCircle Boolean @default(true) // whole circle may chat with the 1st circle during an alert, if the User switch allows it; ignored for circleType FIRST
 
   userCompanionId String
   userCompanion   User   @relation("MyCirclesAsCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
@@ -190,7 +239,13 @@ model Circle {
   userSentinels       LinkSentinels[]
   alertsAsFirstCircle Alert[]            @relation("AlertFirstCircle")
   alertParticipations AlertParticipant[]
+  groupRootId  String?
+  groupRoot    Circle?  @relation("GroupMembers", fields: [groupRootId], references: [id], onDelete: Restrict)
+  groupMembers Circle[] @relation("GroupMembers")
+  groupInvitations SentinelGroupInvitation[]
 
+
+  @@unique([userCompanionId, groupRootId])
   @@unique([id, userCompanionId])
   @@index([userCompanionId, status])
 }
@@ -202,32 +257,48 @@ model LinkSentinels {
 
   status      LinkStatus    @default(PENDING)
   initiatedBy LinkInitiator
-  canMessageMe Boolean? // null = inherit the circle's setting (which inherits the companion's default) — highest priority, most specific wins
+  //canMessageMe Boolean? // null = inherit the circle's setting (which inherits the companion's default) — highest priority, most specific wins
 
   sentinelType    SentinelType @default(ONLY_SMS)
   requestedAsLead Boolean      @default(false)
   leadSlot        LeadSlot?
 
-  canMessageOwnCircle      Boolean       @default(true)
-  firstCircleMessagingMode MessagingMode @default(NONE)
+  //canMessageOwnCircle      Boolean       @default(true)
+  //firstCircleMessagingMode MessagingMode @default(NONE)
   canSendPhone             Boolean       @default(false)
 
   userSentinelId  String
   userCompanionId String
   circleId    String
   proposedCircleId String?   // set only while awaiting consent to move into the 1st circle
-
+  callOrder Int? // manual outer-circle call rank (lower = called first); null = random fallback
 
   linkAsSentinel User   @relation("LinkAsSentinel", fields: [userSentinelId], references: [id], onDelete: Restrict)
   userCompanion      User   @relation("SentinelCompanion", fields: [userCompanionId], references: [id], onDelete: Restrict)
   circle         Circle @relation(fields: [circleId, userCompanionId], references: [id, userCompanionId], onDelete: Restrict)
-
+  notifyOnDeath        Boolean    @default(false)  // NEW — opted in by the companion as a death-notice recipient
+  deathPersonalMessage String?    @db.Text         
+  deathNotifiedAt      DateTime?                     
   events              LinkSentinelsEvent[]
   alertParticipations AlertParticipant[]
 
   @@unique([userSentinelId, userCompanionId])
   @@unique([circleId, leadSlot])
   @@index([userCompanionId, status])
+}
+
+model SentinelGroupInvitation {
+  id            String     @id @default(cuid())
+  createdAt     DateTime   @default(now())
+  groupRootId   String
+  groupRoot     Circle     @relation(fields: [groupRootId], references: [id], onDelete: Restrict)
+  invitedUserId String
+  invitedUser   User       @relation("GroupInvited", fields: [invitedUserId], references: [id], onDelete: Restrict)
+  invitedById   String
+  invitedBy     User       @relation("GroupInviter", fields: [invitedById], references: [id], onDelete: Restrict)
+  status        LinkStatus @default(PENDING)
+
+  @@unique([groupRootId, invitedUserId])
 }
 
 model LinkSentinelsEvent {
@@ -255,6 +326,9 @@ model Alert {
   messageAlert String
   alertStatus  AlertStatus @default(SENT)
   alertType    AlertType   @default(UNKNOWN)
+
+  paidById String? // who paid for this single alert (outside any subscription)
+  paidBy   User?   @relation("AlertPaidBy", fields: [paidById], references: [id], onDelete: Restrict)
 
   statusByCompanion   String?
   statusByFirstCircle String?
@@ -300,17 +374,23 @@ model AlertParticipant {
   response    String?
 
   isLead         Boolean   @default(false)
+// Repurposed as "when this Lead last claimed active leadership of the
+// alert" (see AlertService.claimLead) — not just a contact-time freeze.
   leadAssignedAt DateTime?
   circleId       String
   circle         Circle    @relation(fields: [circleId], references: [id], onDelete: Restrict)
   circleName     String
 
+  alertChatWithFirstCircleAtAlert Boolean? // frozen when the circle is solicited, so a later settings change doesn't alter a past alert
+
   canSendPhoneAtAlert             Boolean?
-  canMessageOwnCircleAtAlert      Boolean?
-  firstCircleMessagingModeAtAlert MessagingMode?
+  //canMessageOwnCircleAtAlert      Boolean?
+  //firstCircleMessagingModeAtAlert MessagingMode?
+  //question String? @db.Text // the 1st circle's question when this circle was asked (requestCircle)
 
   alertId String
   alert   Alert  @relation(fields: [alertId], references: [id], onDelete: Restrict)
+  questions AlertQuestion[]
 
   userSentinelsId String
   userSentinels   LinkSentinels @relation(fields: [userSentinelsId], references: [id], onDelete: Restrict)
@@ -352,7 +432,7 @@ model ConversationParticipant {
 model Message {
   id        String    @id @default(cuid())
   createdAt DateTime  @default(now())
-  editedAt  DateTime?
+  //editedAt  DateTime?
   deletedAt DateTime?
 
   body String
@@ -386,6 +466,25 @@ model Notification {
   targetId String?
 
   @@index([userId, readAt, createdAt])
+}
+
+// One question sent to one participant during an alert.
+model AlertQuestion {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kind       String    // CAN_VISIT, LAST_NEWS, SEEMED_OK or WHERE_SEEN
+  response   String?   @db.VarChar(300) // reply code, or free text for WHERE_SEEN
+  answeredAt DateTime?
+
+  askedById String
+  askedBy   User   @relation("AlertQuestionAskedBy", fields: [askedById], references: [id], onDelete: Restrict)
+
+  alertParticipantId String
+  alertParticipant   AlertParticipant @relation(fields: [alertParticipantId], references: [id], onDelete: Restrict)
+
+  @@index([alertParticipantId, createdAt])
 }
 
 /*

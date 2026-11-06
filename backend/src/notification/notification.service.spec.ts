@@ -14,6 +14,7 @@ describe('NotificationService', () => {
       count: jest.Mock;
       updateMany: jest.Mock;
     };
+    conversation: { count: jest.Mock };
   };
   let realtime: { notifyNotificationNew: jest.Mock };
   let push: { send: jest.Mock };
@@ -26,6 +27,7 @@ describe('NotificationService', () => {
         count: jest.fn(),
         updateMany: jest.fn(),
       },
+      conversation: { count: jest.fn() },
     };
     realtime = { notifyNotificationNew: jest.fn() };
     push = { send: jest.fn() };
@@ -116,22 +118,95 @@ describe('NotificationService', () => {
     });
   });
 
-  describe('listMine / getUnreadCount', () => {
-    it('scopes the list to the caller, newest first', async () => {
+  describe('listMine / getUnreadCounts', () => {
+    it('scopes the list to the caller, unread only, newest first, without messages', async () => {
+      prisma.notification.findMany.mockResolvedValueOnce([]);
       await service.listMine('user-1');
 
       expect(prisma.notification.findMany).toHaveBeenCalledWith({
-        where: { userId: 'user-1' },
+        where: {
+          userId: 'user-1',
+          readAt: null,
+          type: { not: NotificationType.NEW_MESSAGE },
+        },
+        include: { actor: { select: { gender: true } } },
         orderBy: { createdAt: 'desc' },
         take: 50,
       });
     });
 
-    it('scopes the unread count to the caller', async () => {
-      await service.getUnreadCount('user-1');
+    it("gives each notification its actor's gender, not the actor itself", async () => {
+      prisma.notification.findMany.mockResolvedValueOnce([
+        { id: 'n1', actorLabel: 'Léa', actor: { gender: 'FEMALE' } },
+        { id: 'n2', actorLabel: null, actor: null },
+      ]);
 
+      await expect(service.listMine('user-1')).resolves.toEqual([
+        { id: 'n1', actorLabel: 'Léa', actorGender: 'FEMALE' },
+        { id: 'n2', actorLabel: null, actorGender: null },
+      ]);
+    });
+
+    it('counts unread messages per conversation, not per message', async () => {
+      prisma.notification.count.mockResolvedValueOnce(3);
+      // distinct targetId: one row per conversation with something unread
+      prisma.notification.findMany.mockResolvedValueOnce([
+        { targetId: 'conv-mathis' },
+        { targetId: 'conv-lea' },
+      ]);
+      prisma.conversation.count.mockResolvedValueOnce(2);
+
+      await expect(service.getUnreadCounts('user-1', null)).resolves.toEqual({
+        count: 3,
+        messages: 2,
+        support: 0,
+      });
       expect(prisma.notification.count).toHaveBeenCalledWith({
-        where: { userId: 'user-1', readAt: null },
+        where: {
+          userId: 'user-1',
+          readAt: null,
+          type: { not: NotificationType.NEW_MESSAGE },
+        },
+      });
+      expect(prisma.notification.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          readAt: null,
+          type: NotificationType.NEW_MESSAGE,
+        },
+        distinct: ['targetId'],
+        select: { targetId: true },
+      });
+    });
+
+    it('counts my feedback thread apart from my Messages', async () => {
+      prisma.notification.count.mockResolvedValueOnce(0);
+      prisma.notification.findMany.mockResolvedValueOnce([
+        { targetId: 'conv-support' },
+        { targetId: 'conv-lea' },
+      ]);
+      prisma.conversation.count.mockResolvedValueOnce(2);
+
+      await expect(
+        service.getUnreadCounts('user-1', 'conv-support'),
+      ).resolves.toEqual({ count: 0, messages: 1, support: 1 });
+    });
+
+    it('leaves alert chats out of the Messages badge', async () => {
+      prisma.notification.count.mockResolvedValueOnce(0);
+      prisma.notification.findMany.mockResolvedValueOnce([
+        { targetId: 'conv-alert-1' },
+        { targetId: 'conv-alert-2' },
+      ]);
+      prisma.conversation.count.mockResolvedValueOnce(0); // both have an alertId
+
+      await expect(service.getUnreadCounts('user-1', null)).resolves.toEqual({
+        count: 0,
+        messages: 0,
+        support: 0,
+      });
+      expect(prisma.conversation.count).toHaveBeenCalledWith({
+        where: { id: { in: ['conv-alert-1', 'conv-alert-2'] }, alertId: null },
       });
     });
   });

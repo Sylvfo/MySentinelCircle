@@ -1,6 +1,5 @@
 import { apiPost } from './client';
-
-export type SignupResult = { userId: string } | { accessToken: string };
+import type { Gender } from '../gender';
 
 export const signupEmail = (
   firstName: string,
@@ -8,9 +7,18 @@ export const signupEmail = (
   userName: string,
   email: string,
   password: string,
-  phone: string | undefined,
+  gender?: Gender,
 ) =>
-  apiPost<SignupResult>('/auth/signup/email', { firstName, lastName, userName, email, password, phone });
+  // Only ever called once the terms checkbox is ticked (SignupPage).
+  apiPost<{ accessToken: string }>('/auth/signup/email', {
+    firstName,
+    lastName,
+    userName,
+    email,
+    password,
+    gender,
+    acceptTerms: true,
+  });
 
 export const loginEmail = (email: string, password: string) =>
   apiPost<{ accessToken: string }>('/auth/login/email', { email, password });
@@ -19,9 +27,20 @@ export const signupGoogle = (
   firstName: string,
   lastName: string | undefined,
   userName: string,
-  phone: string | undefined,
   idToken: string,
-) => apiPost<SignupResult>('/auth/signup/google', { firstName, lastName, userName, phone, idToken });
+  gender?: Gender,
+) =>
+  apiPost<{ accessToken: string }>('/auth/signup/google', {
+    firstName,
+    lastName,
+    userName,
+    idToken,
+    gender,
+    acceptTerms: true,
+  });
+
+export const loginPhone = (phone: string, password: string) =>
+  apiPost<{ accessToken: string }>('/auth/login/phone', { phone, password });
 
 export const loginGoogle = (idToken: string) =>
   apiPost<{ accessToken: string }>('/auth/login/google', { idToken });
@@ -41,5 +60,3 @@ export const confirmPasswordReset = (token: string, newPassword: string) =>
   apiPost<{ message: string }>('/auth/password-reset/confirm', { token, newPassword });
 
 // Dev-only — backend refuses in production regardless.
-export const devLogin = (phone: string) =>
-  apiPost<{ accessToken: string }>('/auth/dev-login', { phone });

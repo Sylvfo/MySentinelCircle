@@ -7,8 +7,9 @@ import { ApiError } from '../api/client';
 
 interface LocationState {
   userId: string;
+  // Where to go after the code; set when the login came from a SMS link.
+  next?: string;
   phone: string;
-  justSignedUp?: boolean;
 }
 
 export function OtpVerifyPage() {
@@ -34,7 +35,7 @@ export function OtpVerifyPage() {
     try {
       const { accessToken } = await verifyOtp(state.userId, code);
       await applyToken(accessToken);
-      navigate('/dashboard');
+      navigate(state.next ?? '/new-password');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('auth.errors.invalidCode'));
     } finally {
@@ -57,9 +58,7 @@ export function OtpVerifyPage() {
     <div className="auth-page">
       <h1>{t('auth.verifyTitle')}</h1>
       <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-        {state.justSignedUp
-          ? t('auth.otpSentSignup', { phone: state.phone })
-          : t('auth.otpSent', { phone: state.phone })}
+        {t('auth.otpSent', { phone: state.phone })}
       </p>
       <form onSubmit={handleSubmit}>
         <label>

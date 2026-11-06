@@ -1,11 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Inria+Sans:ital,wght@0,400;0,700;1,400&display=swap');
+
 :root {
   --text: #3a3a3a;
   --text-muted: #767676;
   --bg: #ffffff;
   --bg-subtle: #f6f6f7;
   --border: #dcdcdf;
-  --accent: #445566;
+  --accent: #0f4c4f;
+  --accent-subtle: #e3eeee;
   --danger: #b3261e;
+  /* "||" of someone on pause — its own hue, apart from pending grey. */
+  --pause-ink: #5b4a86;
+  --radius: 10px;
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --font-brand: 'Inria Sans', system-ui, sans-serif;
 
   font: 16px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
@@ -20,9 +28,17 @@ body {
   margin: 0;
 }
 
+/* No rubber-band bounce when pulling a page that doesn't scroll (the
+   Dashboard): the page stays put, like an app. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 h1, h2, h3 {
   margin: 0 0 0.5em;
-  font-weight: 600;
+  font-family: var(--font-brand);
+  font-weight: 700;
 }
 
 a {
@@ -45,7 +61,8 @@ button, input {
   margin: 10vh auto 0;
   padding: 2rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
 .auth-page form {
@@ -94,6 +111,12 @@ button, input {
   font-size: 0.9rem;
 }
 
+.form-hint {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
 .google-btn-placeholder {
   padding: 0.6rem;
   border: 1px solid var(--border);
@@ -123,11 +146,27 @@ button, input {
 .app-shell {
   display: flex;
   min-height: 100vh;
+  /* Visible height on phones (100vh also counts the area behind the
+     browser's address bar, which made a full-screen page scroll a bit). */
+  min-height: 100dvh;
+  /* App-wide light blue gradient; fixed so it spans the viewport, not the
+     page height. Exposed as a variable so sticky headers can repaint it. */
+  --page-gradient: linear-gradient(180deg, #eef5fc 0%, #b9d4f0 100%);
+  background: var(--page-gradient) fixed;
 }
 
 .app-nav {
-  width: 220px;
+  width: 250px;
   flex-shrink: 0;
+  /* White up to its border line, over the app-wide blue/red gradient. */
+  background: var(--bg);
+  /* Always visible: stays put while the page scrolls. */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
   border-right: 1px solid var(--border);
   padding: 1.25rem 1rem;
   display: flex;
@@ -136,8 +175,46 @@ button, input {
 }
 
 .app-nav .brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-brand);
+  font-weight: 400;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  margin-bottom: 1.75rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.app-nav .brand img {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+}
+
+.app-nav .brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-nav .brand-slogan {
+  font-size: 0.95rem;
   font-weight: 700;
-  margin-bottom: 0.15rem;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  opacity: 0.75;
+}
+
+.app-nav .nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Mobile-only bottom icon bar — hidden on desktop, see @media below. */
+.bottom-nav {
+  display: none;
 }
 
 .app-nav .user-row {
@@ -152,6 +229,52 @@ button, input {
   font-size: 0.85rem;
 }
 
+/* Overrides `.app-nav a`'s block layout: the name sits inline in .user-row. */
+.app-nav button.user-name {
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.app-nav button.user-name[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* UserMenu dropdown: fixed, placed under the name button by script. */
+.user-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 10rem;
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+}
+
+.user-menu a,
+.user-menu button {
+  display: block;
+  padding: 0.5rem 0.7rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+
 .app-nav a {
   display: block;
   padding: 0.5rem 0.6rem;
@@ -160,8 +283,7 @@ button, input {
   text-decoration: none;
 }
 
-.app-nav a.active,
-.app-nav a:hover {
+.app-nav a.active {
   background: var(--bg-subtle);
 }
 
@@ -208,10 +330,6 @@ button, input {
   border-radius: 6px;
 }
 
-.bell-btn:hover {
-  background: var(--bg-subtle);
-  color: var(--text);
-}
 
 .notification-count {
   position: absolute;
@@ -246,8 +364,8 @@ button, input {
   overflow-y: auto;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
 }
@@ -269,9 +387,6 @@ button, input {
   border-bottom: none;
 }
 
-.notification-item:hover {
-  background: var(--bg-subtle);
-}
 
 .notification-item.unread {
   color: var(--text);
@@ -301,7 +416,7 @@ button, input {
 
 .summary-card {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 1rem;
 }
 
@@ -319,7 +434,7 @@ button, input {
   margin-top: 1.5rem;
   padding: 2rem;
   border: 1px dashed var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   color: var(--text-muted);
   text-align: center;
 }
@@ -329,7 +444,7 @@ button, input {
   margin-top: 1.25rem;
   padding: 1rem 1.25rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
 
 .panel h2 {
@@ -340,6 +455,353 @@ button, input {
   font-size: 0.95rem;
   color: var(--text-muted);
   margin-top: 1rem;
+}
+
+/* Tile — the reusable card component (Tile.tsx). Built on the same tokens
+   as .panel, which it's gradually replacing on the priority screens. */
+.tile {
+  overflow: hidden;
+  margin-top: 1.25rem;
+  padding: 1.1rem 1.3rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.tile-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.tile-header h2, .tile-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  min-width: 0;
+}
+
+.dash-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  font-family: var(--font-brand);
+  color: var(--accent);
+}
+
+.tile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Responsive without hand-written breakpoints: collapses to one column on
+   narrow/mobile viewports automatically. */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+  align-items: start;
+}
+
+.tile-grid .tile {
+  margin-top: 0;
+}
+
+/* A whole tile as a link (Dashboard): keeps the tile's own text colors and
+   lifts slightly on hover to show it's clickable. */
+.tile-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.tile-link .tile {
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.tile-link:focus-visible .tile {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+/* Dashboard My Circles / My Companions tiles: bigger title, people count
+   with its icon in the top-right corner. */
+.tile.tile-dash .tile-header {
+  flex-wrap: nowrap;
+}
+
+/* One title size for every main tile — Dashboard (both modes), Running
+   Alert, Raise Alert — so they read as one family. */
+.tile.tile-dash .tile-header h2,
+.tile.tile-running .tile-header h2,
+.raise-grid .tile .tile-header h2 {
+  font-size: 1.5rem;
+  line-height: 1.15;
+}
+
+.tile.tile-dash .tile-subtitle {
+  margin: 0.15rem 0 0;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.tile-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-brand);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tile-count.sentinel svg {
+  color: #4a8fd1; /* theme.ts's circle blue */
+}
+
+/* Dashboard greeting header */
+.dashboard-greeting {
+  margin-bottom: 0;
+}
+
+.dashboard-greeting h1 {
+  margin: 0 0 0.4rem;
+  font-size: 1.8rem;
+  color: var(--accent);
+}
+
+/* Dashboard = a column exactly as tall as the visible screen (dvh follows
+   the browser's bars appearing/disappearing): greeting, tiles, then the
+   Raise Alert button at the bottom. The tiles share whatever height is left,
+   so their previews show more or less depending on the phone. Below
+   min-height (very short screens) the page simply scrolls. Height subtracts
+   .app-content's own vertical padding (2rem + 2rem on desktop). */
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 4rem);
+  min-height: 34rem;
+}
+
+.dashboard .tile-grid {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0.6rem;
+  /* Stacked: My Circles gets 2/3 of the height, My Companions 1/3. */
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
+  align-items: stretch;
+  margin-bottom: 1rem;
+}
+
+.dashboard .tile-grid .tile-link,
+.dashboard .tile-grid .tile-link .tile {
+  min-height: 0;
+  height: 100%;
+}
+
+/* "Satin / mother-of-pearl" tiles (tile-materials option 2c): soft sheen from
+   the top-left corner, thin light-blue frame. */
+.tile.tile-dash {
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #f1f6fb 45%, #e3ecf5 100%);
+  border: 1.5px solid #a9c9ea;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 14px rgba(30, 60, 100, 0.13);
+}
+
+.tile.tile-dash .tile-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Preview area: fills the rest of the tile; whatever doesn't fit is cut. */
+.dash-preview {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+/* Previews run edge to edge: cancels the tile's side (1.3rem) and bottom
+   (1.1rem) padding. */
+.tile.tile-dash .dash-preview {
+  margin-left: -1.3rem;
+  margin-right: -1.3rem;
+  margin-bottom: -1.1rem;
+}
+
+.circles-preview .preview-ring {
+  position: absolute;
+}
+
+/* Overview only: no message-capability badges, no circle names. */
+.circles-preview .circle-msg-badge,
+.circles-preview .circle-ring-center {
+  display: none;
+}
+
+/* Except a group circle: no member names there, so its own name instead. */
+.circles-preview .circle-ring-center.group {
+  display: flex;
+  padding: 0 28px;
+  font-size: 0.85rem;
+  line-height: 1.15;
+}
+
+.circles-preview .preview-ring.primary {
+  left: -20px;
+  top: 25px;
+}
+
+.circles-preview .preview-ring.other {
+  right: -30px;
+  top: 90px;
+}
+
+/* A third circle peeking in under the 1st one, cut by the tile's edge. */
+.circles-preview .preview-ring.third {
+  left: -10px;
+  top: 225px;
+}
+
+/* Up to 3 companions per row, like the Companions page on a phone. */
+.companions-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  gap: 0.5rem;
+}
+
+.preview-companion .companion-icon {
+  max-width: 100%;
+  height: auto;
+}
+
+.preview-companion-figure {
+  position: relative;
+  display: flex;
+  max-width: 100%;
+}
+
+.preview-companion .companion-name {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.tile.tile-dash .dash-preview.companions-preview {
+  margin-top: 0;
+}
+
+.preview-companion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.raise-alert-btn {
+  flex-shrink: 0;
+  display: block;
+  padding: 0.6rem 1.25rem;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: 1.05rem;
+  text-align: center;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.raise-alert-btn .raise-alert-title {
+  display: block;
+}
+
+.raise-alert-btn .raise-alert-hint {
+  display: block;
+  font-family: system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.raise-alert-btn:focus-visible {
+  filter: brightness(1.08);
+}
+
+/* Dashboard's "Raise An Alert" tile, styled as a red call-to-action. */
+.tile.tile-raise {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.tile.tile-raise p {
+  margin: 0;
+  opacity: 0.9;
+}
+
+.tile-grid .tile-link .tile {
+  margin-top: 0;
+  height: 100%;
+}
+
+/* Alert-type selection cards (AlertsPage) */
+.alert-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+}
+
+.alert-type-card {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+
+.alert-type-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+/* Normal vs Alert visual mode — a soft gradient accent when the viewer has
+   an active alert to pay attention to, cool/calm otherwise. */
+.modal-dialog {
+  border: none;
+  border-radius: var(--radius);
+  padding: 0;
+  background: transparent;
+}
+
+.modal-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* .panel has no fill of its own (pages paint the gradient behind it); a
+   modal floats over the backdrop, so it needs a solid one. */
+.modal-dialog .panel {
+  margin-top: 0;
+  background: var(--bg);
+  box-shadow: var(--shadow);
 }
 
 .row {
@@ -388,6 +850,17 @@ button, input {
   cursor: pointer;
 }
 
+/* A router Link that looks like a primary button (e.g. "New circle"). */
+.app-content a.button-link {
+  display: inline-block;
+  margin-top: 1.25rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  text-decoration: none;
+}
+
 .app-content button:disabled {
   opacity: 0.6;
   cursor: default;
@@ -434,7 +907,7 @@ button, input {
   font-size: 1.15rem;
   font-weight: 700;
   background: var(--danger);
-  border-radius: 10px;
+  border-radius: var(--radius);
 }
 
 .alert-active {
@@ -446,11 +919,75 @@ button, input {
   color: var(--danger);
 }
 
+/* Dashboard's Running Alert tile: fully in the alert reds, so it reads as
+   part of alert mode. Light text on the alert red. */
+.tile.tile-running {
+  background: linear-gradient(160deg, #c8352c 0%, var(--danger) 100%);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.tile.tile-running .tile-header h2,
+.tile.tile-running p,
+.tile.tile-running .form-hint {
+  color: #fff;
+}
+
+.tile.tile-running .form-hint {
+  opacity: 0.85;
+}
+
+/* Dashboard in alert mode: the Running Alert tile fills the free space,
+   My Circles / My Companions shrink to two compact full-width rows, one
+   above the other (header and count only), and Raise Alert stays at the bottom. */
+.dashboard.has-alert > .tile-link {
+  /* Several alerts: they share the room, but never shrink below their
+     content (the page scrolls instead). */
+  flex: 1 0 auto;
+}
+
+.dashboard.has-alert > .tile-link + .tile-link {
+  margin-top: 0.6rem;
+}
+
+.dashboard.has-alert > .tile-link .tile {
+  height: 100%;
+  margin-top: 0;
+}
+
+.dashboard.has-alert .tile-grid {
+  flex: 0 0 auto;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto;
+  margin-top: 0.75rem;
+}
+
+.dashboard.has-alert .tile.tile-dash {
+  padding: 0.6rem 0.8rem;
+}
+
+.dashboard.has-alert .tile.tile-dash .tile-header {
+  margin-bottom: 0;
+  flex-wrap: wrap;
+}
+
+.dashboard.has-alert .tile.tile-dash .tile-subtitle {
+  font-size: 0.8rem;
+}
+
+.dashboard.has-alert .tile-count {
+  font-size: 1.05rem;
+}
+
+.dashboard.has-alert .tile.tile-dash .tile-body {
+  display: none;
+}
+
 .alert-detail {
   margin: 0.5rem 0 1rem;
   padding: 0.75rem 1rem;
   background: var(--bg-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
 
 .alert-detail ul {
@@ -463,6 +1000,116 @@ button, input {
   padding: 0.3rem 0;
   border-bottom: 1px solid var(--border);
 }
+
+.alert-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.alert-timeline li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+/* Full-bleed page wrapper (cancels .app-content padding): spacing only, the background is the app-wide gradient (.app-shell) */
+.page-bleed{margin:-2rem -2rem 0; padding:2rem 2rem 3rem; min-height:calc(100vh - 4rem);}
+@media (max-width:640px){
+  /* Fills exactly the visible space between the 64px top bar and the room
+     kept for the bottom nav (.app-content's 5.5rem bottom padding) — a
+     plain 100vh made every such page scroll a little even when short. */
+  .page-bleed{margin:-1rem -1rem 0; padding:1rem 1rem 2rem; min-height:calc(100dvh - 64px - 5.5rem);}
+}
+
+/* My Circles — ring overview (CircleRing.tsx) */
+.circles-overview{display:flex; flex-direction:column; align-items:center; gap:0; margin-top:2.75rem;} /* room for the top avatar, which overhangs the ring */
+.circles-primary-row{display:flex; justify-content:center; padding-right:25%;} /* 1st circle: nudged left */
+.header-actions{display:flex; flex-wrap:wrap; justify-content:flex-end; gap:0.5rem; margin-top:0.75rem;}
+.header-actions a.button-link{margin-top:0; text-align:center;}
+.circles-other-row{display:flex; flex-wrap:wrap; justify-content:center; gap:1rem; max-width:900px; margin-top:0.5rem;} /* rings close, never touching (avatars overhang ~23px) */
+.circles-other-row > div:nth-child(even){margin-top:1rem;}
+.circles-other-row > div:nth-child(3n+2){margin-top:0.5rem;}
+/* Mobile: rings zigzag left/right and may run up to a third off-screen
+   (clipped by .page-bleed), so they stay big on a narrow screen. */
+@media (max-width:640px){
+  /* clip, not hidden: hidden would make this a scroll box and break the sticky header. */
+  .page-bleed{overflow-x:clip;}
+  .circles-overview{align-items:stretch;}
+  .circles-primary-row{justify-content:flex-start; padding-right:0;}
+  /* .app-content prefix: outranks the ring's own `all:unset` reset further down. */
+  .app-content .circles-primary-row > .circle-ring{flex-shrink:0; margin-left:-87px;} /* 260px ring: 1/3 hidden */
+  .circles-other-row{flex-direction:column; flex-wrap:nowrap; gap:0;}
+  .circles-other-row > div,
+  .circles-other-row > div:nth-child(even),
+  .circles-other-row > div:nth-child(3n+2){margin-top:0;}
+  /* Left and right rings never share a column, so they may overlap in height;
+     two rings on the same side stay ~50px apart (step 130px for a 210px ring). */
+  .circles-other-row > div:nth-child(n+2){margin-top:-5rem;}
+  .circles-other-row > div:nth-child(odd){align-self:flex-end; margin-right:-70px;} /* 210px ring: 1/3 hidden */
+  .circles-other-row > div:nth-child(even){align-self:flex-start; margin-left:-70px;}
+}
+
+/* Higher specificity than .app-content button (background/padding/radius) on
+   purpose — this is a <button> for accessibility, but must look like plain
+   circular content, not the app's default button chrome. */
+.app-content .circle-ring{all:unset; position:relative; cursor:pointer; border-radius:50%; display:block; background:none; padding:0;}
+.circle-detail{display:flex; flex-direction:column; align-items:center; gap:2rem; margin-top:3.5rem;} /* ring centered, panel below */
+.circle-detail-side{width:100%; max-width:520px; min-width:0;}
+.circle-detail-ring{display:flex; flex-direction:column; align-items:center; gap:1.25rem;}
+.app-content button.circle-add-btn{border-radius:999px; padding:0.55rem 1.1rem;}
+.circle-detail-side .tile{margin-top:0;}
+.circle-detail-head{display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem 0.75rem; margin-bottom:1rem;}
+.circle-detail-head h2{margin:0; display:flex; align-items:center; gap:0.5rem;}
+.circle-detail-eyebrow{flex-basis:100%; font-size:0.8rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-muted);}
+.circle-detail-head .tile-actions{margin-left:auto;}
+.circle-dot{display:inline-block; width:10px; height:10px; border-radius:50%;}
+.member-panel h3{margin:0 0 0.2rem;}
+.member-panel-phone{margin:0 0 0.5rem; color:var(--text-muted); font-variant-numeric:tabular-nums;}
+.add-from-circle{margin-bottom:1.25rem; padding-bottom:1rem; border-bottom:1px solid var(--border);}
+.member-panel-badges{margin-bottom:0.9rem;}
+.member-panel-badges .badge:first-child{margin-left:0;}
+.member-panel-section{display:flex; flex-direction:column; align-items:flex-start; gap:0.6rem; padding:0.9rem 0; border-top:1px solid var(--border);}
+.member-panel-section:first-of-type{border-top:none; padding-top:0;}
+.member-panel-section h4{margin:0; font-size:0.8rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
+.member-panel-close{display:flex; justify-content:flex-end; margin-top:1rem;}
+.circle-ring:focus-visible{outline:2px solid var(--accent); outline-offset:4px;}
+.circle-ring-border{position:absolute; inset:0; border-radius:50%; border-style:solid; border-width:5px; background:transparent; pointer-events:none;}
+.circle-ring-border.inner{inset:10px;} /* group circles: double line */
+.circle-ring-center{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:0 42px; font-weight:700; font-family:var(--font-brand); pointer-events:none;}
+
+.app-content .circle-avatar{all:unset; position:absolute; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.18));}
+.app-content button.circle-avatar{cursor:pointer;}
+.circle-avatar:focus-visible,
+.circle-avatar.selected{outline:2px solid var(--accent); outline-offset:3px; border-radius:50%;}
+/* Detail view's "+": invite a Sentinel into this circle. */
+.circle-avatar svg{width:92%; height:92%;}
+/* A circle's own page: profile photo in place of the silhouette, ringed in
+   the avatar's color, with a small Sentinel badge bottom-left (the message
+   badge sits bottom-right). */
+.app-content .circle-avatar img.circle-avatar-photo{width:100%; height:100%; border-radius:50%; object-fit:cover; border:3px solid; display:block;}
+.circle-avatar-sentinel-badge{position:absolute; left:-30%; bottom:-14%; width:90%; height:90%; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 1px 1px rgba(255,255,255,0.9));}
+.circle-avatar .circle-avatar-sentinel-badge svg{width:100%; height:100%;}
+.circle-avatar-lead{position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:3px; font-size:10px; font-weight:700; color:#B8822E; white-space:nowrap;}
+.circle-avatar-caption{position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:2px; display:flex; flex-direction:column; align-items:center; white-space:nowrap; line-height:1.2;}
+.circle-avatar-name{font-size:12px; font-weight:700; color:var(--text);}
+.circle-avatar-lead-tag{font-size:10px; font-weight:700; color:#B8822E;}
+.circle-msg-badge{position:absolute; right:-4px; bottom:-4px; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.25);}
+.circle-msg-badge svg{width:15px; height:15px;}
+/* Someone on pause (Settings: pause for me / for others): dashed outline
+   (SentinelIcon paused, or the photo's border) and a "||" badge top-left —
+   the message badge sits bottom-right, the Sentinel badge bottom-left. */
+.pause-badge{position:absolute; left:-4px; top:-4px; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--bg); box-shadow:0 1px 3px rgba(0,0,0,0.25); z-index:1;}
+.pause-badge svg{width:12px; height:12px; fill:var(--pause-ink);}
+.pause-badge.on-ring{width:18px; height:18px;}
+.pause-badge.on-ring svg{width:13px; height:13px;}
+/* Every little figure inside an .is-paused person turns dashed — one class
+   on whatever shows the person, nothing else to wire. */
+.is-paused .sentinel-icon{overflow:visible;}
+.is-paused .sentinel-icon :is(circle, path){fill:none; stroke:currentColor; stroke-width:1.7; stroke-dasharray:2.4 1.6; stroke-linejoin:round;}
+.is-paused .companion-icon path{stroke-dasharray:2.4 1.6;}
+.relation-icons > .pause-badge{top:-4px;}
+.person-pause{color:var(--pause-ink); font-weight:700; font-size:14px; margin:4px 0 0;}
 
 /* Minimal mobile pass — scoped to this breakpoint, desktop layout untouched.
    Alert screens are the first mobile-conscious UI in this app. */
@@ -480,19 +1127,44 @@ button, input {
     padding: 0.6rem 0.75rem;
     border-right: none;
     border-bottom: 1px solid var(--border);
+    align-self: stretch;
+    /* Fixed height: .sticky-header sticks right below it (top: 64px). */
+    height: 64px;
   }
 
   .app-nav .brand {
     margin-bottom: 0;
     margin-right: 0.5rem;
     flex-shrink: 0;
+    font-size: 1.2rem;
+  }
+
+  .app-nav .brand img {
+    width: 42px;
+    height: 42px;
+  }
+
+  .app-nav .brand-slogan {
+    font-size: 0.85rem;
   }
 
   .app-nav .user-row {
     margin-bottom: 0;
+    margin-left: auto;
     margin-right: 0.75rem;
     gap: 0.4rem;
     flex-shrink: 0;
+  }
+
+  /* The bottom icon bar covers notifications on mobile — no need for a
+     second bell up here too. */
+  .app-nav .user-row .notification-bell {
+    display: none;
+  }
+
+  /* Primary navigation moves to the bottom bar on mobile — see .bottom-nav. */
+  .app-nav .nav-links {
+    display: none;
   }
 
   .app-nav a {
@@ -510,5 +1182,1274 @@ button, input {
   .app-content {
     max-width: none;
     padding: 1rem;
+    /* Leaves room above the fixed bottom nav so content never hides behind it. */
+    padding-bottom: 5.5rem;
   }
+
+  /* Full-height column minus the 64px top bar and .app-content's mobile
+     padding (1rem top + 5.5rem bottom, the room kept for .bottom-nav) — so
+     Raise Alert ends right above the bottom nav. */
+  .dashboard {
+    height: calc(100dvh - 64px - 6.5rem);
+    min-height: 28rem;
+  }
+
+  /* The greeting takes space the tiles need more on a phone. */
+  .dashboard-greeting {
+    display: none;
+  }
+
+  .dashboard .tile-grid {
+    gap: 0.75rem;
+    margin-top: 0;
+  }
+
+  /* Band behind the floating bottom bar, painted with the page's own
+     background (blue, or red in alert mode): scrolled content disappears
+     under it instead of showing around the bar. Bar: 1rem from the bottom,
+     ~3rem tall, plus a 0.75rem margin above it. */
+  .app-shell::after {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4.75rem;
+    background: var(--page-gradient) fixed;
+    z-index: 14;
+    pointer-events: none;
+  }
+
+  .bottom-nav {
+    position: fixed;
+    left: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0.6rem 0.75rem;
+    background: var(--bg);
+    border-radius: 999px;
+    box-shadow: var(--shadow);
+  }
+
+  .bottom-nav a {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text);
+    padding: 0.3rem;
+  }
+
+  .bottom-nav a.active {
+    color: var(--accent);
+  }
+
+  .bottom-nav .notification-bell .bell-btn {
+    color: var(--text);
+  }
+
+  .bottom-nav .notification-dropdown {
+    bottom: 2.75rem;
+    top: auto;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+/* Security score bar: the marker shows the minimum, a third of the way. */
+.security-score-track {
+  position: relative;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: var(--border, #e2e8e6);
+}
+
+.security-score-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #d9a066;
+  transition: width 0.3s ease;
+}
+
+.security-score-fill.is-ready {
+  background: #2fa98c;
+}
+
+.security-score-minimum {
+  position: absolute;
+  top: -0.2rem;
+  bottom: -0.2rem;
+  left: 33%;
+  width: 2px;
+  background: var(--text-muted);
+}
+
+/* Sticky page header (My Circles, Companions): title, intro and main
+   buttons stay fixed while the content scrolls underneath; repaints the page
+   gradient so nothing shows through. The page wrapper drops its top padding
+   so the header starts right where it sticks and never shifts first. */
+.sticky-header-page {
+  padding-top: 0;
+}
+
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 -2rem;
+  padding: 2rem 2rem 1rem;
+  background: var(--page-gradient) fixed;
+}
+
+/* Circles page: the score as a small caption + bar instead of a tile. */
+.security-score-compact {
+  max-width: 420px;
+  margin-top: 1rem;
+}
+
+.security-score-compact h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.security-score-compact .security-score-missing {
+  font-size: 0.8rem;
+}
+
+.security-score-missing {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* About page: short intro, then compact satin tiles (same look as the
+   Dashboard's .tile-dash) that unfold one at a time. */
+.info-intro{margin:0 0 1.25rem; font-size:1.05rem; color:var(--text);}
+.about-tiles{display:flex; flex-direction:column; gap:0.6rem;}
+.about-tile{border-radius:var(--radius); border:1.5px solid #a9c9ea; background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #f1f6fb 45%, #e3ecf5 100%); box-shadow:inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 14px rgba(30,60,100,0.13); overflow:hidden;}
+.app-content button.about-tile-head,.about-tile-head.static{display:flex; align-items:center; gap:0.75rem; width:100%; margin:0; padding:0.8rem 1rem; background:none; border:none; border-radius:0; color:var(--text); font:inherit; text-align:left;}
+.app-content button.about-tile-head{cursor:pointer;}
+.about-tile-icon{flex-shrink:0; color:var(--accent);}
+.about-tile-title{flex:1; min-width:0; font-family:var(--font-brand); font-weight:700; font-size:1.1rem;}
+.about-tile-title small{display:block; font-family:var(--font-body, inherit); font-weight:400; font-size:0.85rem; color:var(--text-muted);}
+.about-tile-chevron{flex-shrink:0; color:var(--text-muted); transition:transform 0.15s;}
+.about-tile.open .about-tile-chevron{transform:rotate(180deg);}
+.about-tile-body{padding:0 1rem 1rem 3.25rem;}
+.about-tile-body ul{margin:0; padding-left:1.1rem; display:flex; flex-direction:column; gap:0.4rem;}
+.about-tile-more{margin-top:0.75rem !important; padding-top:0.75rem; border-top:1px solid rgba(15,76,79,0.12); color:var(--text-muted);}
+.app-content button.about-more-btn{margin:0.6rem 0 0; padding:0; background:none; border:none; color:var(--accent); font:inherit; font-weight:700; cursor:pointer;}
+.about-feedback{display:block; margin-top:1.25rem; color:inherit; text-decoration:none;}
+.about-tile-chevron.right{transform:none;}
+/* Person page (friend profile) */
+.person-page{max-width:720px;}
+.app-content button.link-button{margin:0; padding:0; background:none; border:none; color:var(--accent); font:inherit; cursor:pointer;}
+.person-head{display:flex; align-items:center; gap:1rem; margin:1rem 0 0.5rem;} /* photo only, no corner badge */
+.person-head-text{display:flex; flex-direction:column; gap:0.2rem; min-width:0;}
+.person-head-text h1{margin:0; font-size:1.6rem; line-height:1.2;}
+.person-head-text .button-link.person-message{align-self:flex-start; margin-top:0.5rem;}
+.person-section{padding-left:1rem;}
+.person-role-hint{margin:0 0 0.75rem; color:var(--text-muted);}
+.person-status{margin:0 0 0.5rem; font-size:0.95rem; font-style:italic; color:var(--text);}
+.person-page > .button-link.person-message{display:inline-block; margin:0 0 1.25rem;}
+.conversation-status{margin:-0.4rem 0 0; font-size:0.9rem; font-style:italic; color:var(--text);}
+.settings-field-hint{margin:-0.25rem 0 0.75rem;}
+.person-alert-facts{margin:0; padding-left:1.1rem; display:flex; flex-direction:column; gap:0.35rem;}
+a.person-link{font-weight:700;}
+.person-section .member-panel-section:first-of-type{border-top:none;}
+
+/* Alert chat page: the 1st circle at the top — photo, name, role/status —
+   scrolling sideways if it doesn't fit. */
+.alert-roster{display:flex; gap:1rem; overflow-x:auto; padding:0.75rem 0.25rem 1rem; margin-bottom:0.5rem; border-bottom:1px solid var(--border);}
+.alert-roster-person{display:flex; flex-direction:column; align-items:center; gap:0.2rem; min-width:4.5rem; color:inherit; text-decoration:none; text-align:center;}
+.alert-roster-name{font-weight:700; font-size:0.85rem;}
+.alert-roster-role{font-size:0.75rem; color:var(--text-muted);}
+
+/* Running alert: the responsible Lead box and the "person found" choice. */
+.lead-box{display:flex; flex-direction:column; gap:0.4rem; padding:0.75rem 0.9rem; margin-bottom:0.75rem; border-radius:var(--radius); border:1.5px solid #eab0ab; background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%);}
+.lead-box p{margin:0;}
+.lead-box > p:first-child{font-weight:700; font-family:var(--font-brand); font-size:1.1rem;}
+.found-form{display:flex; flex-direction:column; gap:0.5rem;}
+.found-option{display:flex; align-items:flex-start; gap:0.6rem; padding:0.6rem 0.75rem; border:1.5px solid var(--border); border-radius:var(--radius); cursor:pointer;}
+.found-option.selected{border-color:var(--danger); background:#fdf1f0;}
+.found-option span{display:flex; flex-direction:column;}
+.found-option small{color:var(--text-muted);}
+.found-form textarea{font:inherit; padding:0.5rem 0.6rem; border:1px solid var(--border); border-radius:6px;}
+
+/* Give feedback page */
+.feedback-page{max-width:680px;}
+.feedback-form{display:flex; flex-direction:column; gap:0.75rem; margin-top:1rem;}
+.feedback-kinds{display:flex; flex-wrap:wrap; gap:0.5rem;}
+.app-content button.feedback-kind{margin:0; padding:0.45rem 0.9rem; border-radius:999px; border:1.5px solid #a9c9ea; background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #f1f6fb 60%, #e3ecf5 100%); color:var(--text); font-weight:600;}
+.app-content button.feedback-kind.selected{border-color:var(--accent); background:var(--accent); color:#fff;}
+.feedback-form textarea{width:100%; padding:0.7rem 0.9rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); font:inherit; color:var(--text); resize:vertical;}
+.feedback-actions{display:flex; align-items:center; justify-content:flex-end; gap:0.75rem;}
+.feedback-actions button{margin:0;}
+.feedback-thanks{color:var(--text-muted);}
+.feedback-spacer{flex:1;}
+.feedback-image{display:block; max-width:200px; border-radius:8px; margin-top:0.25rem;}
+@media (prefers-reduced-motion: reduce){.about-tile-chevron{transition:none;}}
+
+/* Info page: readable line length for the explanations. */
+.info-page {
+  max-width: 680px;
+}
+
+.info-page ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Mobile .sticky-header: below the sticky top bar, matching the page's 1rem
+   gutter. Kept last so it outranks the base rule above. */
+@media (max-width: 640px) {
+  .sticky-header-page {
+    padding-top: 0;
+  }
+
+  .sticky-header {
+    top: 64px;
+    margin: 0 -1rem;
+    padding: 1rem 1rem 1rem;
+  }
+}
+
+/* Companions: blue-violet family (Circles uses blue/teal), shield + person
+   icon (vs the Sentinels' plain silhouette). */
+:root {
+  --companion-color: #5b5bd6;
+}
+
+.companion-icon {
+  flex-shrink: 0;
+  color: var(--companion-color);
+}
+
+.companion-contact {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.companion-username {
+  color: var(--companion-color);
+  font-weight: 700;
+}
+
+/* Destructive actions (e.g. stop watching over a companion). */
+.app-content button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.app-content button.ghost.danger {
+  background: none;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.companion-lead-note {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #b8822e;
+}
+
+/* List: just the icon, the name and a Lead note; tap to open the details. */
+.companion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.app-content a.companion-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.9rem 0.5rem;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+  text-align: center;
+}
+
+.app-content a.companion-card:focus-visible {
+  background: rgba(91, 91, 214, 0.08);
+}
+
+.companion-name {
+  font-weight: 700;
+}
+
+/* Companions list: groups by my role, each under a thin labelled line. */
+.companion-group {
+  margin-top: 1.25rem;
+}
+
+.companion-group .companion-grid {
+  margin-top: 0.75rem;
+}
+
+.companion-group-hint {
+  margin: 0.3rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* Phones: always 3 per row (120px min cards only fit 2 on a 360px screen). */
+@media (max-width: 640px) {
+  .companion-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .app-content a.companion-card {
+    min-width: 0;
+    padding: 0.6rem 0.25rem;
+  }
+
+  .app-content a.companion-card .companion-icon {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .app-content a.companion-card .companion-name {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+
+.companion-group-sep {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--companion-color);
+}
+
+.companion-group-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--companion-color);
+  opacity: 0.3;
+}
+
+/* Invitations received: one small clickable line each, details in a modal. */
+.invitation-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 1rem;
+}
+
+.app-content button.invitation-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid rgba(91, 91, 214, 0.3);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-content button.invitation-line:focus-visible {
+  background: rgba(91, 91, 214, 0.08);
+}
+
+.invitation-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--companion-color);
+  flex-shrink: 0;
+}
+
+.invitation-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.invitation-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.invitation-details dt {
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.invitation-details dd {
+  margin: 0;
+}
+
+.companion-needs-answer {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+/* Detail page */
+.companion-detail-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 2rem 0 1.5rem;
+  text-align: center;
+}
+
+.companion-detail-head h1 {
+  margin: 0.4rem 0 0;
+}
+
+.companion-panel {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* The page's own buttons pick up the blue-violet too. */
+.companion-page a.button-link {
+  background: var(--companion-color);
+}
+
+/* Messages list: one clickable row per conversation — name, then a one-line
+   preview of the last message. Higher specificity than .app-content button. */
+.conversation-list{display:flex; flex-direction:column; padding:0;}
+.conversation-relations{margin-top:0.2rem; font-weight:700; color:var(--text); font-size:0.95rem;}
+.conversation-relations p{margin:0;}
+/* PersonAvatar: round profile photo (ring in the relation color) with the
+   relation icon(s) as a small badge in the bottom-right corner. */
+/* Settings: my profile photo */
+.avatar-panel-body{display:flex; align-items:center; gap:1.25rem; flex-wrap:wrap;}
+.avatar-panel-photo{width:96px; height:96px; border-radius:50%; object-fit:cover; flex-shrink:0;}
+.avatar-panel-photo.empty{display:flex; align-items:center; justify-content:center; background:var(--bg-subtle); color:var(--text-muted);}
+.avatar-panel-actions{display:flex; flex-direction:column; gap:0.5rem; min-width:0;}
+.avatar-panel-actions .form-hint{margin:0;}
+.person-avatar{position:relative; display:inline-block; flex-shrink:0;}
+.person-avatar-photo{width:100%; height:100%; border-radius:50%; object-fit:cover; border:2px solid var(--border); display:block;}
+.person-avatar-badge{position:absolute; right:-35%; bottom:-12%; display:flex; filter:drop-shadow(0 1px 1px rgba(255,255,255,0.9));}
+/* The small companion badge on a photo (anywhere: Companions, Messages,
+   person page) is filled light blue, not see-through, so it reads clearly
+   on any photo. Standalone companion icons (no photo) stay hollow. */
+.person-avatar-badge .companion-icon path{fill:#dbe9f7;}
+.conversation-text{display:flex; flex-direction:column; gap:0.2rem; flex:1; min-width:0;}
+/* RelationIcons: Sentinel silhouette and/or companion outline; when both,
+   the outline overlaps the silhouette's right side. */
+.relation-icons{position:relative; display:inline-block; flex-shrink:0;}
+.relation-icons > *{position:absolute; top:0;}
+.relation-icons .relation-sentinel{left:0; display:flex; align-items:flex-end; justify-content:center;}
+.relation-icons > svg{right:0;}
+/* Messages search: filters conversations, and offers "New message" with
+   roster people I haven't written to yet. */
+.messages-search{display:block; width:100%; margin:0 0 1rem; padding:0.6rem 1rem; border:1px solid var(--border); border-radius:999px; background:var(--bg); font:inherit; color:var(--text);}
+.conversation-list + .conversation-list{margin-top:1rem;}
+.messages-section-title{margin:1.5rem 0 0.6rem; font-size:0.85rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
+.alert-chat-icon{display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; flex-shrink:0; color:var(--danger);}
+.conversation-list-title{margin:0; padding:0.6rem 1rem 0.3rem; font-size:0.8rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
+.app-content button.conversation-row{display:flex; flex-direction:row; align-items:center; gap:0.75rem; width:100%; padding:0.75rem 1rem; background:none; color:var(--text); border-radius:0; border-bottom:1px solid var(--border); text-align:left; font:inherit; font-weight:400;}
+.app-content button.conversation-row:last-child{border-bottom:none;}
+.conversation-name{display:flex; align-items:center; gap:0.4rem;}
+.conversation-preview{max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--text-muted); font-size:0.9rem;}
+.app-content button.conversation-row.unread{background:var(--accent-subtle);}
+.app-content button.conversation-row.unread .conversation-name,
+.app-content button.conversation-row.unread .conversation-preview{font-weight:700; color:var(--text);}
+
+/* Conversation page: who the other person is + any running alert, fixed at
+   the top (.sticky-header); the messages scroll underneath. */
+.conversation-header{display:flex; flex-direction:column; gap:0.75rem; border-bottom:1px solid var(--border);}
+.conversation-contact{display:flex; align-items:center; gap:1rem;} /* no corner badge here (photoRing) */
+a.conversation-contact{color:inherit; text-decoration:none;}
+.conversation-contact h1{margin:0; font-size:1.5rem; line-height:1.2;}
+.conversation-contact-details{display:flex; flex-wrap:wrap; gap:0.1rem 1rem; margin:0.15rem 0; color:var(--text-muted); font-size:0.85rem;}
+.conversation-alert{display:flex; flex-direction:column; gap:0.2rem; padding:0.6rem 0.8rem; border-radius:var(--radius); background:var(--accent-subtle); border-left:4px solid var(--danger);}
+.conversation-compose{display:flex; align-items:center; gap:0.5rem; margin:0;}
+/* Conversation page: composer fixed at the bottom like WhatsApp, on a band
+   painted with the page background so messages scroll away behind it.
+   Desktop: aligned with .app-content (250px nav + 2rem padding, 900px max).
+   Mobile: just above the bottom bar's band — see @media. */
+.conversation-page{padding-bottom:6rem;}
+.conversation-page .conversation-compose{position:fixed; z-index:13; bottom:0; left:calc(250px + 2rem); width:min(900px - 4rem, 100vw - 250px - 4rem); padding:0.75rem 0 1.25rem; background:var(--page-gradient) fixed;}
+@media (max-width:640px){
+  .conversation-page{padding-bottom:5rem;}
+  .conversation-page .conversation-compose{left:0; right:0; width:auto; bottom:4.75rem; padding:0.5rem 1rem;}
+}
+.compose-attach{position:relative; flex-shrink:0;}
+.app-content button.compose-icon-btn{display:inline-flex; align-items:center; justify-content:center; width:2.5rem; height:2.5rem; margin:0; padding:0; border-radius:50%; background:var(--bg); color:var(--accent); border:1px solid var(--border); flex-shrink:0;}
+.app-content button.compose-icon-btn.compose-send{background:var(--accent); color:#fff; border-color:var(--accent);}
+.app-content button.compose-icon-btn:disabled{opacity:0.45; cursor:default;}
+.compose-input{flex:1; min-width:0; height:2.5rem; padding:0 1rem; border:1px solid var(--border); border-radius:999px; background:var(--bg); font:inherit; color:var(--text);}
+/* "+" menu: opens upward, above the composer fixed at the bottom. */
+.compose-attach-menu{position:absolute; bottom:calc(100% + 0.4rem); left:0; z-index:20; display:flex; flex-direction:column; min-width:9rem; padding:0.3rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow);}
+.app-content .compose-attach-menu button{display:flex; align-items:center; gap:0.5rem; width:100%; margin:0; padding:0.5rem 0.6rem; background:none; color:var(--text); border:none; border-radius:6px; text-align:left; font:inherit; font-weight:400;}
+
+.app-content a.button-link.member-panel-message{margin:0 0 0.5rem;}
+
+/* History list: one clickable row per resolved alert — its name/keyword,
+   then who it was about and when. */
+.history-list{display:flex; flex-direction:column; padding:0;}
+.app-content a.history-row{display:flex; flex-direction:column; gap:0.2rem; padding:0.75rem 1rem; color:var(--text); text-decoration:none; border-bottom:1px solid var(--border);}
+.app-content a.history-row:last-child{border-bottom:none;}
+.history-label{font-weight:700;}
+.history-meta{color:var(--text-muted); font-size:0.9rem;}
+
+/* Raise Alert: the 4 tiles, 2x2 on desktop, stacked on mobile. Travel mode
+   isn't built yet — dimmed and not clickable. */
+.raise-grid{grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));}
+.tile.tile-soon{opacity:0.6; height:100%; margin-top:0;}
+/* Raise Alert tiles: the Dashboard's satin tiles, in their alert-mode red
+   (white -> pale pink sheen, light red frame). "For me" keeps a red title
+   so it stays the most visible. */
+.raise-grid .tile,
+.raise-grid .tile.tile-raise{background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%); border:1.5px solid #eab0ab; color:var(--text); box-shadow:inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 14px rgba(120,30,30,0.13);}
+.raise-grid .tile p{margin:0; opacity:1; color:var(--text);}
+
+/* Raise Alert form (all 3 tiles): optional fields above the big red button. */
+.raise-self-form label{display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.9rem; font-weight:600;}
+.raise-self-form textarea,.raise-self-form input,.raise-self-form select{font:inherit; font-weight:400; padding:0.5rem 0.6rem; border:1px solid var(--border); border-radius:6px;}
+.alert-message{margin:0.5rem 0;}
+.alert-message p{margin:0.2rem 0 0; white-space:pre-wrap;}
+
+/* Alert page sections: To do / To know / Discussion, then the ways out
+   (leave, stop the alert) at the very bottom, set apart from the rest. */
+.alert-section{margin-top:1.5rem;}
+.alert-section h2{margin:0 0 0.6rem; font-size:0.85rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
+.alert-timeline-toggle summary{cursor:pointer; font-weight:600; margin:0.75rem 0 0.4rem;}
+.alert-exit{display:flex; flex-wrap:wrap; align-items:flex-start; gap:0.75rem; margin-top:2rem; padding-top:1rem; border-top:1px solid var(--border);}
+.running-alert-header h1{margin:0.4rem 0 0.2rem; display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem;}
+.running-alert-meta{margin:0; color:var(--text-muted);}
+
+/* One line above "To do": what the viewer is responsible for here. */
+.alert-role{margin:1rem 0 0; padding:0.6rem 0.8rem; border-radius:var(--radius); background:var(--accent-subtle); color:var(--accent); font-weight:600;}
+
+.stop-final-word{display:flex; flex-direction:column; gap:0.3rem; margin:0.5rem 0 1rem; font-weight:600;}
+.stop-final-word textarea{font:inherit; font-weight:400; padding:0.5rem 0.6rem; border:1px solid var(--border); border-radius:6px;}
+
+/* Alert reply choices: the chosen one stands out, and the saved answer is
+   spelled out underneath. */
+.app-content button.reply-choice.selected{box-shadow:0 0 0 3px var(--accent-subtle); font-weight:700;}
+.reply-saved{margin:0.4rem 0 0; color:var(--accent); font-weight:600;}
+
+.app-content a.button-link.running-alert-chat-link{margin-top:0.6rem;}
+.history-chat-title{margin-top:2rem; font-size:0.85rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted);}
+
+/* Alert page: folded sections (Alert info / Circles / Replies), closed by
+   default and opened by tapping their title bar. */
+.alert-fold{margin-top:0.9rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg);}
+.alert-fold summary{cursor:pointer; padding:0.8rem 1rem; font-weight:700; list-style:none; display:flex; justify-content:space-between; align-items:center;}
+.alert-fold summary::-webkit-details-marker{display:none;}
+.alert-fold summary::after{content:'▾'; transition:transform 0.15s;}
+.alert-fold[open] summary::after{transform:rotate(180deg);}
+.alert-fold-body{padding:0 1rem 1rem;}
+.alert-circle-group h3{margin:0.6rem 0 0.3rem; font-size:1rem;}
+.alert-circle-group ul,.alert-reply-list{margin:0; padding-left:1.1rem;}
+
+/* Alert guidance (components/AlertGuide.tsx): where the alert stands,
+   "Your role" banner, welcome pop-up. */
+.alert-steps{display:flex; gap:3px; list-style:none; margin:0.75rem 0 0; padding:0;}
+.alert-steps li{flex:1; text-align:center; font-size:0.72rem; line-height:1.15; color:var(--text-muted);}
+.alert-steps li i{display:block; height:6px; border-radius:3px; background:#e9cfcd; margin-bottom:4px;}
+.alert-steps li.done i{background:#b3261e;}
+.alert-steps li.now i{background:#b3261e; box-shadow:0 0 0 2px #fff, 0 0 0 3.5px #b3261e;}
+.alert-steps li.now{color:#b3261e; font-weight:700;}
+.role-banner{margin:0.75rem 0; padding:0.7rem 0.9rem; border-radius:var(--radius); background:#b3261e; color:#fff;}
+.role-banner strong{display:block; font-family:var(--font-brand); font-size:1.1rem;}
+.role-banner ol{margin:0.3rem 0 0; padding-left:1.2rem; display:flex; flex-direction:column; gap:0.2rem;}
+.welcome-modal{display:flex; flex-direction:column; gap:0.6rem; max-width:24rem;}
+.welcome-tag{font-size:0.75rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:#b3261e;}
+.welcome-modal ol{margin:0; padding-left:1.2rem; display:flex; flex-direction:column; gap:0.35rem;}
+.welcome-modal button{align-self:stretch;}
+.running-alert-status{margin:0.2rem 0 0;}
+.room-info{display:flex; flex-direction:column; gap:0.2rem; margin-bottom:0.75rem;}
+.room-info p{margin:0;}
+
+/* 1st-circle reply (AlertReplyPanel) */
+.reply-question{margin:0 0 0.4rem; font-family:var(--font-brand);}
+.app-content button.reply-confirm{width:100%; margin-top:0.5rem; background:#b3261e; border-color:#b3261e; color:#fff; border-radius:999px;}
+.reply-final{font-size:1.1rem;}
+
+/* After answering: where to find what (AlertsPage) */
+.where-card{margin:0.75rem 0; padding:0.75rem 0.9rem; border-radius:var(--radius); border:1.5px solid #eab0ab; background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%); display:flex; flex-direction:column; gap:0.5rem;}
+.where-card h3{margin:0;}
+.where-card ol{margin:0; padding-left:1.2rem; display:flex; flex-direction:column; gap:0.35rem;}
+
+/* Other circles during an alert (components/AlertCircles.tsx) */
+.alert-circle-tiles{display:flex; flex-direction:column; gap:0.6rem;}
+.alert-circle-tile{padding:0.65rem 0.85rem; border-radius:var(--radius); border:1.5px solid #eab0ab; background:radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%); display:flex; flex-direction:column; gap:0.4rem;}
+.alert-circle-tile p{margin:0;}
+.alert-circle-tile-head{display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem;}
+.alert-circle-tile-head h3{margin:0;}
+.alert-circle-tile .chip{font-size:0.75rem; font-weight:700; padding:0.05rem 0.55rem; border-radius:999px; background:#eef1f4; color:#55606b; white-space:nowrap;}
+.alert-circle-tile .chip.on{background:#fde3e1; color:#b3261e;}
+.alert-circle-people{list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:0.3rem 0.8rem;}
+.alert-circle-people a{display:inline-flex; align-items:center; gap:0.3rem; color:inherit; text-decoration:none;}
+.dot{display:inline-block; width:0.6rem; height:0.6rem; border-radius:50%; background:#c9ced4;}
+.dot.answered{background:#1a7f37;} .dot.waiting{background:#e0a100;} .dot.left{background:#9aa3ab; opacity:0.5;}
+.alert-circle-form{display:flex; flex-wrap:wrap; gap:0.4rem;}
+.alert-dot-legend{margin:0;}
+
+/* Replies: summary + timeline (components/AlertCircles.tsx) */
+.alert-replies{display:flex; flex-direction:column; gap:0.7rem;}
+.alert-replies-summary h3{margin:0.3rem 0 0.2rem; font-size:1rem;}
+.reply-chips{display:flex; flex-wrap:wrap; gap:0.3rem;}
+.reply-chip{font-size:0.8rem; font-weight:700; padding:0.1rem 0.55rem; border-radius:999px; background:#fff; border:1px solid #e2c2bf;}
+.reply-chip.g{color:#1a7f37; border-color:#9fd3ad;} .reply-chip.y{color:#9a6b00; border-color:#ecd08a;} .reply-chip.m{color:var(--text-muted);}
+.seg{display:flex; border:1.5px solid #e2c2bf; border-radius:999px; overflow:hidden; align-self:flex-start;}
+.app-content .seg button{border:0; border-radius:0; background:#fff; color:inherit; padding:0.25rem 0.9rem; font-weight:700;}
+.app-content .seg button.on{background:#b3261e; color:#fff;}
+.alert-tl{list-style:none; margin:0; padding:0 0 0 1rem; border-left:2px solid #e9cfcd; display:flex; flex-direction:column; gap:0.55rem;}
+.alert-tl li{position:relative;}
+.alert-tl li::before{content:""; position:absolute; left:-1.42rem; top:0.35rem; width:0.6rem; height:0.6rem; border-radius:50%; background:#b3261e; border:2px solid #fdeceb;}
+.alert-tl li.reply::before{background:#1a7f37;}
+.alert-tl time{font-size:0.8rem; color:var(--text-muted); font-variant-numeric:tabular-nums; margin-right:0.35rem;}
+.alert-tl .ans{font-weight:700; color:#1a7f37;}
+.alert-tl small{display:block; color:var(--text-muted);}
+
+/* Hover effects only where there is a real pointer: on a phone, :hover
+   sticks after a tap (a tile stays lifted, a row stays grey). */
+@media (hover: hover) {
+  .app-nav button.user-name:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .user-menu a:hover,
+  .user-menu button:hover {
+    background: var(--bg-subtle);
+  }
+
+  .app-nav a:hover {
+    background: var(--bg-subtle);
+  }
+
+  .bell-btn:hover {
+    background: var(--bg-subtle);
+    color: var(--text);
+  }
+
+  .notification-item:hover {
+    background: var(--bg-subtle);
+  }
+
+  .tile-link:hover .tile {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .raise-alert-btn:hover {
+    filter: brightness(1.08);
+  }
+
+  .alert-type-card:hover {
+    border-color: var(--accent);
+  }
+
+  .app-content a.companion-card:hover {
+    background: rgba(91, 91, 214, 0.08);
+  }
+
+  .app-content button.invitation-line:hover {
+    background: rgba(91, 91, 214, 0.08);
+  }
+
+  .app-content button.conversation-row:hover {background:var(--bg-subtle);}
+
+  .app-content .compose-attach-menu button:hover {background:var(--bg-subtle);}
+
+  .app-content a.history-row:hover {background:var(--bg-subtle);}
+}
+
+/* No grey/blue flash on tap (mobile browsers). */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Message bubbles (components/MessageBubbles.tsx), WhatsApp-like: mine on
+   the right in dark blue, the others' on the left in white. */
+.app-content ol.bubbles{list-style:none; margin:0; padding:0.25rem 0.5rem; display:flex; flex-direction:column; gap:2px;}
+.bubble-row{display:flex; flex-direction:column;}
+.bubble-day{align-self:center; font-size:0.75rem; color:#55606b; background:rgba(255,255,255,0.8); border-radius:8px; padding:0.05rem 0.6rem; margin:0.5rem 0 0.4rem;}
+.bubble{position:relative; max-width:78%; padding:0.35rem 0.6rem 0.3rem; border-radius:10px; box-shadow:0 1px 1px rgba(0,0,0,0.1); overflow-wrap:anywhere; white-space:pre-wrap;}
+.bubble time{float:right; font-size:0.7rem; margin:0.45rem 0 -0.2rem 0.6rem;}
+.bubble-name{display:block; font-size:0.8rem; font-weight:700; margin-bottom:1px;}
+.bubble.mine{align-self:flex-end; background:#134356; color:#fff;}
+.bubble.mine time{color:#bdd0d6;}
+.bubble.theirs{align-self:flex-start; background:#fff; color:#1d2a38;}
+.bubble.theirs time{color:#7a8794;}
+.bubble.tail{margin-top:0.35rem;}
+.bubble.mine.tail{border-top-right-radius:0;}
+.bubble.theirs.tail{border-top-left-radius:0;}
+.bubble.tail::before{content:""; position:absolute; top:0; width:8px; height:10px;}
+.bubble.mine.tail::before{right:-7px; background:#134356; clip-path:polygon(0 0, 100% 0, 0 100%);}
+.bubble.theirs.tail::before{left:-7px; background:#fff; clip-path:polygon(0 0, 100% 0, 100% 100%);}
+.bubble-image{display:block; max-width:220px; max-height:260px; border-radius:6px;}
+.app-content button.compose-icon-btn.compose-send{background:#134356; border-color:#134356;}
+
+/* Smiley picker (components/EmojiButton.tsx) */
+.emoji-menu{position:absolute; bottom:calc(100% + 0.4rem); right:0; z-index:20; display:grid; grid-template-columns:repeat(8, 2.2rem); gap:2px; padding:0.35rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow);}
+.app-content .emoji-menu button{margin:0; padding:0; width:2.2rem; height:2.2rem; font-size:1.3rem; line-height:1; background:none; border:none; border-radius:6px;}
+@media (max-width: 640px){ .emoji-menu{grid-template-columns:repeat(6, 2.2rem);} }
+
+/* Info page: symbols and colors legend */
+.symbols-legend{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:0.7rem;}
+.symbols-legend li{display:flex; align-items:center; gap:0.8rem;}
+.symbols-icon{flex:none; width:5.2rem; display:flex; align-items:center; gap:0.2rem;}
+.symbols-icon > span{display:inline-flex;}
+
+/* Conversation header: frosted glass over the page, a thin line below;
+   each existing relation as a small icon + one short line. */
+/* The page's own gradient under the white veil: same look as the glass,
+   but the messages scrolling up disappear behind it instead of showing. */
+.sticky-header.conversation-header{background:linear-gradient(rgba(255,255,255,0.45), rgba(255,255,255,0.45)), var(--page-gradient) fixed; border-bottom:1px solid rgba(19,67,86,0.18);}
+.conversation-relations{display:flex; flex-wrap:wrap; gap:0.15rem 0.9rem; font-size:0.85rem;}
+.conversation-rel{display:inline-flex; align-items:center; gap:0.3rem;}
+.conversation-rel > span{color:var(--text);}
+
+/* Person page: the little figure before each relation section title. */
+.person-section-icon{display:inline-flex; flex-direction:column; flex:none; align-items:center; gap:0.2rem; min-width:3.5rem;}
+.person-section-icon .circle-chip{margin-left:0; font-size:0.7rem; padding:0 0.4rem; max-width:6.5rem; overflow:hidden; text-overflow:ellipsis;}
+.about-tile-title .about-tile-plain{display:block; font-family:inherit; font-size:0.95rem; font-weight:700;}
+.person-role-short{margin:0 0 0.3rem; font-weight:700;}
+
+/* ==========================================================================
+   Night mode (data-theme="dark" on <html>, set by themeMode.ts).
+   "Bleu nuit" palette agreed on the night-mode mockup: background from a
+   very dark blue to black, tiles tinted with the bubbles' petrol, alerts
+   frankly red. Tokens first, then the few rules with their own colors.
+   ========================================================================== */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --text: #e4ecf3;
+  --text-muted: #9fb0c0;
+  --bg: #0f1c29;
+  --bg-subtle: #172a3b;
+  --border: #29405a;
+  --accent: #7cc4c8;
+  --accent-subtle: #163640;
+  --danger: #e0574a;
+  --pause-ink: #c3b4f0;
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --companion-color: #9d8cf0;
+}
+:root[data-theme='dark'] .app-shell {
+  --page-gradient: linear-gradient(180deg, #0f2236 0%, #081420 55%, #030507 100%);
+}
+:root[data-theme='dark'] body { background: #030507; }
+
+/* Buttons: petrol with white text (the light --accent is for links/text).
+   :where() keeps these at the base rules' weight, so every custom button
+   (circle rings, rows, tiles…) keeps its own look. */
+:where(:root[data-theme='dark']) .app-content button,
+:where(:root[data-theme='dark']) .app-content a.button-link { background: #1d6178; color: #fff; }
+:where(:root[data-theme='dark']) .app-content button.ghost { background: none; color: var(--text-muted); }
+
+/* Satin tiles in petrol. */
+:root[data-theme='dark'] .tile.tile-dash,
+:root[data-theme='dark'] .about-tile,
+:root[data-theme='dark'] .app-content button.feedback-kind {
+  background: radial-gradient(120% 90% at 0% 0%, #1f5366 0%, #18414f 50%, #133542 100%);
+  border-color: #2b6378;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+}
+:root[data-theme='dark'] .about-tile-more { border-top-color: rgba(255, 255, 255, 0.12); }
+
+/* Alerts: frankly red, white text. */
+/* Every Raise Alert tile (for myself, someone missing, assistance, soon),
+   like in day mode where they all share the same red satin. */
+:root[data-theme='dark'] .tile.tile-running,
+:root[data-theme='dark'] .raise-grid .tile,
+:root[data-theme='dark'] .role-banner {
+  background: radial-gradient(120% 90% at 0% 0%, #c0392b 0%, #a52d24 55%, #8c241d 100%);
+  border-color: #e0574a;
+  color: #fff;
+}
+:root[data-theme='dark'] .raise-grid .tile * { color: #fff; }
+:root[data-theme='dark'] .raise-grid .tile { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+:root[data-theme='dark'] .raise-grid .tile .badge { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.4); }
+/* Alert-page cards: deep red, light text. */
+:root[data-theme='dark'] .lead-box,
+:root[data-theme='dark'] .where-card,
+:root[data-theme='dark'] .alert-circle-tile {
+  background: radial-gradient(120% 90% at 0% 0%, #4a2328 0%, #3a1c22 55%, #2e171c 100%);
+  border-color: #7a3a3a;
+  color: var(--text);
+}
+:root[data-theme='dark'] .found-option.selected { background: #3a1c22; }
+:root[data-theme='dark'] .alert-steps li i { background: #4a2a2e; }
+:root[data-theme='dark'] .alert-steps li.done i,
+:root[data-theme='dark'] .alert-steps li.now i { background: #e0574a; }
+:root[data-theme='dark'] .alert-steps li.now i { box-shadow: 0 0 0 2px #0f1c29, 0 0 0 3.5px #e0574a; }
+:root[data-theme='dark'] .alert-steps li.now,
+:root[data-theme='dark'] .welcome-tag { color: #ff8a7d; }
+:root[data-theme='dark'] .alert-circle-tile .chip { background: #23384c; color: var(--text-muted); }
+:root[data-theme='dark'] .alert-circle-tile .chip.on { background: #5a2226; color: #ffb3aa; }
+:root[data-theme='dark'] .reply-chip,
+:root[data-theme='dark'] .app-content .seg button { background: var(--bg); }
+:root[data-theme='dark'] .app-content .seg button.on { background: #c0392b; }
+:root[data-theme='dark'] .alert-tl { border-left-color: #4a2a2e; }
+:root[data-theme='dark'] .alert-tl li::before { border-color: #0f1c29; }
+:root[data-theme='dark'] .alert-tl .ans,
+:root[data-theme='dark'] .reply-chip.g,
+:root[data-theme='dark'] .badge.status-accepted { color: #5fd38a; }
+
+/* Circles: the white message badge goes dark. */
+:root[data-theme='dark'] .circle-msg-badge { background: #0f1c29; }
+:root[data-theme='dark'] .person-avatar-badge .companion-icon path { fill: #172a3b; }
+
+/* Messages: my bubbles stay petrol (a touch lighter), theirs dark blue-grey. */
+:root[data-theme='dark'] .bubble.mine,
+:root[data-theme='dark'] .bubble.mine.tail::before,
+:root[data-theme='dark'] .app-content button.compose-icon-btn.compose-send { background: #1d6178; border-color: #1d6178; }
+:root[data-theme='dark'] .bubble.theirs,
+:root[data-theme='dark'] .bubble.theirs.tail::before { background: #22364b; color: var(--text); }
+:root[data-theme='dark'] .bubble.theirs time { color: #93a5b6; }
+:root[data-theme='dark'] .bubble-day { background: rgba(15, 28, 41, 0.8); color: var(--text-muted); }
+:root[data-theme='dark'] .sticky-header.conversation-header {
+  background: linear-gradient(rgba(15, 28, 41, 0.6), rgba(15, 28, 41, 0.6)), var(--page-gradient) fixed;
+  border-bottom-color: var(--border);
+}
+
+/* Settings page: tiles like the Info page (SettingsPage.tsx). The panels
+   reused inside a tile drop their own frame and title (the tile has them). */
+.settings-tile-body{display:flex; flex-direction:column; gap:0.75rem; padding-left:1rem;}
+.settings-tile-body > .panel{margin:0; padding:0; border:none; background:none; box-shadow:none;}
+.settings-tile-body > .panel > h2{display:none;}
+.settings-tile-body label{font-weight:700;}
+.settings-tile-body p{margin:0.1rem 0 0;}
+.settings-apart{margin-top:0.6rem;} /* same gap as between the other tiles */
+.about-tile.settings-quiet{background:var(--bg); border-color:var(--border);}
+.about-tile.settings-danger .about-tile-icon,
+.about-tile.settings-danger .about-tile-title{color:var(--danger);}
+.settings-pay{display:flex; flex-wrap:wrap; align-items:center; gap:0.6rem;}
+.settings-dev{border-top:1px dashed var(--border); padding-top:0.6rem;}
+.settings-dev h3{margin:0 0 0.2rem; font-size:0.95rem;}
+.settings-logout{margin-top:1.5rem;}
+:root[data-theme='dark'] .about-tile.settings-quiet{background:var(--bg); border-color:var(--border);}
+.circle-chip{display:inline-block; margin-left:0.35rem; padding:0 0.55rem; border:1.5px solid var(--border); border-radius:999px; font-size:0.8rem; font-weight:700; line-height:1.4; white-space:nowrap;}
+
+/* Circle page: the two messaging settings, spelled out (CirclesPage). */
+.circle-detail > .circle-detail-head{width:100%; max-width:520px; margin-bottom:-1rem;}
+.circle-messaging{margin-top:1.25rem; display:flex; flex-direction:column; gap:0.75rem;}
+.circle-messaging h3{margin:0;}
+.circle-messaging-row{display:flex; align-items:flex-start; gap:0.6rem; cursor:pointer;}
+.circle-messaging-row input{margin-top:0.25rem; flex:none; width:1.1rem; height:1.1rem;}
+.circle-messaging-row span{display:flex; flex-direction:column; gap:0.15rem;}
+.circle-messaging-row small{color:var(--text-muted); font-size:0.85rem;}
+/* Circle page: the circle's name as the page title, at the very top. */
+.circle-detail{margin-top:1rem;}
+.circle-detail > .circle-detail-head h2{font-size:2rem;}
+.delete-circle-warning{font-weight:700; color:var(--danger);}
+.circle-ring-actions{display:flex; justify-content:space-between; align-items:center; gap:0.75rem; width:100%; max-width:340px;}
+.app-content .circle-ring-actions button{margin:0;}
+
+/* Safety-net bar: while not ready, hover/tap explains the minimum. */
+.security-score.explainable{position:relative;}
+.app-content button.security-score-toggle{all:unset; display:block; width:100%; cursor:pointer;}
+.app-content button.security-score-toggle:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:6px;}
+.security-score-popup{position:absolute; z-index:30; top:calc(100% + 0.4rem); left:0; right:0; max-width:24rem; padding:0.75rem 0.9rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); font-size:0.92rem;}
+.security-score-popup ul{list-style:none; margin:0.4rem 0; padding:0; display:flex; flex-direction:column; gap:0.25rem;}
+.security-score-popup li.done{color:#1a7f37;}
+.security-score-popup li.todo{color:var(--danger); font-weight:700;}
+.security-score-popup p{margin:0; color:var(--text-muted); font-size:0.85rem;}
+.person-end-actions{display:flex; flex-wrap:wrap; justify-content:space-between; gap:0.75rem; margin-top:1.5rem;}
+.app-content .person-end-actions button{margin:0;}
+
+/* My Circles: Sentinels in the reserve circle, below the rings. */
+.reserve-section{margin-top:2rem;}
+.reserve-section h2{margin:0 0 0.2rem;}
+.reserve-list{list-style:none; margin:0.75rem 0 0; padding:0; display:flex; flex-wrap:wrap; gap:0.9rem 1.2rem;}
+.reserve-list a{display:flex; flex-direction:column; align-items:center; gap:0.25rem; color:var(--text); text-decoration:none; font-size:0.9rem; font-weight:700;}
+
+/* Single circle page only: more air around the title and under the ring's
+   buttons, so neither feels squeezed. */
+.circle-detail{margin-top:1.75rem; margin-bottom:1.5rem;}
+.circle-detail > .circle-detail-head{margin-bottom:0.75rem;}
+.circle-detail-ring{gap:1.75rem;}
+.circle-ring-actions{margin-top:1.5rem;}
+.member-placement{display:flex; flex-direction:column; align-items:flex-start; gap:0.6rem;}
+.remove-link-confirm{padding:0.6rem 0.75rem; border:1px solid var(--danger); border-radius:var(--radius);}
+.remove-link-confirm p{margin:0 0 0.5rem;}
+
+/* Buttons on the satin tiles (person page, Settings, Info): the plain
+   "ghost" look disappeared on the sheen — give them a real button body:
+   solid fill, visible border, a little lift. */
+.app-content .about-tile button.ghost,
+.app-content .about-tile a.button-link {
+  background: var(--bg);
+  border: 1.5px solid #7fa7cf;
+  color: var(--text);
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  box-shadow: 0 1px 3px rgba(20, 50, 80, 0.15);
+}
+.app-content .about-tile button.ghost.danger {
+  background: var(--bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.app-content .about-tile button:not(.ghost):not(.about-tile-head):not(.security-score-toggle) {
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  box-shadow: 0 1px 3px rgba(20, 50, 80, 0.2);
+}
+/* Same for the two buttons under the person page's tiles. */
+.app-content .person-end-actions button.ghost.danger {
+  background: var(--bg);
+  border-width: 1.5px;
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(20, 50, 80, 0.15);
+}
+:root[data-theme='dark'] .app-content .about-tile button.ghost { border-color: #4f86a0; }
+
+/* Person page: pick the circle to move into, as colored pills. */
+.circle-pick{display:flex; flex-wrap:wrap; gap:0.45rem; margin:0.2rem 0 0.5rem;}
+.app-content .about-tile button.circle-pick-pill,
+.app-content button.circle-pick-pill{display:inline-flex; align-items:center; gap:0.4rem; margin:0; padding:0.35rem 0.85rem; border:2px solid var(--border); border-radius:999px; background:var(--bg); color:var(--text); font-weight:700; box-shadow:0 1px 3px rgba(20,50,80,0.12);}
+.app-content .about-tile button.circle-pick-pill.on,
+.app-content button.circle-pick-pill.on{color:#fff;}
+.circle-pick-dot{width:0.6rem; height:0.6rem; border-radius:50%;}
+
+/* Person page: every action button looks the same — the calm blue
+   outline of "Put in the reserve circle" — no red, no petrol fills. */
+/* (Only the buttons in the tiles' sections — the confirmation windows keep
+   their own buttons.) */
+.app-content .person-page .member-panel-section button,
+.app-content .person-page .person-end-actions button {
+  background: var(--bg);
+  border: 1.5px solid #7fa7cf;
+  color: var(--text);
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  box-shadow: 0 1px 3px rgba(20, 50, 80, 0.15);
+}
+:root[data-theme='dark'] .app-content .person-page .member-panel-section button,
+:root[data-theme='dark'] .app-content .person-page .person-end-actions button { border-color: #4f86a0; }
+
+/* "Move to another circle": the list of circles in its small window. */
+.circle-pick-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:0.4rem; min-width:16rem;}
+.app-content .circle-pick-list button{all:unset; box-sizing:border-box; display:flex; align-items:center; gap:0.6rem; width:100%; padding:0.65rem 0.8rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); font-weight:700; cursor:pointer;}
+.app-content .circle-pick-list button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.circle-pick-arrow{margin-left:auto; color:var(--text-muted); font-size:1.2rem;}
+@media (hover: hover){ .app-content .circle-pick-list button:hover{background:var(--bg-subtle);} }
+/* Same blue for the former red ones (outranks the satin-tile danger rule). */
+.app-content .person-page .about-tile .member-panel-section button.ghost.danger,
+.app-content .person-page .person-end-actions button.ghost.danger {
+  background: var(--bg);
+  border-color: #7fa7cf;
+  color: var(--text);
+}
+:root[data-theme='dark'] .app-content .person-page .about-tile .member-panel-section button.ghost.danger,
+:root[data-theme='dark'] .app-content .person-page .person-end-actions button.ghost.danger { border-color: #4f86a0; }
+.request-sent{margin:0.4rem 0 0; color:#1a7f37; font-weight:600;}
+.request-preview{margin:0.5rem 0 0.8rem; padding:0.6rem 0.8rem; border-left:3px solid #134356; background:var(--bg-subtle); border-radius:6px; font-style:italic;}
+.tile.tile-running p.running-ask{font-size:1.05rem; font-weight:700;}
+.tile.tile-running p.running-open{margin-top:0.4rem; font-weight:600; opacity:0.9;}
+
+/* Info legend: a Sentinel with its alert-chat bubble, as on the rings. */
+.symbols-badge { position: relative; display: inline-flex; margin-right: 8px; }
+
+/* Password field with an eye button to show / hide what's typed. */
+.password-input { position: relative; display: block; }
+.password-input input { width: 100%; padding-right: 2.6rem; box-sizing: border-box; }
+.app-content .password-input button.password-eye,
+.password-input button.password-eye {
+  position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%);
+  background: none; border: none; padding: 0.3rem; margin: 0; min-height: 0;
+  color: var(--text-muted); cursor: pointer; display: flex; border-radius: 6px;
+}
+.password-input button.password-eye:focus-visible { outline: 2px solid var(--primary, #134356); }
+@media (hover: hover) { .password-input button.password-eye:hover { color: var(--text); background: none; } }
+
+/* Private message image, while it loads. */
+.bubble-image.placeholder { display: block; width: 180px; height: 120px; border-radius: 10px; background: rgba(127,127,127,0.18); }
+
+/* Feedback: small hint next to the "+" (opens the image picker too). */
+.app-content button.feedback-attach-hint,
+button.feedback-attach-hint {
+  background: none; border: none; padding: 0 0.2rem; margin: 0; min-height: 0;
+  font-size: 0.8rem; color: var(--text-muted); text-align: left; cursor: pointer;
+  border-radius: 4px; font-weight: normal;
+}
+@media (hover: hover) { .app-content button.feedback-attach-hint:hover { background: none; color: var(--text); text-decoration: underline; } }
+
+/* Raise for myself: optional "add my position" (GPS). */
+.alert-location { display: flex; flex-direction: column; gap: 0.3rem; margin: 0.4rem 0 0.8rem; }
+.alert-location p { margin: 0; }
+.alert-location small { color: var(--text-muted); font-size: 0.8rem; }
+.alert-location button.ghost { align-self: flex-start; }
+.alert-location-warning { margin: 0; font-size: 0.85rem; color: #8a5a00; }
+:root[data-theme='dark'] .alert-location-warning { color: #f0c36a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .alert-location-warning { color: #f0c36a; } }
+
+/* A shared position's map link: a real, easy-to-tap button. */
+.map-choice { display: inline-flex; flex-direction: column; gap: 0.3rem; margin: 0.3rem 0; }
+.map-choice-list { display: flex; flex-direction: column; gap: 0.25rem; padding-left: 0.2rem; }
+.map-choice-list a,
+.app-content .map-choice-list button,
+.map-choice-list button {
+  display: block; padding: 0.5rem 0.7rem; min-height: 40px; box-sizing: border-box; text-align: left;
+  border: 1px solid var(--border, rgba(127,127,127,0.35)); border-radius: 8px;
+  background: var(--surface, transparent); color: var(--text); font: inherit; text-decoration: none; cursor: pointer; margin: 0;
+}
+a.map-link, .app-content button.map-link, button.map-link {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  margin: 0.3rem 0; padding: 0.55rem 0.9rem; min-height: 44px; box-sizing: border-box;
+  border: 1.5px solid var(--accent, #134356); border-radius: 10px;
+  color: var(--accent, #134356); font-weight: 600; text-decoration: none; background: transparent;
+}
+@media (hover: hover) { .app-content button.map-link:hover, button.map-link:hover { background: rgba(19, 67, 86, 0.08); } }
+.bubble .map-choice { display: inline-flex; flex-direction: column; gap: 0.3rem; margin: 0.3rem 0; }
+.map-choice-list { display: flex; flex-direction: column; gap: 0.25rem; padding-left: 0.2rem; }
+.map-choice-list a,
+.app-content .map-choice-list button,
+.map-choice-list button {
+  display: block; padding: 0.5rem 0.7rem; min-height: 40px; box-sizing: border-box; text-align: left;
+  border: 1px solid var(--border, rgba(127,127,127,0.35)); border-radius: 8px;
+  background: var(--surface, transparent); color: var(--text); font: inherit; text-decoration: none; cursor: pointer; margin: 0;
+}
+.bubble .map-choice { display: flex; width: fit-content; }
+
+/* Timeline: the launch message keeps its line breaks; its map link is a button. */
+.timeline-note { white-space: pre-wrap; }
+
+/* Reminder that one of my pauses is on (PauseNotice, links to Settings). */
+.pause-notice {
+  display: inline-block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--pause-ink);
+  text-decoration: none;
+  margin-bottom: 0.4rem;
+}
+.pause-notice:hover { text-decoration: underline; }
+.pause-notice span { display: block; }
+
+/* Raising while on pause for others: lift the pause and take part, or not. */
+.pause-raise-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.pause-raise-choice p {
+  margin: 0;
+  color: var(--pause-ink);
+  font-weight: 700;
+}
+
+/* My own pause: the area of the people concerned turns grey (still usable),
+   with a "Paused" pill by its title. On a Dashboard tile only the preview
+   and the count grey out, so the title and its pill stay readable. */
+.area-paused:not(.tile),
+.tile.area-paused .dash-preview,
+.tile.area-paused .tile-count {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.pause-pill {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.8rem;
+  border: 2px solid var(--pause-ink);
+  border-radius: 999px;
+  color: var(--pause-ink);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+}
+/* Dashboard tiles: under the subtitle, smaller. */
+.pause-pill.small {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  padding: 0.1rem 0.6rem;
+}
+/* Beats the global `.app-content button` (teal fill, no border). */
+.app-content button.pause-pill {
+  padding: 0.15rem 0.8rem;
+  border: 2px solid var(--pause-ink);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pause-ink);
+}
+.app-content button.pause-pill.small { padding: 0.1rem 0.6rem; }
+.pause-pill:hover { background: color-mix(in srgb, var(--pause-ink) 12%, transparent); }
+.pause-pill:focus-visible { outline: 2px solid var(--pause-ink); outline-offset: 2px; }
+
+/* Person page: offer the other direction of the link. */
+.reverse-link{margin:1rem 0 0;}
+.reverse-link select{margin-left:0.25rem;}
+/* A sender name that opens their page keeps its own color. */
+.bubble-name a{color:inherit;}
+
+/* Legal pages (privacy, terms, legal notice) and the terms consent. */
+.legal-page{max-width:720px; margin:0 auto; padding:1.5rem 16px 3rem; background:var(--bg); color:var(--text); line-height:1.55;}
+.legal-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;}
+.legal-back{background:none; border:none; color:var(--accent); font:inherit; cursor:pointer; padding:0;}
+.legal-page h2{font-size:1.1rem; margin:1.6rem 0 0.4rem;}
+.legal-page ul{padding-left:1.2rem;}
+.legal-page li{margin:0.25rem 0;}
+.legal-updated{color:var(--text-muted); font-size:0.9rem; margin-top:-0.4rem;}
+.legal-links{display:flex; flex-wrap:wrap; justify-content:center; gap:0.4rem 1rem; margin-top:1.5rem; font-size:0.85rem;}
+.legal-links a{color:var(--text-muted);}
+.auth-page label.terms-checkbox, label.terms-checkbox{flex-direction:row; align-items:flex-start; gap:0.5rem; font-size:0.9rem;}
+.terms-checkbox input{margin-top:0.2rem; flex:none; width:auto;}
+.terms-gate{display:flex; flex-direction:column; gap:0.9rem;}
+.terms-gate .link-button{background:none; border:none; color:var(--accent); font:inherit; cursor:pointer; padding:0;}
+
+/* Call button (tel: link): beside "Send a message" on a person page, a round
+   icon in the top-right corner of a conversation's header. */
+.person-contact-actions{display:flex; flex-wrap:wrap; gap:0.6rem; margin:0 0 1.25rem;}
+.person-contact-actions .button-link{margin:0;}
+.conversation-header .call-button.compact{position:absolute; top:0.75rem; right:1rem; width:2.6rem; height:2.6rem; padding:0; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.2rem;}
+
+/* Plans page and upgrade prompts (free vs paid). */
+.plans-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:1rem; margin-top:1rem;}
+.plan-card ul{padding-left:1.1rem; margin:0.5rem 0;}
+.plan-card li{margin:0.3rem 0;}
+.plan-price{font-size:1.2rem; font-weight:700; margin:0.2rem 0 0.4rem;}
+.plan-current{outline:2px solid var(--accent); outline-offset:-2px;}
+.plan-badge{font-weight:700; color:var(--accent);}
+.plan-soon{color:var(--text-muted); font-size:0.85rem;}
+.plans-usage{font-weight:600;}
+.upgrade-notice{border:1px dashed var(--accent); border-radius:var(--radius); padding:0.9rem 1rem; margin:0.8rem 0; display:flex; flex-direction:column; gap:0.6rem; align-items:flex-start;}
+.upgrade-notice p{margin:0;}
+.pay-choice button{align-self:stretch;}
+
+/* "Subscription" lock pill on paid features, nudges and gifts (free plan). */
+.paid-pill{display:inline-flex; align-items:center; gap:0.3rem; vertical-align:middle; margin-left:0.5rem; padding:0.1rem 0.6rem; border:1.5px solid var(--accent); border-radius:999px; color:var(--accent); background:transparent; font:inherit; font-size:0.8rem; font-weight:700; letter-spacing:0.03em; text-transform:uppercase; white-space:nowrap; cursor:pointer; line-height:1.4;}
+.paid-pill svg{width:13px; height:13px; fill:currentColor; stroke:currentColor; stroke-width:2;}
+.paid-pill.chip{cursor:default; font-size:0.7rem; padding:0 0.45rem;}
+.app-content button.paid-pill{margin:0 0 0 0.5rem; padding:0.1rem 0.6rem; border:1.5px solid var(--accent); border-radius:999px; background:transparent; color:var(--accent);}
+.paid-pill:hover{background:var(--accent-subtle);}
+.paid-pill:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.header-action-row{display:inline-flex; align-items:center; flex-wrap:wrap; gap:0.25rem;}
+.raise-alert-btn .raise-alert-plan{display:block; margin-top:0.3rem; font-size:0.85rem; font-weight:700; opacity:0.9;}
+.plan-nudge{border:1px solid var(--accent); background:var(--accent-subtle); border-radius:var(--radius); padding:0.8rem 1rem; display:flex; flex-direction:column; gap:0.5rem;}
+.plan-nudge p{margin:0;}
+.plan-nudge .row{display:flex; flex-wrap:wrap; align-items:center; gap:1rem;}
+.gift-year-wrap{display:block; margin-top:0.35rem;}
+.app-content button.gift-year{margin:0; padding:0.15rem 0.6rem; font-size:0.8rem; border-radius:999px; border:1.5px solid var(--accent); background:transparent; color:var(--accent); white-space:normal;}
+
+/* Gold star on a subscribed person (variant A): top-right, opposite the
+   pause badge. Same gold family as the 1st circle, a little brighter. */
+.subscribed-star{position:absolute; right:-7px; top:-7px; width:22px; height:22px; z-index:1; pointer-events:none;}
+.subscribed-star svg{width:100%; height:100%; display:block; overflow:visible;}
+.subscribed-star path, .name-star path{fill:#C9952F; stroke:var(--bg); stroke-width:1.6; stroke-linejoin:round;}
+.subscribed-star.on-ring{width:24px; height:24px; right:-8px; top:-8px;}
+/* Next to a name: after it. To put it before, use `order:-1` on a flex
+   parent or swap the markup — one place to change. */
+.name-star{display:inline-block; width:0.9em; height:0.9em; margin-left:0.3em; vertical-align:-0.05em;}
+.name-star svg{width:100%; height:100%; display:block; overflow:visible;}
+.name-star path{stroke-width:1.2;}
+
+/* Login: the two ways in without the password, side by side. */
+.login-help{display:flex; flex-wrap:wrap; justify-content:space-between; gap:0.5rem 1rem; margin:0.75rem 0 0; font-size:0.9rem;}
+.auth-page .login-help .link-button{width:auto; margin:0; padding:0; background:none; border:none; color:var(--accent); font:inherit; cursor:pointer;}
+
+/* An alert chat shown inline (the isolated chat with an outer circle): the
+   Messages composer, but in the flow, never fixed at the bottom. */
+.alert-chat.inline .conversation-compose,
+.conversation-page .alert-chat.inline .conversation-compose{position:static; width:auto; padding:0.5rem 0 0; background:none;}
+
+/* An alert's chat in Messages: title block, and the closed / open-until note. */
+.alert-chat-head h1{margin:0 0 0.25rem; font-size:1.4rem;}
+.alert-chat-head{margin-bottom:0.75rem;}
+.chat-closed-note{margin:0.5rem 0; padding:0.5rem 0.75rem; border-radius:8px; background:var(--surface-muted, rgba(19,67,86,0.08)); color:var(--text-muted); font-size:0.9rem;}
+.conversation-row.alert-chat-row.resolved .alert-chat-icon{opacity:0.5;}
+.status-note-field{display:flex; flex-direction:column; gap:0.3rem;}
+
+/* Safety net not ready: nobody can raise an alert for me. Big and red. */
+.security-score-alarm{display:flex; flex-direction:column; gap:0.1rem; margin-top:0.45rem; color:var(--danger); text-align:left;}
+.security-score-alarm strong{font-size:1.1rem; line-height:1.25;}
+.security-score-alarm span{font-size:0.9rem; text-decoration:underline;}
+
+/* Stopping an alert: ready-made closing words to pick from. */
+.stop-words{display:flex; flex-wrap:wrap; gap:0.4rem; margin:0.5rem 0;}
+.app-content button.stop-word{margin:0; padding:0.35rem 0.75rem; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--text); font-size:0.9rem;}
+.app-content button.stop-word.selected{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 15%, transparent);}
+
+/* Running alert: blocks that open on a tap (role steps, replies, circles). */
+details.role-banner > summary, details.alert-section.collapsible > summary{cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; gap:0.5rem;}
+details.role-banner > summary::-webkit-details-marker, details.alert-section.collapsible > summary::-webkit-details-marker{display:none;}
+details.role-banner > summary::after, details.alert-section.collapsible > summary::after{content:''; flex:none; width:0.55rem; height:0.55rem; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(45deg); margin-right:0.3rem; transition:transform 0.15s;}
+details[open].role-banner > summary::after, details[open].alert-section.collapsible > summary::after{transform:rotate(-135deg);}
+details.alert-section.collapsible > summary h2{margin:0;}
+details.role-banner[open] > ol{margin-top:0.5rem;}
+
+/* An alert chat's page: which chat it is, under the title. */
+.alert-chat-kind{margin:0 0 0.2rem; font-weight:600;}
+
+/* Raise form: one even rhythm — the same gap between each block (who,
+   what, where, the button), a tighter one inside a block. */
+.raise-self-form .tile-body{display:flex; flex-direction:column; gap:1.4rem;}
+.raise-self-form .tile-body > *{margin:0;}
+.raise-self-form .tile-body > label{margin:0;}
+.raise-field{display:flex; flex-direction:column; gap:0.5rem;}
+.raise-self-form .raise-field > label{font-weight:600; margin:0;}
+.raise-actions{display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;}
+.raise-hint{color:var(--text-muted); font-size:0.8rem;}
+.raise-field .alert-location{margin:0;}
+.app-content button.dictate-btn, .app-content button.raise-action-btn{display:inline-flex; align-items:center; gap:0.4rem; margin:0; padding:0.3rem 0.8rem; border-radius:999px; border:1.5px solid var(--accent); background:transparent; color:var(--accent); font-size:0.9rem;}
+.app-content button.raise-action-btn:disabled{opacity:0.6;}
+.dictate-btn svg{width:16px; height:16px; fill:currentColor; stroke:currentColor; stroke-width:1.8; stroke-linecap:round;}
+.dictate-btn svg path{fill:none;}
+.app-content button.dictate-btn.listening{background:var(--danger); border-color:var(--danger); color:#fff;}
+@media (prefers-reduced-motion: no-preference){.dictate-btn.listening svg{animation:dictate-pulse 1.2s ease-in-out infinite;}}
+@keyframes dictate-pulse{50%{opacity:0.4;}}
+.dictate-unsupported{flex-basis:100%; color:var(--text-muted); font-size:0.8rem;}
+
+/* Top bar alert signal (AlertSignal): big pulsing red triangle while an
+   alert waits for my answer, small orange one while one is running. */
+:root{--signal-red:#c62828; --signal-amber:#b26a00; --signal-amber-bg:#fff3e0;}
+:root[data-theme='dark']{--signal-red:#ff5a5a; --signal-amber:#f2a33a; --signal-amber-bg:#3a2a12;}
+.app-nav a.alert-signal{display:inline-flex; align-items:center; justify-content:center; flex:none; padding:0; margin:0 0.35rem 0 0; border-radius:50%; text-decoration:none; background:none;}
+.app-nav a.alert-signal svg{display:block;}
+.app-nav a.alert-signal.urgent svg{width:30px; height:30px;}
+.app-nav a.alert-signal.urgent .tri{fill:var(--signal-red);}
+.app-nav a.alert-signal.urgent .mark{stroke:#fff;}
+.app-nav a.alert-signal.running{width:24px; height:24px; background:var(--signal-amber-bg);}
+.app-nav a.alert-signal.running svg{width:15px; height:15px;}
+.app-nav a.alert-signal.running .tri{fill:none; stroke:var(--signal-amber); stroke-width:2.2;}
+.app-nav a.alert-signal.running .mark{stroke:var(--signal-amber);}
+.app-nav a.alert-signal:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+@media (prefers-reduced-motion: no-preference){
+  .app-nav a.alert-signal.urgent{animation:alert-signal-pulse 1.6s ease-in-out infinite;}
+  @keyframes alert-signal-pulse{0%,100%{transform:scale(1);} 50%{transform:scale(1.12);}}
 }
