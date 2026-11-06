@@ -12,10 +12,13 @@ import {
 } from '../api/sentinel';
 import { Modal } from '../components/Modal';
 import { PersonAvatar } from '../components/PersonAvatar';
+import { PauseNotice, PausePill } from '../components/PauseNotice';
+import { useAuth } from '../auth/AuthContext';
 import { companionColor, companionGold } from '../theme';
 
 export function CompanionsPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,8 +65,11 @@ export function CompanionsPage() {
   return (
     <div className="page-bleed sticky-header-page companion-page">
       <div className="sticky-header">
-        <h1>{t('companions.title')}</h1>
+        <h1>
+          {t('companions.title')} <PausePill which="forOthers" />
+        </h1>
         <p style={{ color: 'var(--text-muted)' }}>{t('companions.intro')}</p>
+        <PauseNotice which="forOthers" />
         {error && <p className="form-error">{error}</p>}
         <div className="header-actions">
           <Link to="/companions/new" className="button-link">
@@ -85,13 +91,15 @@ export function CompanionsPage() {
                 <h2 className="companion-group-sep">{t(`companions.groups.${g.key}`)}</h2>
                 {/* What this role means if something happens. */}
                 <p className="companion-group-hint">{t(`companions.groupHints.${g.key}`)}</p>
-                <div className="companion-grid">
+                {/* Greyed while I'm on pause for others — still usable. */}
+                <div className={`companion-grid${user?.pausedForOthers ? ' area-paused' : ''}`}>
                   {g.items.map((c) => (
                     <Link key={c.linkId} to={`/people/${c.companion.id}?from=companion`} className="companion-card">
                       {/* Their own blue-violet shade; the outline turns gold when I.m in their 1st circle (darker for a Lead). */}
                       <PersonAvatar
                         userId={c.companion.id}
                         avatarPath={c.companion.avatarPath}
+                        paused={c.companion.pausedForMe}
                         sentinelColor={null}
                         companionColor={companionGold(!!c.leadSlot, c.circle.isPrimary) ?? companionColor(c.companion.id)}
                         size={72}

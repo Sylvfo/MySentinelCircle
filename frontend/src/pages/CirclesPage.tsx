@@ -29,6 +29,7 @@ import { Tile } from '../components/Tile';
 import { Modal } from '../components/Modal';
 import { CircleRing } from '../components/CircleRing';
 import { useAuth } from '../auth/AuthContext';
+import { PauseNotice, PausePill } from '../components/PauseNotice';
 import { SecurityScoreBar } from '../components/SecurityScoreBar';
 import { PENDING_AVATAR_COLOR, PRIMARY_AVATAR_COLOR, circlePalette } from '../theme';
 import { PersonAvatar } from '../components/PersonAvatar';
@@ -49,6 +50,7 @@ interface GroupContact {
 
 export function CirclesPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [circles, setCircles] = useState<Circle[]>([]);
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -153,8 +155,11 @@ export function CirclesPage() {
     <div className="page-bleed sticky-header-page">
       {/* Stays put while only the circles below scroll. */}
       <div className="sticky-header">
-        <h1>{t('circles.title')}</h1>
+        <h1>
+          {t('circles.title')} <PausePill which="forMe" />
+        </h1>
         <p style={{ color: 'var(--text-muted)' }}>{t('circles.intro')}</p>
+        <PauseNotice which="forMe" />
         {error && <p className="form-error">{error}</p>}
 
         {/* Compact, no tile: just a caption over the bar and what's missing. */}
@@ -177,7 +182,9 @@ export function CirclesPage() {
       <RequestsInbox requests={requests} circles={circles} onChange={reload} />
 
       {circles.length === 0 && <div className="empty-state">{t('circles.empty')}</div>}
-      <div className="circles-overview">
+      {/* Greyed while I'm on pause for me: nobody watches over me now —
+          still fully usable. */}
+      <div className={`circles-overview${user?.pausedForMe ? ' area-paused' : ''}`}>
         {/* 1st circle always on top, nudged left. */}
         <div className="circles-primary-row">
           {primaryCircle && (
@@ -226,6 +233,7 @@ export function CirclesPage() {
                   <PersonAvatar
                     userId={m.linkAsSentinel.id}
                     avatarPath={m.linkAsSentinel.avatarPath}
+                    paused={m.linkAsSentinel.pausedForOthers}
                     sentinelColor={PENDING_AVATAR_COLOR}
                     companionColor={null}
                     size={44}
@@ -390,6 +398,7 @@ function CircleCard({
           />
           {circle.label}
           {isPrimary && <span className="badge status-accepted">{t('circles.firstCircle')}</span>}
+          <PausePill which="forMe" />
         </h2>
         {group ? (
           <GroupActions group={group} onChange={onChange} onError={onError} />
@@ -727,32 +736,47 @@ function GroupInviteForm({
   const memberIds = new Set(group.members.map((m) => m.id));
   const eligible = contacts.filter((c) => !memberIds.has(c.userId));
   const [targetUserId, setTargetUserId] = useState(eligible[0]?.userId ?? '');
+  // Or anyone, by phone (an account isn't needed to be invited).
+  const [phone, setPhone] = useState('');
+  const [name, setName] = useState('');
   const [invited, setInvited] = useState<string | null>(null);
 
-  const invite = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!targetUserId) return;
+  const send = async (target: Parameters<typeof inviteToGroup>[1], label: string) => {
     setInvited(null);
     try {
-      const invitedLabel = eligible.find((c) => c.userId === targetUserId)?.label ?? '';
-      await inviteToGroup(group.rootId, targetUserId);
-      setInvited(invitedLabel);
+      await inviteToGroup(group.rootId, target);
+      setInvited(label);
       onChange();
+      return true;
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
+      return false;
+    }
+  };
+
+  const inviteContact = (e: FormEvent) => {
+    e.preventDefault();
+    if (!targetUserId) return;
+    void send({ targetUserId }, eligible.find((c) => c.userId === targetUserId)?.label ?? '');
+  };
+
+  const invitePhone = async (e: FormEvent) => {
+    e.preventDefault();
+    if (await send({ phone: phone.trim(), name: name.trim() }, name.trim())) {
+      setPhone('');
+      setName('');
     }
   };
 
   return (
-    <form className="inline-form" onSubmit={invite}>
+    <div className="inline-form">
       <h3>{t('groups.addMember')}</h3>
       {group.members.length >= LARGE_GROUP_THRESHOLD && (
         <p className="form-hint">{t('groups.largeGroupWarning', { count: group.members.length })}</p>
       )}
-      {eligible.length === 0 ? (
-        <p style={{ color: 'var(--text-muted)' }}>{t('groups.noEligibleContacts')}</p>
-      ) : (
-        <div className="row wrap">
+      {/* One of my contacts, in one click... */}
+      {eligible.length > 0 && (
+        <form className="row wrap" onSubmit={inviteContact}>
           <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)}>
             {eligible.map((c) => (
               <option key={c.userId} value={c.userId}>
@@ -763,10 +787,25 @@ function GroupInviteForm({
           <button type="submit" disabled={!targetUserId}>
             {t('groups.invite')}
           </button>
-        </div>
+        </form>
       )}
+      {/* ...or anyone, with their number. */}
+      <p className="form-hint">{t(eligible.length > 0 ? 'groups.byPhoneOr' : 'groups.byPhone')}</p>
+      <form className="row wrap" onSubmit={invitePhone}>
+        <input
+          type="tel"
+          required
+          placeholder={t('circles.invitePhone')}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
+        <input required placeholder={t('circles.inviteName')} value={name} onChange={(e) => setName(e.target.value)} />
+        <button type="submit" disabled={!phone.trim() || !name.trim()}>
+          {t('groups.invite')}
+        </button>
+      </form>
       {invited && <p className="form-hint">{t('groups.invitedSent', { who: invited })}</p>}
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('groups.eligibilityHint')}</p>
-    </form>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('groups.phoneHint')}</p>
+    </div>
   );
 }

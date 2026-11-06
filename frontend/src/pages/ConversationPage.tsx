@@ -20,7 +20,7 @@ import { SentinelIcon } from '../components/SentinelIcon';
 import { CompanionIcon } from '../components/CompanionIcon';
 import { MessageBubbles } from '../components/MessageBubbles';
 import { EmojiButton } from '../components/EmojiButton';
-import { avatarPathOf, myCompanionColor, mySentinelColor, publicStatusOf } from '../relations';
+import { avatarPathOf, isPausedOf, myCompanionColor, mySentinelColor, publicStatusOf } from '../relations';
 
 // Everything known about the other person, from both directions of the
 // relationship: they can be my Sentinel, someone I watch over, or both.
@@ -38,6 +38,7 @@ interface ContactInfo {
   sentinelColor: string | null;
   companionColor: string | null;
   avatarPath: string | null;
+  paused?: boolean;
   publicStatus: string | null;
 }
 
@@ -97,6 +98,7 @@ export function ConversationPage() {
             sentinelColor: mySentinelColor(circles, userId),
             companionColor: myCompanionColor(companions, userId),
             avatarPath: avatarPathOf(circles, companions, userId),
+            paused: isPausedOf(circles, companions, userId),
             publicStatus: publicStatusOf(circles, companions, userId),
           });
         } else {
@@ -193,7 +195,7 @@ export function ConversationPage() {
 
   return (
     <div className="page-bleed sticky-header-page conversation-page">
-      <div className="sticky-header conversation-header">
+      <div className={`sticky-header conversation-header${info?.paused ? ' is-paused' : ''}`}>
         {/* No back link: the Messages icon of the bottom bar does that. */}
         {info && (
           // Photo + name open the person's page (contact details are there).

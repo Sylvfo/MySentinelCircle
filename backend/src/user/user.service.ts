@@ -47,6 +47,8 @@ const PROFILE_SELECT = {
   isMajor: true,
   publicStatus: true,
   alertChatWithFirstCircle: true,
+  pausedForMe: true,
+  pausedForOthers: true,
   createdAt: true,
   updatedAt: true,
   avatarPath: true,

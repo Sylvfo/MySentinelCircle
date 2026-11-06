@@ -7,7 +7,7 @@ import { listCircles, listCompanions } from '../api/sentinel';
 import { listMyConversations, type ConversationSummary } from '../api/messaging';
 import { alertNeedsMe, isOuterCircleViewer, listAlerts, type MyAlertSummary } from '../api/alert';
 import { PersonAvatar } from '../components/PersonAvatar';
-import { avatarPathOf, myCompanionColor, mySentinelColor } from '../relations';
+import { avatarPathOf, isPausedOf, myCompanionColor, mySentinelColor } from '../relations';
 
 type RosterContact = Omit<Contact, 'lastMessage' | 'unreadCount'>;
 
@@ -18,6 +18,7 @@ interface Contact {
   sentinelColor: string | null;
   companionColor: string | null;
   avatarPath: string | null;
+  paused?: boolean;
   lastMessage: ConversationSummary['lastMessage'];
   unreadCount: number;
 }
@@ -111,6 +112,7 @@ export function MessagesPage() {
           sentinelColor: mySentinelColor(circles, c.userId),
           companionColor: myCompanionColor(companions, c.userId),
           avatarPath: avatarPathOf(circles, companions, c.userId),
+          paused: isPausedOf(circles, companions, c.userId),
         }));
         return refreshConversations();
       })
@@ -219,6 +221,7 @@ export function MessagesPage() {
               <PersonAvatar
                 userId={c.userId}
                 avatarPath={c.avatarPath}
+                paused={c.paused}
                 sentinelColor={c.sentinelColor}
                 companionColor={c.companionColor}
               />
@@ -244,6 +247,7 @@ export function MessagesPage() {
               <PersonAvatar
                 userId={c.userId}
                 avatarPath={c.avatarPath}
+                paused={c.paused}
                 sentinelColor={c.sentinelColor}
                 companionColor={c.companionColor}
               />

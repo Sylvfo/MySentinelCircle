@@ -7,6 +7,7 @@ import {
   declineCircleMove,
   getDeathNoticeAnnouncement,
   leaveMembership,
+  moveSelfToReserve,
   rejectDeathReport,
   reportDeath,
   type Companion,
@@ -26,15 +27,19 @@ const choice = (c: 'accept' | 'decline') =>
 // under "you watch over them".
 export function CompanionActions({
   companion: c,
+  linkedIds,
   onChange,
   onError,
 }: {
   companion: Companion;
+  // People linked to me (either way): their name opens their page.
+  linkedIds?: Set<string>;
   onChange: () => void;
   onError: (m: string) => void;
 }) {
   const { t } = useTranslation();
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const [confirmingReserve, setConfirmingReserve] = useState(false);
   // Asking them for a change (join their 1st circle, become / stop being
   // their Lead Sentinel): only they can decide, so it goes to them as a
   // message in our conversation — after a confirmation saying so.
@@ -85,7 +90,11 @@ export function CompanionActions({
             <div>
               {c.firstCircleMembers.map((m) => (
                 <span key={m.id} className="badge">
-                  {[m.firstName, m.lastName].filter(Boolean).join(' ')}
+                  {linkedIds?.has(m.id) ? (
+                    <Link to={`/people/${m.id}`}>{[m.firstName, m.lastName].filter(Boolean).join(' ')}</Link>
+                  ) : (
+                    [m.firstName, m.lastName].filter(Boolean).join(' ')
+                  )}
                   {m.isLead && ` · ${t('companions.firstCircleLead')}`}
                 </span>
               ))}
@@ -144,6 +153,42 @@ export function CompanionActions({
       )}
 
       <DeathNoticeSection companion={c} onChange={onChange} onError={onError} />
+
+      {/* "Not available for now": into their reserve, the link stays.
+          Only they can put me back in a circle. */}
+      {c.circle.isReserve ? (
+        <section className="member-panel-section">
+          <p style={{ margin: 0 }}>{t('companions.reserve.inReserve', { name: c.companion.firstName })}</p>
+        </section>
+      ) : (
+        !c.circle.isGroup &&
+        !c.proposedCircle && (
+          <section className="member-panel-section">
+            {!confirmingReserve ? (
+              <button className="ghost" onClick={() => setConfirmingReserve(true)}>
+                {t('companions.reserve.button', { name: c.companion.firstName })}
+              </button>
+            ) : (
+              <div className="remove-link-confirm">
+                <p>{t('companions.reserve.explain', { name: c.companion.firstName })}</p>
+                <div className="row">
+                  <button
+                    onClick={() => {
+                      setConfirmingReserve(false);
+                      void run(() => moveSelfToReserve(c.linkId));
+                    }}
+                  >
+                    {t('companions.reserve.confirm')}
+                  </button>
+                  <button className="ghost" onClick={() => setConfirmingReserve(false)}>
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        )
+      )}
 
       {/* Ends only this direction — confirmed in place, like "remove the
           Sentinel link" on the other tile. */}

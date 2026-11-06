@@ -17,6 +17,8 @@ export interface SentinelRef {
   avatarPath?: string | null;
   // Their status line, e.g. "On holiday until the 12th" (listCircles() only).
   publicStatus?: string | null;
+  // On pause for others: can't be asked to take part in alerts (listCircles() only).
+  pausedForOthers?: boolean;
 }
 
 export interface Membership {
@@ -92,7 +94,7 @@ export interface Companion {
   linkId: string;
   sentinelType: SentinelType;
   leadSlot: LeadSlot | null;
-  circle: { id: string; label: string; isPrimary: boolean };
+  circle: { id: string; label: string; isPrimary: boolean; isReserve: boolean; isGroup: boolean };
   proposedCircle: { id: string; label: string } | null;
   companion: PersonRef & {
     firstName: string;
@@ -100,6 +102,8 @@ export interface Companion {
     userName: string | null;
     avatarPath: string | null;
     publicStatus: string | null;
+    // Nobody but them may raise an alert about them right now.
+    pausedForMe: boolean;
   };
   // The other accepted members of their 1st circle — empty unless I'm in it.
   firstCircleMembers: {
@@ -107,6 +111,7 @@ export interface Companion {
     firstName: string | null;
     lastName: string | null;
     publicStatus: string | null;
+    pausedForOthers: boolean;
     isLead: boolean;
   }[];
   deathNotice: CompanionDeathNotice;
@@ -166,6 +171,10 @@ export const acceptMembership = (id: string, circleId?: string) =>
 
 export const declineMembership = (id: string) =>
   apiPost<Membership>(`/sentinel/memberships/${id}/decline`, {});
+
+// "Not available for now": I go to their reserve, the link stays.
+export const moveSelfToReserve = (id: string) =>
+  apiPost<Membership>(`/sentinel/memberships/${id}/reserve`, {});
 
 export const leaveMembership = (id: string) =>
   apiPost<Membership>(`/sentinel/memberships/${id}/leave`, {});
@@ -242,8 +251,12 @@ export const listMyGroups = () => apiGet<Group[]>('/sentinel/groups');
 export const listMyGroupInvitations = () =>
   apiGet<GroupInvitation[]>('/sentinel/groups/invitations');
 
-export const inviteToGroup = (rootId: string, targetUserId: string) =>
-  apiPost<{ id: string; status: LinkStatus }>(`/sentinel/groups/${rootId}/invite`, { targetUserId });
+// Either someone I'm connected to (targetUserId), or anyone by phone + first
+// name — with no account, they get an SMS to create one with that number.
+export const inviteToGroup = (
+  rootId: string,
+  target: { targetUserId: string } | { phone: string; name: string },
+) => apiPost<{ id: string; status: LinkStatus }>(`/sentinel/groups/${rootId}/invite`, target);
 
 export const acceptGroupInvitation = (id: string) =>
   apiPost<Circle>(`/sentinel/groups/invitations/${id}/accept`, {});

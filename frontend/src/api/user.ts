@@ -15,6 +15,10 @@ export interface Me {
   // General switch: during an alert, may my Sentinels of other circles chat
   // with my 1st circle? Off = nobody; on = each circle decides.
   alertChatWithFirstCircle: boolean;
+  // Nobody else may raise an alert about me (I still can).
+  pausedForMe: boolean;
+  // I can't be asked to take part in any alert.
+  pausedForOthers: boolean;
   createdAt: string;
   updatedAt: string;
   avatarPath?: string | null;
@@ -30,6 +34,11 @@ export const updateProfile = (
     Pick<Me, 'firstName' | 'lastName' | 'userName' | 'isMajor' | 'publicStatus' | 'alertChatWithFirstCircle'>
   >,
 ) => apiPatch<Me>('/user/me', dto);
+
+// Separate from updateProfile: turning pause for others on takes me out of
+// every alert in progress (refused while I'm a Lead on one).
+export const updatePause = (dto: Partial<Pick<Me, 'pausedForMe' | 'pausedForOthers'>>) =>
+  apiPatch<Me>('/user/me/pause', dto);
 
 export const changePassword = (currentPassword: string, newPassword: string) =>
   apiPost<{ message: string }>('/user/me/change-password', { currentPassword, newPassword });

@@ -222,14 +222,15 @@
     "delete": "Supprimer le groupe",
     "confirmDelete": "Supprimer ce groupe entièrement ? Tous les membres seront retirés et les relations créées uniquement via ce groupe prendront fin pour tout le monde.",
     "invitedSent": "Invitation envoyée à {{who}}.",
-    "noEligibleContacts": "Personne à inviter pour l'instant — tu ne peux inviter que quelqu'un avec qui tu es déjà connecté.e.",
-    "eligibilityHint": "Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté.e.",
     "largeGroupWarning": "Ce groupe compte déjà {{count}} personnes — c'est beaucoup. Tu peux quand même en ajouter si tu veux.",
     "eyebrow": "Groupe",
     "addMember": "Ajouter un membre",
     "title": "Cercles de groupe",
     "intro": "Un cercle partagé entre plusieurs sentinelles (ex. une chorale) — le rejoindre te rend sentinelle de chaque membre, et chaque membre devient ta sentinelle aussi. Tu ne peux inviter que quelqu'un avec qui tu es déjà connecté.e.",
-    "empty": "Tu ne fais encore partie d'aucun groupe."
+    "empty": "Tu ne fais encore partie d'aucun groupe.",
+    "byPhoneOr": "Ou n'importe qui, avec son numéro :",
+    "byPhone": "Invite n'importe qui avec son numéro :",
+    "phoneHint": "La personne reçoit un SMS. Sans compte, il lui demande d'en créer un avec ce numéro pour rejoindre le groupe."
   },
   "companions": {
     "title": "Companions",
@@ -324,6 +325,12 @@
         "button": "Demander à sortir du 1er cercle de {{name}}",
         "message": "Bonjour {{name}}, j'aimerais sortir de ton 1er cercle tout en continuant à veiller sur toi. Tu peux me déplacer dans un autre cercle depuis ma page."
       }
+    },
+    "reserve": {
+      "button": "Passer dans la réserve de {{name}}",
+      "explain": "Tu restes lié.e à {{name}}, mais tu ne seras plus contacté.e pour ses alertes. Si tu étais sa Sentinelle Lead, tu laisses ce rôle. Seul.e {{name}} peut te remettre dans un cercle.",
+      "confirm": "Oui, passer en réserve",
+      "inReserve": "Tu es dans la réserve de {{name}} : tu n'es pas contacté.e pour ses alertes. Seul.e {{name}} peut te remettre dans un cercle."
     }
   },
   "alerts": {
@@ -793,7 +800,8 @@
       "SENTINEL_LEFT": "{{who}} ne fait plus partie de vos Sentinels",
       "CIRCLE_MOVE_PROPOSED": "{{who}} vous propose de rejoindre son 1er cercle",
       "CIRCLE_MOVE_ACCEPTED": "{{who}} a rejoint votre 1er cercle",
-      "CIRCLE_MOVE_DECLINED": "{{who}} a refusé de rejoindre votre 1er cercle"
+      "CIRCLE_MOVE_DECLINED": "{{who}} a refusé de rejoindre votre 1er cercle",
+      "SENTINEL_TO_RESERVE": "{{who}} est passé.e dans votre réserve pour l'instant"
     }
   },
   "settings": {
@@ -882,7 +890,7 @@
       },
       "preferences": {
         "title": "Préférences",
-        "hint": "Langue, messages pendant une alerte"
+        "hint": "Langue, messages pendant une alerte, pause"
       },
       "deathNotice": {
         "title": "En cas de décès",
@@ -1127,6 +1135,51 @@
       "warning": "C'est définitif, dans les deux sens.",
       "explain": "Le lien s'arrête dans les deux sens, et ni toi ni {{name}} ne pourrez plus jamais vous inviter.",
       "confirm": "Oui, bloquer"
+    },
+    "reverse": {
+      "answer": "Répondre",
+      "watchThem": {
+        "button": "Proposer de veiller sur {{name}}",
+        "explain": "{{name}} recevra ta demande et choisira dans lequel de ses cercles te placer.",
+        "send": "Envoyer la demande",
+        "sent": "Demande envoyée. {{name}} choisira un cercle pour toi.",
+        "theyAsked": "{{name}} t'invite à être sa Sentinelle."
+      },
+      "inviteThem": {
+        "button": "Inviter {{name}} dans mes cercles",
+        "explain": "{{name}} recevra ton invitation et pourra l'accepter ou la refuser.",
+        "circle": "Cercle",
+        "send": "Envoyer l'invitation",
+        "theyAsked": "{{name}} a demandé à veiller sur toi."
+      }
+    }
+  },
+  "pause": {
+    "settings": {
+      "forMe": "Pause pour moi : personne d'autre ne peut lancer d'alerte sur moi",
+      "forMeHint": "Tu peux toujours lancer une alerte toi-même.",
+      "forOthers": "Pause pour les autres : on ne peut pas me solliciter pour une alerte",
+      "forOthersHint": "Tu es retiré.e tout de suite des alertes en cours, et tu ne seras pas contacté.e pour les nouvelles.",
+      "leadBlocked": "Tu es Lead sur une alerte en cours. Passe d'abord la main à un.e autre Lead et quitte cette alerte, puis mets-toi en pause."
+    },
+    "person": {
+      "forOthers": "{{name}} est en pause : ne peut pas être sollicité.e pour une alerte en ce moment.",
+      "forMe": "{{name}} est en pause : personne d'autre ne peut lancer d'alerte à son sujet en ce moment."
+    },
+    "raiseOption": "en pause",
+    "raise": {
+      "question": "Tu es en pause pour les autres. Si tu lances cette alerte sans lever ta pause, tu n'y participeras pas et tu ne pourras pas la suivre. Lever ta pause pour y participer ?",
+      "join": "Lever ma pause et lancer l'alerte",
+      "withoutMe": "La lancer sans y participer"
+    },
+    "pill": "En pause",
+    "explain": {
+      "forMe": "Tu es en pause pour toi : personne d'autre ne peut lancer d'alerte sur toi, donc tes cercles ne veillent plus sur toi en ce moment. Tu peux toujours lancer une alerte toi-même.",
+      "forOthers": "Tu es en pause pour les autres : on ne peut te solliciter pour aucune alerte, donc tu ne veilles plus sur tes compagnon.ne.s en ce moment."
+    },
+    "modal": {
+      "keep": "Rester en pause",
+      "allSettings": "Tous les paramètres"
     }
   }
 }

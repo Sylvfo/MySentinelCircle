@@ -84,7 +84,15 @@ export function RunningAlertPage({ chat = false }: { chat?: boolean }) {
             {a.label} <span className="badge">{t(`alerts.status.${a.alertStatus}`)}</span>
           </h1>
           <p className="running-alert-meta">
-            {t('history.concerns', { who: concerns(a) })}
+            {/* Their name opens their page (with their place in this alert). */}
+            {a.userCompanionId === user?.id ? (
+              t('history.concerns', { who: concerns(a) })
+            ) : (
+              <>
+                {t('history.concerns', { who: '' })}
+                <Link to={`/people/${a.userCompanionId}?alert=${a.id}`}>{concerns(a)}</Link>
+              </>
+            )}
             {!isOuterCircleViewer(a, user?.id) && (
               <>
                 {' '}

@@ -15,3 +15,22 @@ export function assertNotDeceased(
     );
   }
 }
+
+// "Pause for me": nobody else may raise an alert about this person. They
+// can still raise one about themself.
+export function assertNotPausedForMe(
+  companion: { pausedForMe: boolean } | null | undefined,
+  callerId: string,
+  companionId: string,
+): void {
+  if (companion?.pausedForMe && callerId !== companionId) {
+    throw new ForbiddenException(
+      'This person has paused alerts about them — only they can raise one',
+    );
+  }
+}
+
+// "Pause for others": this person can't be asked to take part in any alert.
+// Prisma filter for a LinkSentinels' Sentinel side, reused by every query
+// that picks who to contact.
+export const NOT_PAUSED_SENTINEL = { pausedForOthers: false } as const;

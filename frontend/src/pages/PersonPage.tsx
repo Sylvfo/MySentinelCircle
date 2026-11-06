@@ -18,17 +18,18 @@ import { Modal } from '../components/Modal';
 import { PersonAvatar } from '../components/PersonAvatar';
 import { SentinelActions } from '../components/SentinelActions';
 import { CompanionActions } from '../components/CompanionActions';
+import { ReverseLinkOffer } from '../components/ReverseLinkOffer';
 import { CircleChip } from '../components/CircleChip';
 import { SentinelIcon } from '../components/SentinelIcon';
 import { CompanionIcon } from '../components/CompanionIcon';
-import { avatarPathOf, myCompanionColor, mySentinelColor, publicStatusOf } from '../relations';
+import { avatarPathOf, isPausedOf, myCompanionColor, mySentinelColor, publicStatusOf } from '../relations';
 import { companionColor, companionGold } from '../theme';
 
 // /people/:userId — everything about one person in one place (a "friend
 // page"): who they are, then one section per direction of the relationship
 // — they watch over me (my Sentinel), I watch over them (my companion) —
-// each with its role explained and every action on it. The section matching
-// where I came from (?from=sentinel|companion) comes first and opens; from
+// each with its role explained and every action on it, always in that order.
+// The section matching where I came from (?from=sentinel|companion) opens; from
 // Messages (or anywhere else) both are open. Built from listCircles() +
 // listCompanions(): no dedicated endpoint.
 type SectionKey = 'alert' | 'sentinel' | 'companion';
@@ -105,6 +106,11 @@ export function PersonPage() {
   // and nothing to show from an alert either.
   if (!membership && !companion && !inAlert) return <Navigate to="/dashboard" replace />;
   const linked = !!membership || !!companion;
+  // Everyone linked to me, either way (for links to their own pages).
+  const linkedIds = new Set([
+    ...circles.flatMap((c) => c.userSentinels.map((m) => m.linkAsSentinel.id)),
+    ...companions.map((c) => c.companion.id),
+  ]);
 
   // Both of us in one of this alert's chats (the 1st-circle one, or an
   // isolated one with an outer-circle Sentinel).
@@ -147,8 +153,9 @@ export function PersonPage() {
           : 'other';
   const companionGroup = !companion ? null : companion.leadSlot ? 'lead' : companion.circle.isPrimary ? 'firstCircle' : 'others';
 
-  const order: SectionKey[] =
-    from === 'companion' ? ['alert', 'companion', 'sentinel'] : ['alert', 'sentinel', 'companion'];
+  // Always the same order, wherever I came from (only which one opens
+  // depends on that): "they watch over me" first, then "I watch over them".
+  const order: SectionKey[] = ['alert', 'sentinel', 'companion'];
   const sections = order.filter((k) => (k === 'alert' ? inAlert : k === 'sentinel' ? !!membership : !!companion));
 
   const sentinelIconColor = membership ? (mySentinelColor(circles, userId) ?? 'var(--text-muted)') : undefined;
@@ -172,7 +179,8 @@ export function PersonPage() {
     });
 
   return (
-    <div className="person-page">
+    // On pause: every little figure of them on this page turns dashed.
+    <div className={`person-page${isPausedOf(circles, companions, userId) ? ' is-paused' : ''}`}>
       <button type="button" className="link-button" onClick={() => navigate(-1)}>
         {t('person.back')}
       </button>
@@ -242,6 +250,10 @@ export function PersonPage() {
       </div>
       {/* Their status under the photo, across the whole width. */}
       {publicStatus && <p className="person-status">{publicStatus}</p>}
+      {membership?.linkAsSentinel.pausedForOthers && (
+        <p className="person-pause">{t('pause.person.forOthers', { name })}</p>
+      )}
+      {companion?.companion.pausedForMe && <p className="person-pause">{t('pause.person.forMe', { name })}</p>}
       {canMessage && (
         <Link to={`/messages/${userId}`} className="button-link person-message">
           {t('companions.sendMessage', { name })}
@@ -350,7 +362,12 @@ export function PersonPage() {
                   ) : companion ? (
                     <>
                       <p className="person-role-hint">{t(`companions.groupHints.${companionGroup}`)}</p>
-                      <CompanionActions companion={companion} onChange={reload} onError={setError} />
+                      <CompanionActions
+                        companion={companion}
+                        linkedIds={linkedIds}
+                        onChange={reload}
+                        onError={setError}
+                      />
                     </>
                   ) : null}
                 </div>
@@ -359,6 +376,29 @@ export function PersonPage() {
           );
         })}
       </div>
+
+      {/* Linked one way only: offer the other direction. An SMS-only or
+          not-yet-accepted Sentinel has no account to be watched over. */}
+      {membership?.status === 'ACCEPTED' && membership.sentinelType !== 'ONLY_SMS' && !companion && (
+        <ReverseLinkOffer
+          direction="watchThem"
+          userId={userId}
+          name={name}
+          phone={membership.linkAsSentinel.phone}
+          circles={circles}
+          onChange={reload}
+        />
+      )}
+      {companion && !membership && (
+        <ReverseLinkOffer
+          direction="inviteThem"
+          userId={userId}
+          name={name}
+          phone={companion.companion.phone}
+          circles={circles}
+          onChange={reload}
+        />
+      )}
 
       {/* The whole relationship, both directions at once — each asks first. */}
       {linked && (

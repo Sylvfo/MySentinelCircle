@@ -27,6 +27,7 @@ import {
 import { APPROXIMATE_ACCURACY_M, formatAccuracy, useLocate } from '../geolocation';
 import { LinkifiedText } from '../components/LinkifiedText';
 import { listCompanions, type Companion } from '../api/sentinel';
+import { updatePause } from '../api/user';
 import { listMessages, sendImageMessage, sendMessage, type Message } from '../api/messaging';
 import { Modal } from '../components/Modal';
 import { AlertReplyPanel } from '../components/AlertReplyPanel';
@@ -119,9 +120,13 @@ export function AlertsPage() {
 // field is hidden).
 function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: AlertSummary | undefined }) {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const forSelf = kind === 'self';
+  // On pause for others, raising for someone whose 1st circle I'm in: I'd
+  // be left out of my own alert — so I'm asked first whether to lift my
+  // pause and take part, or raise it without taking part.
+  const [askPause, setAskPause] = useState(false);
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [loadingCompanions, setLoadingCompanions] = useState(!forSelf);
   const [companionId, setCompanionId] = useState('');
@@ -142,7 +147,9 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
     listCompanions()
       .then((all) => {
         setCompanions(all);
-        if (all.length > 0) setCompanionId(all[0].companion.id);
+        // Someone on pause for me can't be alerted by anyone else.
+        const first = all.find((c) => !c.companion.pausedForMe);
+        if (first) setCompanionId(first.companion.id);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
       .finally(() => setLoadingCompanions(false));
@@ -150,7 +157,12 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
 
   const canWriteStatus = forSelf || !!companions.find((c) => c.companion.id === companionId)?.circle.isPrimary;
 
-  const raise = async () => {
+  const pausedInTheirFirstCircle =
+    !forSelf &&
+    !!user?.pausedForOthers &&
+    !!companions.find((c) => c.companion.id === companionId)?.circle.isPrimary;
+
+  const raise = async (join = true) => {
     const targetId = forSelf ? user?.id : companionId;
     if (!targetId) return;
     setSubmitting(true);
@@ -159,6 +171,10 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
       .filter(Boolean)
       .join('\n\n');
     try {
+      if (pausedInTheirFirstCircle && join) {
+        await updatePause({ pausedForOthers: false });
+        await refreshUser();
+      }
       const alert = await raiseAlert({
         companionId: targetId,
         alertType: RAISE_TYPE[kind],
@@ -166,7 +182,8 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
         ...(forSelf && location ? { location } : {}),
       });
       if (canWriteStatus && status.trim()) await updateAlertStatus(alert.id, status.trim());
-      navigate('/running-alert');
+      // Not taking part: there's no running alert for me to follow.
+      navigate(pausedInTheirFirstCircle && !join ? '/dashboard' : '/running-alert');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
       setSubmitting(false);
@@ -215,8 +232,9 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
             {t('alerts.whoLabel')}
             <select value={companionId} onChange={(e) => setCompanionId(e.target.value)}>
               {companions.map((c) => (
-                <option key={c.linkId} value={c.companion.id}>
+                <option key={c.linkId} value={c.companion.id} disabled={c.companion.pausedForMe}>
                   {[c.companion.firstName, c.companion.lastName].filter(Boolean).join(' ')}
+                  {c.companion.pausedForMe ? ` — ${t('pause.raiseOption')}` : ''}
                 </option>
               ))}
             </select>
@@ -270,9 +288,25 @@ function RaiseAlertPage({ kind, activeAlert }: { kind: RaiseKind; activeAlert: A
             />
           </label>
         )}
-        <button className="alert-btn" disabled={submitting || (forSelf ? !user : !companionId)} onClick={raise}>
-          {forSelf ? t('alerts.raiseForSelf') : t('alerts.submit')}
-        </button>
+        {askPause && pausedInTheirFirstCircle ? (
+          <div className="pause-raise-choice">
+            <p>{t('pause.raise.question')}</p>
+            <button className="alert-btn" disabled={submitting} onClick={() => void raise(true)}>
+              {t('pause.raise.join')}
+            </button>
+            <button type="button" className="link-button" disabled={submitting} onClick={() => void raise(false)}>
+              {t('pause.raise.withoutMe')}
+            </button>
+          </div>
+        ) : (
+          <button
+            className="alert-btn"
+            disabled={submitting || (forSelf ? !user : !companionId)}
+            onClick={() => (pausedInTheirFirstCircle ? setAskPause(true) : void raise())}
+          >
+            {forSelf ? t('alerts.raiseForSelf') : t('alerts.submit')}
+          </button>
+        )}
         {error && <p className="form-error">{error}</p>}
       </Tile>
     </div>
@@ -511,6 +545,10 @@ export function AlertDetailPanel({
     return participant?.userSentinels.linkAsSentinel.firstName ?? '…';
   };
 
+  // A name in the room opens that person's page, with their place in this alert.
+  const senderLink = (senderId: string) =>
+    senderId === user?.id ? null : `/people/${senderId}?alert=${alertId}`;
+
   const myParticipant = detail.participants.find((p) => p.userSentinels.linkAsSentinel.id === user?.id);
   const isCompanion = user?.id === detail.userCompanion.id;
   const isFirstCircleSentinel = !isCompanion && myParticipant?.circleId === detail.firstCircleId;
@@ -611,6 +649,7 @@ export function AlertDetailPanel({
           <PersonAvatar
             userId={p.userSentinels.linkAsSentinel.id}
             avatarPath={p.userSentinels.linkAsSentinel.avatarPath}
+            paused={p.userSentinels.linkAsSentinel.pausedForOthers}
             sentinelColor={p.isLead ? PRIMARY_LEAD_COLOR : PRIMARY_AVATAR_COLOR}
             companionColor={null}
             size={44}
@@ -740,6 +779,10 @@ export function AlertDetailPanel({
                 conversationId={conv.id}
                 title={title}
                 resolveSenderName={senderName}
+                // Only the companion and the 1st circle can read the alert:
+                // for an outer-circle Sentinel the person page couldn't
+                // show the others, so their names stay plain.
+                senderLink={isAlertManager ? senderLink : undefined}
                 fullPage={view === 'chat' && !outsider}
               />
             );
@@ -897,11 +940,13 @@ function ConversationThread({
   conversationId,
   title,
   resolveSenderName,
+  senderLink,
   fullPage = false,
 }: {
   conversationId: string;
   title: string;
   resolveSenderName: (senderId: string) => string;
+  senderLink?: (senderId: string) => string | null;
   // The alert's chat page: same layout as a Messages conversation — composer
   // (+ menu, paper plane) fixed at the bottom, page opening at the bottom.
   fullPage?: boolean;
@@ -990,7 +1035,7 @@ function ConversationThread({
       {messages && messages.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
       ) : (
-        <MessageBubbles messages={messages ?? []} myId={user?.id} nameOf={resolveSenderName} />
+        <MessageBubbles messages={messages ?? []} myId={user?.id} nameOf={resolveSenderName} linkOf={senderLink} />
       )}
       {fullPage ? (
         <form className="conversation-compose" autoComplete="off" onSubmit={submit}>

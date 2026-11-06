@@ -54,3 +54,13 @@ export function publicStatusOf(circles: Circle[], companions: Companion[], userI
   }
   return null;
 }
+
+// On pause, as far as it concerns me: a Sentinel of mine (or a 1st-circle
+// co-member) paused for others, or a companion of mine paused for me.
+export function isPausedOf(circles: Circle[], companions: Companion[], userId: string): boolean {
+  if (companions.some((c) => c.companion.id === userId && c.companion.pausedForMe)) return true;
+  for (const c of circles) {
+    if (c.userSentinels.some((s) => s.linkAsSentinel.id === userId && s.linkAsSentinel.pausedForOthers)) return true;
+  }
+  return companions.some((c) => c.firstCircleMembers.some((f) => f.id === userId && f.pausedForOthers));
+}

@@ -7,13 +7,33 @@ import { decrementUnreadCount, useUnreadCounts } from '../unreadCounts';
 // Maps a notification to the page that already shows the entity it's
 // about. A new message opens its conversation (with the sender); other
 // types have no per-entity route, so they land on the right page.
+// Where a notification leads: the alert itself, or the page of the person
+// it's about whenever we're still linked; else the list where it's handled.
+// targetId = the alert. A resolved one is redirected to History anyway.
+function alertDestination(item: NotificationItem): string {
+  if (!item.targetId) return '/running-alert';
+  return item.type === 'ALERT_CLOSED' ? `/history/${item.targetId}` : `/running-alert/${item.targetId}`;
+}
+
 function destinationFor(item: NotificationItem): string {
-  if (item.type.startsWith('ALERT_')) return '/alerts';
-  if (item.type === 'NEW_MESSAGE') return item.actorUserId ? `/messages/${item.actorUserId}` : '/messages';
-  if (item.type === 'SENTINEL_GROUP_INVITED') return '/circles';
-  if (item.type === 'SENTINEL_LEFT' || item.type === 'CIRCLE_MOVE_ANSWERED') return '/circles';
-  // DEATH_NOTICE_* falls through to the default below — /companions is
-  // also where report/confirm/reject and the announcement itself live.
+  const actor = item.actorUserId;
+  if (item.type.startsWith('ALERT_')) return alertDestination(item);
+  if (item.type === 'NEW_MESSAGE') return actor ? `/messages/${actor}` : '/messages';
+  // Someone asks to watch over me: approved from My Circles' inbox.
+  if (item.type === 'SENTINEL_REQUEST_RECEIVED') return '/circles';
+  if (item.type === 'SENTINEL_GROUP_INVITED' || item.type === 'SENTINEL_LEFT') return '/circles';
+  // Accepted: we're now linked, their page shows it. Declined: no page.
+  if (item.type === 'SENTINEL_LINK_ANSWERED' && item.accepted && actor) return `/people/${actor}`;
+  // My companion asks me to move into their 1st circle.
+  if (item.type === 'CIRCLE_MOVE_PROPOSED' && actor) return `/people/${actor}?from=companion`;
+  // My Sentinel went to my reserve: their page, where I can move them back.
+  if (item.type === 'SENTINEL_TO_RESERVE' && actor) return `/people/${actor}?from=sentinel`;
+  // My Sentinel answered my move proposal.
+  if (item.type === 'CIRCLE_MOVE_ANSWERED' && actor) return `/people/${actor}?from=sentinel`;
+  // targetId = the companion the death notice is about: report / confirm /
+  // reject and the announcement live on their page.
+  if (item.type.startsWith('DEATH_NOTICE_') && item.targetId) return `/people/${item.targetId}?from=companion`;
+  // Invitations received (SENTINEL_INVITATION_RECEIVED) are answered there.
   return '/companions';
 }
 

@@ -21,6 +21,8 @@ import { finalizeImageUpload } from '../common/image-upload';
 import { randomUUID } from 'crypto';
 import { UserService, AVATAR_DIR } from './user.service';
 import { AccountDeletionService } from './account-deletion.service';
+import { PauseService } from './pause.service';
+import { UpdatePauseDto } from './dto/update-pause.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CompleteProfileDto } from './dto/complete-profile.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
@@ -48,6 +50,7 @@ export class UserController {
   constructor(
     private readonly userService: UserService,
     private readonly accountDeletion: AccountDeletionService,
+    private readonly pause: PauseService,
   ) {}
 
   @Get('me')
@@ -61,6 +64,14 @@ export class UserController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.userService.updateProfile(user.userId, dto);
+  }
+
+  @Patch('me/pause')
+  updatePause(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: UpdatePauseDto,
+  ) {
+    return this.pause.updatePause(user.userId, dto);
   }
 
   @Throttle({ default: { limit: 20, ttl: 60_000 } })

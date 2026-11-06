@@ -9,6 +9,8 @@
   --accent: #0f4c4f;
   --accent-subtle: #e3eeee;
   --danger: #b3261e;
+  /* "||" of someone on pause — its own hue, apart from pending grey. */
+  --pause-ink: #5b4a86;
   --radius: 10px;
   --shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   --font-brand: 'Inria Sans', system-ui, sans-serif;
@@ -683,6 +685,12 @@ button, input {
   height: auto;
 }
 
+.preview-companion-figure {
+  position: relative;
+  display: flex;
+  max-width: 100%;
+}
+
 .preview-companion .companion-name {
   max-width: 100%;
   overflow-wrap: anywhere;
@@ -1088,6 +1096,20 @@ button, input {
 .circle-avatar-lead-tag{font-size:10px; font-weight:700; color:#B8822E;}
 .circle-msg-badge{position:absolute; right:-4px; bottom:-4px; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.25);}
 .circle-msg-badge svg{width:15px; height:15px;}
+/* Someone on pause (Settings: pause for me / for others): dashed outline
+   (SentinelIcon paused, or the photo's border) and a "||" badge top-left —
+   the message badge sits bottom-right, the Sentinel badge bottom-left. */
+.pause-badge{position:absolute; left:-4px; top:-4px; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--bg); box-shadow:0 1px 3px rgba(0,0,0,0.25); z-index:1;}
+.pause-badge svg{width:12px; height:12px; fill:var(--pause-ink);}
+.pause-badge.on-ring{width:18px; height:18px;}
+.pause-badge.on-ring svg{width:13px; height:13px;}
+/* Every little figure inside an .is-paused person turns dashed — one class
+   on whatever shows the person, nothing else to wire. */
+.is-paused .sentinel-icon{overflow:visible;}
+.is-paused .sentinel-icon :is(circle, path){fill:none; stroke:currentColor; stroke-width:1.7; stroke-dasharray:2.4 1.6; stroke-linejoin:round;}
+.is-paused .companion-icon path{stroke-dasharray:2.4 1.6;}
+.relation-icons > .pause-badge{top:-4px;}
+.person-pause{color:var(--pause-ink); font-weight:700; font-size:14px; margin:4px 0 0;}
 
 /* Minimal mobile pass — scoped to this breakpoint, desktop layout untouched.
    Alert screens are the first mobile-conscious UI in this app. */
@@ -1930,6 +1952,7 @@ a.conversation-contact{color:inherit; text-decoration:none;}
   --accent: #7cc4c8;
   --accent-subtle: #163640;
   --danger: #e0574a;
+  --pause-ink: #c3b4f0;
   --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
   --companion-color: #9d8cf0;
 }
@@ -2219,3 +2242,79 @@ a.map-link, .app-content button.map-link, button.map-link {
 
 /* Timeline: the launch message keeps its line breaks; its map link is a button. */
 .timeline-note { white-space: pre-wrap; }
+
+/* Reminder that one of my pauses is on (PauseNotice, links to Settings). */
+.pause-notice {
+  display: inline-block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--pause-ink);
+  text-decoration: none;
+  margin-bottom: 0.4rem;
+}
+.pause-notice:hover { text-decoration: underline; }
+.pause-notice span { display: block; }
+
+/* Raising while on pause for others: lift the pause and take part, or not. */
+.pause-raise-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.pause-raise-choice p {
+  margin: 0;
+  color: var(--pause-ink);
+  font-weight: 700;
+}
+
+/* My own pause: the area of the people concerned turns grey (still usable),
+   with a "Paused" pill by its title. On a Dashboard tile only the preview
+   and the count grey out, so the title and its pill stay readable. */
+.area-paused:not(.tile),
+.tile.area-paused .dash-preview,
+.tile.area-paused .tile-count {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.pause-pill {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.8rem;
+  border: 2px solid var(--pause-ink);
+  border-radius: 999px;
+  color: var(--pause-ink);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+}
+/* Dashboard tiles: under the subtitle, smaller. */
+.pause-pill.small {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  padding: 0.1rem 0.6rem;
+}
+/* Beats the global `.app-content button` (teal fill, no border). */
+.app-content button.pause-pill {
+  padding: 0.15rem 0.8rem;
+  border: 2px solid var(--pause-ink);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pause-ink);
+}
+.app-content button.pause-pill.small { padding: 0.1rem 0.6rem; }
+.pause-pill:hover { background: color-mix(in srgb, var(--pause-ink) 12%, transparent); }
+.pause-pill:focus-visible { outline: 2px solid var(--pause-ink); outline-offset: 2px; }
+
+/* Person page: offer the other direction of the link. */
+.reverse-link{margin:1rem 0 0;}
+.reverse-link select{margin-left:0.25rem;}
+/* A sender name that opens their page keeps its own color. */
+.bubble-name a{color:inherit;}

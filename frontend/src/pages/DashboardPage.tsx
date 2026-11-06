@@ -7,6 +7,8 @@ import { alertNeedsMe, getMyParticipation, listAlerts, type MyAlertSummary, type
 import { replyLabel } from '../components/replyLabel';
 import { firstCircleAskKey } from '../alertAsk';
 import { listCircles, listCompanions, type Circle, type Companion } from '../api/sentinel';
+import { PauseBadge } from '../components/PauseBadge';
+import { PauseNotice, PausePill } from '../components/PauseNotice';
 import { Tile } from '../components/Tile';
 import { SecurityScoreBar } from '../components/SecurityScoreBar';
 import { SentinelIcon } from '../components/SentinelIcon';
@@ -112,6 +114,8 @@ export function DashboardPage() {
     <div className={`dashboard${activeAlerts.length > 0 ? ' has-alert' : ''}`}>
       <header className="dashboard-greeting">
         <h1>{t('dashboard.greeting.hello', { name: user?.firstName ?? '' })}</h1>
+        {/* A reminder, so a pause isn't forgotten: changed in Settings. */}
+        <PauseNotice which="both" />
       </header>
 
       {error && <p className="form-error">{error}</p>}
@@ -133,11 +137,12 @@ export function DashboardPage() {
       <div className="tile-grid">
         <Link to="/circles" className="tile-link">
           <Tile
-            className="tile-dash tile-circles"
+            className={`tile-dash tile-circles${user?.pausedForMe ? ' area-paused' : ''}`}
             title={
               <div>
                 <h2>{t('dashboard.circles')}</h2>
                 <p className="tile-subtitle">{t('dashboard.circlesSubtitle')}</p>
+                <PausePill which="forMe" small />
               </div>
             }
             actions={
@@ -199,11 +204,12 @@ export function DashboardPage() {
         </Link>
         <Link to="/companions" className="tile-link">
           <Tile
-            className="tile-dash tile-companions"
+            className={`tile-dash tile-companions${user?.pausedForOthers ? ' area-paused' : ''}`}
             title={
               <div>
                 <h2>{t('dashboard.companions')}</h2>
                 <p className="tile-subtitle">{t('dashboard.companionsSubtitle')}</p>
+                <PausePill which="forOthers" small />
               </div>
             }
             actions={
@@ -215,12 +221,15 @@ export function DashboardPage() {
           >
             <div className="dash-preview companions-preview" aria-hidden="true">
               {companions.slice(0, 3).map((c) => (
-                <div key={c.linkId} className="preview-companion">
-                  <CompanionIcon
-                    size={64}
-                    color={companionColor(c.companion.id)}
-                    leadColor={companionGold(!!c.leadSlot, c.circle.isPrimary)}
-                  />
+                <div key={c.linkId} className={`preview-companion${c.companion.pausedForMe ? ' is-paused' : ''}`}>
+                  <span className="preview-companion-figure">
+                    <CompanionIcon
+                      size={64}
+                      color={companionColor(c.companion.id)}
+                      leadColor={companionGold(!!c.leadSlot, c.circle.isPrimary)}
+                    />
+                    {c.companion.pausedForMe && <PauseBadge />}
+                  </span>
                   <span className="companion-name">{c.companion.firstName}</span>
                 </div>
               ))}

@@ -222,11 +222,12 @@
     "delete": "Delete group",
     "confirmDelete": "Delete this group entirely? Every member will be removed and relationships created only through this group will end for everyone.",
     "invitedSent": "Invitation sent to {{who}}.",
-    "noEligibleContacts": "No one to invite yet — you can only invite someone you're already connected to.",
-    "eligibilityHint": "You can only invite someone you're already connected to.",
     "largeGroupWarning": "This group already has {{count}} people — that's a lot. You can still add more if you want.",
     "eyebrow": "Group",
-    "addMember": "Add a member"
+    "addMember": "Add a member",
+    "byPhoneOr": "Or anyone, with their phone number:",
+    "byPhone": "Invite anyone with their phone number:",
+    "phoneHint": "They get an SMS. Without an account, it asks them to create one with this number to join the group."
   },
   "companions": {
     "title": "Companions",
@@ -321,6 +322,12 @@
         "button": "Ask to leave {{name}}'s 1st circle",
         "message": "Hi {{name}}, I'd like to leave your 1st circle while still watching over you. You can move me to another circle from my page."
       }
+    },
+    "reserve": {
+      "button": "Go to {{name}}'s reserve",
+      "explain": "You stay linked to {{name}}, but you won't be contacted for their alerts any more. If you were their Lead, you give up that role. Only {{name}} can put you back in a circle.",
+      "confirm": "Yes, go to the reserve",
+      "inReserve": "You are in {{name}}'s reserve: you aren't contacted for their alerts. Only {{name}} can put you back in a circle."
     }
   },
   "alerts": {
@@ -790,7 +797,8 @@
       "SENTINEL_LEFT": "{{who}} is no longer one of your Sentinels",
       "CIRCLE_MOVE_PROPOSED": "{{who}} invites you to join their 1st circle",
       "CIRCLE_MOVE_ACCEPTED": "{{who}} joined your 1st circle",
-      "CIRCLE_MOVE_DECLINED": "{{who}} declined to join your 1st circle"
+      "CIRCLE_MOVE_DECLINED": "{{who}} declined to join your 1st circle",
+      "SENTINEL_TO_RESERVE": "{{who}} went to your reserve for now"
     }
   },
   "settings": {
@@ -879,7 +887,7 @@
       },
       "preferences": {
         "title": "Preferences",
-        "hint": "Language, messages during an alert"
+        "hint": "Language, messages during an alert, pause"
       },
       "deathNotice": {
         "title": "In case of death",
@@ -1124,6 +1132,51 @@
       "warning": "This is permanent, both ways.",
       "explain": "The link ends both ways, and neither you nor {{name}} can ever invite the other again.",
       "confirm": "Yes, block"
+    },
+    "reverse": {
+      "answer": "Answer",
+      "watchThem": {
+        "button": "Offer to watch over {{name}}",
+        "explain": "{{name}} will receive your request and choose which of their circles to put you in.",
+        "send": "Send the request",
+        "sent": "Request sent. {{name}} will choose a circle for you.",
+        "theyAsked": "{{name}} invites you to be their Sentinel."
+      },
+      "inviteThem": {
+        "button": "Invite {{name}} into my circles",
+        "explain": "{{name}} will receive your invitation and can accept or decline it.",
+        "circle": "Circle",
+        "send": "Send the invitation",
+        "theyAsked": "{{name}} asked to watch over you."
+      }
+    }
+  },
+  "pause": {
+    "settings": {
+      "forMe": "Pause for me: nobody else can raise an alert about me",
+      "forMeHint": "You can still raise an alert yourself.",
+      "forOthers": "Pause for others: I can't be asked to help in an alert",
+      "forOthersHint": "You're taken out of any alert in progress right away, and you won't be contacted for new ones.",
+      "leadBlocked": "You're a Lead on an alert in progress. Hand the lead over to another Lead and leave that alert first, then pause."
+    },
+    "person": {
+      "forOthers": "{{name}} is on pause: can't be asked to help in an alert right now.",
+      "forMe": "{{name}} is on pause: nobody else can raise an alert about them right now."
+    },
+    "raiseOption": "on pause",
+    "raise": {
+      "question": "You're on pause for others. If you raise this alert without lifting your pause, you won't take part in it and won't be able to follow it. Lift your pause to take part?",
+      "join": "Lift my pause and raise the alert",
+      "withoutMe": "Raise it without taking part"
+    },
+    "pill": "Paused",
+    "explain": {
+      "forMe": "You're on pause for you: nobody else can raise an alert about you, so your circles aren't watching over you right now. You can still raise an alert yourself.",
+      "forOthers": "You're on pause for others: you can't be asked to help in any alert, so you aren't watching over your companions right now."
+    },
+    "modal": {
+      "keep": "Stay on pause",
+      "allSettings": "All settings"
     }
   }
 }

@@ -171,6 +171,11 @@ CIRCLES & PERMISSIONS
   reserve instead of being force-removed). A Sentinel link can NEVER land in
   the reserve circle at creation (invite or request) — it's reachable only
   by a deliberate move afterward (manual pause, or a circle deletion cascade).
+  The Sentinel can also put themself there ("not available for now",
+  POST /sentinel/memberships/:id/reserve): immediate, "Me" is notified, the
+  link stays; a Lead gives up their slot, refused for "Me"'s only Lead and
+  while they take part in an alert about "Me" in progress; not for a group
+  link. Only "Me" moves them back out.
   No Lead slot can exist there (Lead is 1st-circle-only, same rule as any
   other outer circle). Once the alert module exists, the reserve circle must
   be excluded from any circle-escalation/broadcast logic — it never receives
@@ -539,11 +544,16 @@ GROUP CIRCLES
   owned by a single companion like every other circle — a mutual mesh:
   joining makes the new member Sentinel for every existing member, and
   every existing member Sentinel for them too.
-- Invite-only, and only by someone the inviter already has an accepted
-  Sentinel/Companion link with — a trust chain, not a cold invite to a
-  stranger. The very first member (the founder) has no such requirement.
-- A member must hold a real account (not SMS-only) — the mesh needs
-  everyone to act as both companion and Sentinel, which an SMS-only
+- Invite-only (no asking to join, for now). Any member can invite, two
+  ways: pick one of their contacts (someone they already have an accepted
+  link with), or enter anyone's phone number + first name. A number with
+  no account gets a stand-in User (as for a circle invitation) and an SMS
+  asking them to create their account with that number; the invitation
+  then waits for them in the app. An account holder gets the notification
+  + an SMS. The inviter gets the same answer either way, so a number can't
+  be tested to find out who uses the app.
+- A member must hold a real account (not SMS-only) to *accept* — the mesh
+  needs everyone to act as both companion and Sentinel, which an SMS-only
   contact can't do.
 - Model: no separate "group" table — `CircleType.GROUP` + a nullable
   self-relation (`Circle.groupRootId`). The founder's own circle has
@@ -559,6 +569,26 @@ GROUP CIRCLES
   cascades the same way to every member.
 - Billing: founding a group requires paid Companion status; joining
   someone else's group stays free either way — see ACCOUNTS & BILLING.
+
+PAUSE
+------------------
+- Two independent switches in Settings, both can be on at once. Stored as
+  two booleans on `User` (`pausedForMe`, `pausedForOthers`), not as a
+  `UserStatus` value: `status` stays for the account lifecycle (active,
+  deleted, deceased), and a death notice still works on a paused account.
+- Pause for me: nobody else can raise an alert about me. I can still raise
+  one about myself.
+- Pause for others: I can't be asked to take part in any alert — I'm left
+  out of the 1st circle's fan-out, out of outer-circle batches and later
+  questions, and my SMS replies to alert questions are ignored. Turning it
+  on takes me out of every alert in progress at once (participation
+  CLOSED, same as leaving the alert). A Lead on an alert in progress can't
+  turn it on until they've handed the lead over and left that alert —
+  same rule as account deletion.
+- If every Lead of a 1st circle is paused for others, no alert can be
+  raised for that companion.
+- Paused people are shown with a dashed avatar and a "||" badge wherever
+  people appear.
 
 TECH STACK (confirmed)
 ------------------------

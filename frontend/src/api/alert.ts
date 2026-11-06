@@ -93,7 +93,9 @@ export interface AlertParticipant {
   // requestCircle for this outer circle.
   requestedBy: { id: string; firstName: string } | null;
   // avatarPath: their photo's cache key (see avatars.ts).
-  userSentinels: { linkAsSentinel: { id: string; firstName: string; avatarPath?: string | null } };
+  userSentinels: {
+    linkAsSentinel: { id: string; firstName: string; avatarPath?: string | null; pausedForOthers?: boolean };
+  };
   questions: AlertQuestion[];
 }
 

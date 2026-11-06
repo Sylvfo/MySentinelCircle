@@ -16,7 +16,7 @@ enum UserType {
 
 enum UserStatus {
   ACTIVE
-  PAUSED
+  //PAUSED
   DELETED
   DECEASED
 }
@@ -147,6 +147,9 @@ model User {
   pendingEmailExpiresAt    DateTime?  
   //allowMessagingByDefault Boolean @default(true) // companion-wide fallback
   alertChatWithFirstCircle Boolean @default(true) // master switch: if false, no Sentinel of mine may chat with my 1st circle during an alert
+  pausedForMe     Boolean @default(false) // nobody else may raise an alert about me
+  pausedForOthers Boolean @default(false) // I can't be asked to take part in any alert
+  
 
   phone           String? @unique
   phoneVerifiedAt DateTime?

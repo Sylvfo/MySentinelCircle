@@ -9,6 +9,7 @@ import {
   circlePalette,
 } from '../theme';
 import { SentinelIcon } from './SentinelIcon';
+import { PauseBadge } from './PauseBadge';
 import { useAvatarUrl } from '../avatars';
 import { useAuth } from '../auth/AuthContext';
 
@@ -133,6 +134,8 @@ export function CircleRing({
         const isLead = m.leadSlot !== null;
         const pending = m.status === 'PENDING';
         const inAlert = inAlertUserIds?.has(m.linkAsSentinel.id) ?? false;
+        // On pause for others: keeps their color, dashed + "||" badge.
+        const paused = !!m.linkAsSentinel.pausedForOthers;
         const color = inAlert
           ? IN_ALERT_AVATAR_COLOR
           : pending
@@ -154,7 +157,7 @@ export function CircleRing({
             {...(onSelectMember
               ? { type: 'button' as const, onClick: () => onSelectMember(m), 'aria-label': m.linkAsSentinel.firstName }
               : {})}
-            className={`circle-avatar${selectedMemberId === m.id ? ' selected' : ''}`}
+            className={`circle-avatar${selectedMemberId === m.id ? ' selected' : ''}${paused ? ' is-paused' : ''}`}
             style={{ left: x, top: y, width: avatarSize, height: avatarSize, color }}
           >
             <AvatarFace
@@ -164,6 +167,7 @@ export function CircleRing({
               withPhoto={!!showPhotos}
             />
             <MessageBadge on={canMessage} />
+            {paused && <PauseBadge className="on-ring" />}
             {showNames ? (
               <span className="circle-avatar-caption">
                 <span className="circle-avatar-name">{m.linkAsSentinel.firstName}</span>

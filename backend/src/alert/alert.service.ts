@@ -49,7 +49,14 @@ import { RespondAlertDto } from './dto/respond-alert.dto';
 import { UpdateAlertStatusDto } from './dto/update-alert-status.dto';
 import { UpdateAlertLabelDto } from './dto/update-alert-label.dto';
 import { MarkFoundDto, type FoundFollowUp } from './dto/mark-found.dto';
-import { assertNotDeceased } from '../user/user-status.util';
+import {
+  NOT_PAUSED_SENTINEL,
+  assertNotDeceased,
+  assertNotPausedForMe,
+} from '../user/user-status.util';
+
+export const LEAD_CANNOT_PAUSE =
+  'You are a Lead on an alert in progress — hand the lead over and leave that alert before pausing';
 
 const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   BYCOMPANION: 'Appel a l’aide',
@@ -138,7 +145,7 @@ export class AlertService {
       );
     }
     const location = dto.location ? describeLocation(dto.location) : null;
-    await this.assertCompanionNotDeceased(dto.companionId);
+    await this.assertCompanionCanBeAlerted(callerId, dto.companionId);
     await this.assertNoActiveAlert(dto.companionId);
     await this.assertCanAffordAlert(dto.companionId);
 
@@ -154,19 +161,33 @@ export class AlertService {
     // without one, nobody would actually be in charge to drive the alert,
     // so raising isn't allowed yet. Covers both "no 1st circle at all"
     // (trivially no lead) and "1st circle exists but no accepted lead".
-    const links = circle
+    const firstCircleLinks = circle
       ? await this.prisma.linkSentinels.findMany({
           where: { circleId: circle.id, status: LinkStatus.ACCEPTED },
           include: {
             linkAsSentinel: {
-              select: { id: true, firstName: true, phone: true },
+              select: {
+                id: true,
+                firstName: true,
+                phone: true,
+                pausedForOthers: true,
+              },
             },
           },
         })
       : [];
-    if (!circle || !links.some((link) => link.leadSlot !== null)) {
+    if (!circle || !firstCircleLinks.some((link) => link.leadSlot !== null)) {
       throw new ConflictException(
         'This companion’s 1st circle has no Lead Sentinel yet — an alert can’t be raised',
+      );
+    }
+    // A Sentinel paused for others is never asked to take part.
+    const links = firstCircleLinks.filter(
+      (link) => !link.linkAsSentinel.pausedForOthers,
+    );
+    if (!links.some((link) => link.leadSlot !== null)) {
+      throw new ConflictException(
+        'Every Lead Sentinel of this 1st circle is on pause — an alert can’t be raised',
       );
     }
 
@@ -477,6 +498,34 @@ export class AlertService {
     return updated;
   }
 
+  // "Pause for others" takes the person out of every alert in progress at
+  // once — the same CLOSED state as leaveAlert. A Lead must first leave the
+  // alert through leaveAlert (which needs another Lead to take over), same
+  // rule as account deletion, so no alert is left without someone driving it.
+  // Throws before writing anything.
+  async withdrawFromAlertsForPause(userId: string) {
+    const participations = await this.prisma.alertParticipant.findMany({
+      where: {
+        status: { not: AlertParticipantStatus.CLOSED },
+        alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+        userSentinels: { userSentinelId: userId },
+      },
+      select: { id: true, alertId: true, isLead: true },
+    });
+    if (participations.some((p) => p.isLead)) {
+      throw new ConflictException(LEAD_CANNOT_PAUSE);
+    }
+    if (participations.length === 0) return;
+
+    await this.prisma.alertParticipant.updateMany({
+      where: { id: { in: participations.map((p) => p.id) } },
+      data: { status: AlertParticipantStatus.CLOSED, closedAt: new Date() },
+    });
+    for (const alertId of new Set(participations.map((p) => p.alertId))) {
+      await this.notifyAlertParticipants(alertId);
+    }
+  }
+
   async getAlert(callerId: string, alertId: string) {
     const alert = await this.prisma.alert.findUnique({
       where: { id: alertId },
@@ -512,7 +561,12 @@ export class AlertService {
                 // roster (GET /user/:id/avatar lets 1st-circle co-members
                 // see each other's photo).
                 linkAsSentinel: {
-                  select: { id: true, firstName: true, avatarPath: true },
+                  select: {
+                    id: true,
+                    firstName: true,
+                    avatarPath: true,
+                    pausedForOthers: true,
+                  },
                 },
               },
             },
@@ -710,7 +764,11 @@ export class AlertService {
       circle.alertChatWithFirstCircle;
 
     const links = await this.prisma.linkSentinels.findMany({
-      where: { circleId: circle.id, status: LinkStatus.ACCEPTED },
+      where: {
+        circleId: circle.id,
+        status: LinkStatus.ACCEPTED,
+        linkAsSentinel: NOT_PAUSED_SENTINEL,
+      },
       include: {
         linkAsSentinel: { select: { id: true, phone: true } },
       },
@@ -810,6 +868,7 @@ export class AlertService {
         alertId,
         contactedAt: { not: null },
         circleId: { not: alert.firstCircleId },
+        userSentinels: { linkAsSentinel: NOT_PAUSED_SENTINEL },
       },
       include: {
         userSentinels: {
@@ -1209,7 +1268,10 @@ export class AlertService {
     const questions = await this.prisma.alertQuestion.findMany({
       where: {
         alertParticipant: {
-          userSentinels: { linkAsSentinel: { phone } },
+          // A reply from someone on pause is ignored here.
+          userSentinels: {
+            linkAsSentinel: { phone, ...NOT_PAUSED_SENTINEL },
+          },
           alert: { alertStatus: { not: AlertStatus.RESOLVED } },
         },
       },
@@ -1358,12 +1420,16 @@ export class AlertService {
 
   // ---- Guards -----------------------------------------------------------
 
-  private async assertCompanionNotDeceased(companionId: string) {
+  private async assertCompanionCanBeAlerted(
+    callerId: string,
+    companionId: string,
+  ) {
     const companion = await this.prisma.user.findUnique({
       where: { id: companionId },
-      select: { status: true },
+      select: { status: true, pausedForMe: true },
     });
     assertNotDeceased(companion, 'This companion');
+    assertNotPausedForMe(companion, callerId, companionId);
   }
 
   private async assertNoActiveAlert(companionId: string) {
@@ -1448,7 +1514,7 @@ export class AlertService {
           userCompanionId: companionId,
           userSentinelId: { not: callerId },
           status: LinkStatus.ACCEPTED,
-          linkAsSentinel: { phone: { not: null } },
+          linkAsSentinel: { phone: { not: null }, ...NOT_PAUSED_SENTINEL },
           circle: { circleType: { not: CircleType.RESERVED } },
         },
       });

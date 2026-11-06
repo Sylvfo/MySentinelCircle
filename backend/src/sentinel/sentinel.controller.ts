@@ -185,6 +185,16 @@ export class SentinelController {
     return this.sentinel.leaveMembershipAsSentinel(user.userId, id);
   }
 
+  // A Sentinel puts themself in the companion's reserve ("not available for
+  // now") without ending the link.
+  @Post('memberships/:id/reserve')
+  moveSelfToReserve(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.sentinel.moveSelfToReserve(user.userId, id);
+  }
+
   // A Sentinel answers a proposed move into the 1st circle (also doable by SMS).
   @Post('memberships/:id/circle-move/accept')
   acceptCircleMove(

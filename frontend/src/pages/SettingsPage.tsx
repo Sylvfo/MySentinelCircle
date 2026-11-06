@@ -12,6 +12,7 @@ import {
   setDeathNoticeRecipients,
   updateMyDeathNotice,
   removeAvatar,
+  updatePause,
   updateProfile,
   uploadAvatar,
   verifyAddPhone,
@@ -217,6 +218,29 @@ export function SettingsPage() {
               onError={setError}
             />
             <p className="form-hint">{t('settings.alertChatWithFirstCircleHint')}</p>
+            {/* Two independent pauses (plan.txt, PAUSE). */}
+            <EditableToggle
+              label={t('pause.settings.forMe')}
+              value={me.pausedForMe}
+              onSave={(v) => updatePause({ pausedForMe: v })}
+              onSaved={() => {
+                void reload();
+                void refreshUser();
+              }}
+              onError={setError}
+            />
+            <p className="form-hint">{t('pause.settings.forMeHint')}</p>
+            <EditableToggle
+              label={t('pause.settings.forOthers')}
+              value={me.pausedForOthers}
+              onSave={(v) => updatePause({ pausedForOthers: v })}
+              onSaved={() => {
+                void reload();
+                void refreshUser();
+              }}
+              onError={(m) => setError(m.startsWith('You are a Lead') ? t('pause.settings.leadBlocked') : m)}
+            />
+            <p className="form-hint">{t('pause.settings.forOthersHint')}</p>
           </>,
         )}
       </div>
@@ -484,7 +508,7 @@ function AvatarPanel({ me, onChange, onError }: { me: Me; onChange: () => void; 
   };
 
   return (
-    <section className="panel avatar-panel">
+    <section className={`panel avatar-panel${me.pausedForMe || me.pausedForOthers ? ' is-paused' : ''}`}>
       <h2>{t('settings.avatar')}</h2>
       <div className="avatar-panel-body">
         {photoUrl ? (

@@ -15,6 +15,22 @@ const SITE = 'mysentinelcircle.ch';
 const LOGIN_LINK = `${SITE}/a`;
 
 // Me -> Sentinel: sent to the invited person when "Me" adds them to a circle.
+// Invited into a group: with an account, they answer in the app; without
+// one, they first create it with this same number (the invitation waits).
+export function groupInvitationSms(
+  inviter: string,
+  group: string,
+  hasAccount: boolean,
+): string {
+  return (
+    `${inviter} vous invite dans le groupe ${group} sur ${APP}, ` +
+    `un reseau d'entraide ou chacun.e veille sur les autres. ` +
+    (hasAccount
+      ? `Connectez-vous pour accepter ou refuser : ${SITE}`
+      : `Creez votre compte avec ce numero pour rejoindre le groupe : ${SITE}`)
+  );
+}
+
 export function sentinelInvitationSms(inviter: string): string {
   return (
     `${inviter} vous a choisi.e comme Sentinel sur ${APP}, ` +

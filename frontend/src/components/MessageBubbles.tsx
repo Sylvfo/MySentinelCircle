@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { fetchMessageImageBlob } from '../api/messaging';
 import { LinkifiedText } from './LinkifiedText';
 import type { Message } from '../api/messaging';
@@ -26,12 +27,15 @@ export function MessageBubbles({
   messages,
   myId,
   nameOf,
+  linkOf,
 }: {
   messages: BubbleMessage[];
   myId: string | undefined;
   // Group chats only: who sent it. Left out in a 1:1 conversation, where
   // the name would only repeat the header.
   nameOf?: (senderId: string) => string;
+  // Optional: the sender's name opens their person page (null = plain text).
+  linkOf?: (senderId: string) => string | null;
 }) {
   const { t } = useTranslation();
   const today = new Date().toDateString();
@@ -56,7 +60,11 @@ export function MessageBubbles({
             <div className={`bubble ${mine ? 'mine' : 'theirs'}${startsRun ? ' tail' : ''}`}>
               {startsRun && !mine && nameOf && (
                 <span className="bubble-name" style={{ color: nameColor(m.senderId) }}>
-                  {nameOf(m.senderId)}
+                  {linkOf?.(m.senderId) ? (
+                    <Link to={linkOf(m.senderId)!}>{nameOf(m.senderId)}</Link>
+                  ) : (
+                    nameOf(m.senderId)
+                  )}
                 </span>
               )}
               {m.type === 'IMAGE' ? (
