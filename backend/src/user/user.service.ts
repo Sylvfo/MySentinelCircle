@@ -72,6 +72,8 @@ const PROFILE_SELECT = {
   paidUntil: true,
   termsVersion: true,
   gender: true,
+  language: true,
+  alertContactSharing: true,
 } as const;
 
 // Never return the raw hash/id — just whether they exist, so the frontend
@@ -248,9 +250,14 @@ export class UserService {
     const { code, fields } = await newOneTimeCode();
     await this.prisma.user.update({
       where: { id: userId },
-      data: { pendingPhone: phone, ...fields },
+      data: {
+        pendingPhone: phone,
+        ...fields,
+        phoneRecoveryRequestedAt: null,
+        phoneRecoveryConfirmedById: null,
+      },
     });
-    await this.otpSender.send(phone, code);
+    await this.otpSender.send(phone, code, caller?.language);
     return { message: 'Code sent' };
   }
 
@@ -398,7 +405,7 @@ export class UserService {
       data: { ...fields, pendingPhone: null },
     });
     if (dto.channel === 'phone' && phone) {
-      await this.otpSender.send(phone, code);
+      await this.otpSender.send(phone, code, user?.language);
     } else if (email) {
       await this.emailSender.send(email, 'Code de vérification', code);
     }

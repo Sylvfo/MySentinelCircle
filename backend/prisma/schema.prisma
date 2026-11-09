@@ -155,9 +155,11 @@ model User {
   lastLoginAt      DateTime?
   // "Sign me out everywhere": any login token issued before this is refused.
   sessionsValidAfter DateTime?
-
+  language            String?  @db.VarChar(5)
+  alertContactSharing Boolean  @default(false)
   gender Gender? // how texts speak about me; null = inclusive wording
-
+  phoneRecoveryRequestedAt   DateTime?
+  phoneRecoveryConfirmedById String?
 
   googleId     String? @unique
   avatarPath String?

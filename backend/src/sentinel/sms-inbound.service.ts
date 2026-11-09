@@ -19,6 +19,7 @@ import type { SmsSender } from '../sms/sms-sender.interface';
 import { RetentionService } from '../privacy/retention.service';
 import { SentinelService } from './sentinel.service';
 import type { LinkWithParties } from './sentinel.service';
+import { smsLang } from '../sms/messages';
 
 const HELP_SMS_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const NO_MATCH = { matched: false as const, reason: 'no_actionable_link' };
@@ -74,6 +75,7 @@ export class SmsInboundService {
         phone,
         severalRequestsSms(
           candidates.map(({ name, exampleReply }) => `${name} ${exampleReply}`),
+          smsLang(await this.sentinel.languageByPhone(phone)),
         ),
       );
       return { matched: true as const, action: 'several_requests' };
@@ -136,11 +138,12 @@ export class SmsInboundService {
   private async handleCommand(phone: string, command: SmsCommand) {
     const links = await this.sentinel.listActiveLinksByPhone(phone);
     const names = links.map((link) => link.userCompanion.firstName);
+    const lang = smsLang(links[0]?.linkAsSentinel.language);
 
     if (command.kind === 'info') {
       if (links.length === 0) return NO_MATCH;
       const hasAccount = links[0].linkAsSentinel.userType !== UserType.ONLY_SMS;
-      await this.sms.send(phone, sentinelInfoSms(names, hasAccount));
+      await this.sms.send(phone, sentinelInfoSms(names, hasAccount, lang));
       return { matched: true as const, action: 'info_sent' };
     }
 
@@ -156,7 +159,7 @@ export class SmsInboundService {
           : undefined
         : links[command.position - 1];
     if (!link) {
-      await this.sms.send(phone, stopChoiceSms(names));
+      await this.sms.send(phone, stopChoiceSms(names, lang));
       return { matched: true as const, action: 'stop_choice_sent' };
     }
     const left = await this.sentinel.leaveLinkBySms(link);
@@ -174,7 +177,10 @@ export class SmsInboundService {
     if (Date.now() - lastSent < HELP_SMS_INTERVAL_MS) return NO_MATCH;
 
     this.lastHelpSentAt.set(phone, Date.now());
-    await this.sms.send(phone, smsHelpSms());
+    await this.sms.send(
+      phone,
+      smsHelpSms(smsLang(links[0]?.linkAsSentinel.language)),
+    );
     return { matched: true as const, action: 'help_sent' };
   }
 }

@@ -232,6 +232,19 @@ export function SettingsPage() {
               onError={setError}
             />
             <p className="form-hint">{t('settings.alertChatWithFirstCircleHint')}</p>
+            {/* Off: alert chats refuse a phone number or an email between
+                my Sentinels (they keep talking inside the app). */}
+            <EditableToggle
+              label={t('settings.alertContactSharing')}
+              value={me.alertContactSharing}
+              onSave={(v) => updateProfile({ alertContactSharing: v })}
+              onSaved={() => {
+                void reload();
+                void refreshUser();
+              }}
+              onError={setError}
+            />
+            <p className="form-hint">{t('settings.alertContactSharingHint')}</p>
             {/* Two independent pauses (plan.txt, PAUSE). */}
             <EditableToggle
               label={t('pause.settings.forMe')}

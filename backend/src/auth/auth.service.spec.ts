@@ -86,7 +86,11 @@ describe('AuthService', () => {
       expect(prisma.user.create).toHaveBeenCalledWith({
         data: { phone, firstName: '', userType: UserType.ONLY_SMS },
       });
-      expect(otpSender.send).toHaveBeenCalledWith(phone, expect.any(String));
+      expect(otpSender.send).toHaveBeenCalledWith(
+        phone,
+        expect.any(String),
+        undefined,
+      );
       expect(result).toEqual({ userId: 'new-id' });
     });
 

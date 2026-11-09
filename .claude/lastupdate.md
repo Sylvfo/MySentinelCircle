@@ -1,122 +1,88 @@
 # Last update
 
-**Date**: 2026-11-02 10:04
-**Branch**: `alerts_size_and_order_circles`
+**Date**: 2026-11-09
+**Branch**: `check_front` (all work below is **uncommitted**)
 
 ## Done this session
 
-- **Death notice feature** — announcing a user's death to their Sentinels, framed at length with
-  Sylvie first (how to avoid both false positives and silently-unnotified friends). Settled on:
-  double confirmation (a Lead Sentinel reports, a second Lead — or, if the 1st circle has only one
-  Lead, any other accepted Sentinel of it — confirms before anything broadcasts; reporter ≠
-  confirmer); the companion prepares the announcement text and picks which of their existing
-  Sentinels get notified (with an optional personal message each) while still alive; zero new
-  tables — Sylvie pushed back on an earlier 2-table design, so the report/confirm flow and
-  announcement live as flat fields on `User` (mirroring how `Alert` itself stores
-  `launchedAt`/`closedAt`), and recipient opt-in/personal-message live as flat fields on
-  `LinkSentinels`. A literal "memorial circle" was considered and rejected: `LinkSentinels` allows
-  only one relationship ever per pair, so a Sentinel can't also join a memorial-only circle.
-  `UserStatus.DECEASED` freezes the account afterward (existing data stays readable; `raiseAlert`,
-  `inviteSentinel`/`requestToBeSentinel`/`respondToMembership`, and new messages are all now gated
-  via a shared `assertNotDeceased` helper). New `user.controller.ts`/`service.ts` endpoints
-  (`GET`/`PATCH /user/death-notice`, `PATCH /user/death-notice/recipients`) for the living-prep
-  side, new `sentinel.controller.ts`/`service.ts` endpoints (`.../death-notice/report|confirm|
-  reject`, plus a recipient-facing `GET`) for the report/confirm side — no new module, reusing
-  existing ones to avoid an nginx change. Fan-out reuses the `AlertService.notifyParticipants`
-  pattern (SMS + persisted notification, best-effort). **Known gap, deliberately deferred**:
-  `updateMembership`/`removeMembership`/`blockMembership`/`leaveMembershipAsSentinel`/
-  `respondToCircleMove` aren't gated against a deceased companion yet. **Committed** (`93ca0a5`,
-  together with the visual redesign below — Sylvie committed both as one, using the message drafted
-  for her this session).
+Earlier parts (frontend/backend simplification, 191-char VARCHAR fix, security review, CSP note in
+`deployment_plan.txt`, sign-in journal / sign out everywhere / admin page / `/health` / request
+logs) are **committed** (`70464f5`, `0a992e7`).
 
-- **Full visual redesign**, prompted by an imminent presentation (same session, after the feature
-  work above) — logo (`frontend/src/assets/logo.png`) + Inria Sans + a new teal/blue/gold palette
-  (`frontend/src/theme.ts`); a reusable `Tile` component (`components/Tile.tsx`) migrated into
-  Alerts/Circles/Companions; an alert-mode gradient background (`.mode-alert`) and alert-type
-  selection restyled as cards. **My Circles rebuilt**: new `CircleRing` component
-  (`components/CircleRing.tsx`) — thick colored rings with avatar silhouettes positioned around the
-  rim (gold = Lead, grey = not yet accepted, else the circle's own color; message-capability shown
-  as a green-check/red-cross bubble badge), 1st circle pinned at top in a distinct gold family,
-  other circles cycling a blue→teal palette with a pale ring + strong avatars. Clicking a ring
-  expands the existing, fully-functional `CircleCard` below it (promote to Lead, move, remove,
-  invite) rather than rebuilding those actions — only the overview is new. Iterated on the ring/
-  avatar look first in a **Claude Design** canvas artifact (colors, avatar shape, badge icons, sizes)
-  before porting to real code, per Sylvie's call to prototype visually rather than guess blind in
-  CSS. **Dashboard rebuilt** in two modes: Normal (3 summary tiles — Raise Alert/My Circles/My
-  Companions, people-counts written inline e.g. "8 people watching over you") and Running Alert
-  (takes over the top whenever an alert concerns the viewer; shows About/What-you-have-to-do + an
-  "N active alert(s)" count; "About" resolves the actual companion's name, not the alert's own
-  label, falling back from `getAlert` to `getMyParticipation` the same way `AlertsPage` already
-  does for an outer-circle Sentinel). **Alerts split into two pages**: `/alerts` ("Raise Alert",
-  launch-only now) and `/running-alert` ("Running Alert", in-progress only, reached only from the
-  Dashboard's conditional card) — new `pages/RunningAlertPage.tsx`, reuses the now-exported
-  `AlertRow` from `AlertsPage.tsx`. New **History page** (`pages/HistoryPage.tsx`, route
-  `/history`) for resolved alerts, which no longer show on `/alerts`. New mobile-only
-  **`BottomNav`** (`components/BottomNav.tsx`: Settings/History/Messages/Notifications/Home as real
-  icon buttons, not one flattened image — Sylvie's own icon sketches ported to inline SVG) shown
-  ≤640px, replacing the old horizontal mobile nav-links row. **Nav decluttered**: logo always links
-  to `/dashboard` (so the redundant "Dashboard" nav link was removed); language switcher and logout
-  moved into Settings (logout at the very bottom); username right-aligned (needed a mobile-specific
-  `margin-left: auto` fix — the desktop `space-between` fix alone didn't carry over to the mobile
-  horizontal bar); logo + wordmark enlarged, nav widened 220→250px to fit. **Two real bugs found via
-  live testing**: `.tile-header` didn't wrap, so a long title + actions overflowed visually past a
-  Tile's own border into neighboring tiles (fixed with `flex-wrap` + `overflow: hidden`); and
-  `CircleRing`'s `<button>` picked up the global `.app-content button` dark-teal
-  background/`border-radius`, showing as dark corners around each ring and throwing off avatar
-  alignment (fixed with a higher-specificity override, `.app-content button.circle-ring`). Also
-  **bumped API rate limits** (global Throttler 20→100/min; several auth/OTP/password endpoints
-  5→20/min) — NestJS Throttler tracks by IP by default, so Sylvie's 4 test accounts in one browser
-  were sharing one budget and tripping it. **Committed** (`93ca0a5`, same commit as the death notice
-  feature above).
+Then started the MVP plan (`/home/syl/.claude/plans/eager-roaming-fox.md`, items 1–8, Sylvie said
+"fais 1 à 6"; 7 = desktop mode and 8 = travel mode are for later):
 
-- Drafted a commit message + PR description for all of the above (per the usual "text only, don't
-  run git" preference) — Sylvie then committed it herself, verbatim, as `93ca0a5` on
-  `alerts_size_and_order_circles`. Also gave feedback on Sylvie's GitHub project blurb (tagline/
-  stack/skills wording) — chat-only, nothing to carry forward.
+- **Item 2 — freeze after a death**: done. `assertNotDeceased` on the companion in
+  `getOwnedLink`, `getMyActiveLinkAsSentinel`, `respondToCircleMove` (`sentinel.service.ts`),
+  which covers update/remove/block/leave/move. Specs added.
+- **Item 3 — free MVP**: done then **reverted at Sylvie's request**. Paid plans stay as they
+  were; she tests with the dev "compte payant" checkbox (`ALLOW_DEV_ROUTES`).
+- **Schema** (applied + migrated by Sylvie: `20261109193821_language_contact_sharing_phone_recovery`):
+  `User.language`, `User.alertContactSharing`, `User.phoneRecoveryRequestedAt`,
+  `User.phoneRecoveryConfirmedById`.
+- **Item 4 — SMS in the recipient's language**: done. `smsLang()` + an English branch for every
+  builder in `sms/messages.ts` and `alert/alert-replies.ts` (French unchanged, plain ASCII).
+  Callers pass the recipient's `language`; an SMS-only stub gets the inviter's language
+  (`findOrCreateUserByPhone`). OTP sender takes a language. Front: `languageSync.ts` saves the
+  app language on the account (mounted in `AppShell`). Spec: `sms/messages-en.spec.ts`.
+- **Item 5 — contact details in alert chats**: done. `common/contact-details.ts`
+  (`containsContactDetails`, 20-case spec). `messaging.service.ts` refuses phone numbers/emails in
+  alert chats unless the sender is the companion or the companion turned on
+  `alertContactSharing` (Settings → preferences toggle). Front maps the refusal in `ChatComposer`.
+- **Item 6 — lost phone, vouched for by the 1st circle**: done, e2e not yet run.
+  `sentinel/phone-recovery.service.ts` + controller + DTOs. Public
+  `POST /auth/phone-recovery/request|verify`, signed-in
+  `POST /sentinel/companions/:id/phone-recovery/confirm|reject`. Two different 1st-circle
+  members confirm (at least one Lead), any one can refuse; then a code to the new number; verify
+  changes the phone and signs out every device. Request lives 7 days; repeating the same request
+  after approval resends a code; SMS login with the old number or adding a phone cancels it.
+  `listCompanions` exposes `phoneRecovery` to the 1st circle. Front: `/recover-phone` page
+  (`RecoverPhonePage.tsx`), link on `LoginPage`, "Téléphone perdu" block in `CompanionActions`,
+  i18n fr/en. Spec: `phone-recovery.service.spec.ts` (21 tests). E2E: new
+  `describe('Lost phone …')` in `test/sentinel.e2e-spec.ts` (helper `acceptedFirstCircleLink`
+  hoisted to the outer scope).
 
-Backend: 250/250 tests passing, build/lint clean. Frontend: build/lint clean (re-verified after
-every change this session).
+Backend: 564/564 unit tests, tsc + lint clean. Frontend: tsc, lint, build clean (only the old
+`AuthContext` warning). **E2E not run since items 4–6** (last run: 86/86).
 
-## Left to do / not yet addressed
+## Next steps (in order)
 
-- **Death notice**: the 5 membership-management actions noted above aren't gated against a deceased
-  companion yet (`updateMembership`/`removeMembership`/`blockMembership`/
-  `leaveMembershipAsSentinel`/`respondToCircleMove`).
-- **Dashboard's "Raise Alert" tile content** — Sylvie asked for something like "a note about myself
-  and the three alert types we set up" in it; unclear enough that a short generic hint line was
-  used instead and flagged to her. Still waiting on clarification.
-- **`MessagingMode.GROUP`** (the chat-mode enum value, unrelated to Group Circles) — still behaves
-  identically to `INDIVIDUAL`, deliberately not exposed as a distinct UI option until it means
-  something different.
-- **Browser smoke test of tranches C/D/E frontend** (step-up panel, change-email flow,
-  change-phone flow) — still not done, unrelated to recent sessions' work.
-- **The 0–10 availability-reply scale** (recruiting into an active search, vs. a plain yes/no
-  sighting question) — still not started.
-- **Self-service account deletion/closure** (GitHub issue #29) — still open, nothing started.
-- `claimOrCreateByPhone` race condition — accepted gap, documented in `plan.txt`, not fixed.
-- Real SMS/email provider — still console-only stubs (NoSMSNow is a dev-only proxy). The inbound
-  webhook also needs signature verification before this happens.
-- `organization` backend module — still an empty skeleton; blocks the Organization↔1st-circle
-  chat too.
-- `MessageType.SYSTEM` — still unused (`IMAGE` is live, `SYSTEM` isn't).
-- `npm audit`: backend's remaining 13 (dev-tooling-only, or need a major version bump) not
-  addressed — judged not worth it; revisit only if one of those tools' exposure changes.
+1. **Run the e2e tests** — needs Sylvie's fresh in-turn consent (resets `mysentinelcircle_test`):
+   `cd backend && env -u DATABASE_URL PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="<her exact message>" npm run test:e2e`.
+   Fix whatever fails (new lost-phone tests, and items 4/5 never e2e-tested).
+2. **Item 1 — cleanup**:
+   - GitHub writes are denied by permissions → give Sylvie the texts to paste: close #47 (forgotten
+     password), #48 (account deletion), #50, #29 (account deletion done) ; comment on #31
+     (Sentinel gating done via `assertCompleteAccount`, deletion done, the rest accepted/noted).
+   - Guided browser test with Sylvie: step-up, change email, change phone. Also worth clicking
+     through: lost-phone flow, contact-details toggle + refusal in an alert chat, English SMS.
+3. Restart the backend container after the migration (Docker serves old Prisma client otherwise).
+4. Offer a commit message (text only) for items 2, 4, 5, 6.
+5. Later: **item 7** desktop mode (first add a "top menu" variant to the mockup
+   https://claude.ai/artifact/98JZnhQqSmYqA3MtDoT5Qf so Sylvie can choose), **item 8** travel mode
+   (framing session first).
 
-## Git — state at the time of this pause
+## Known gaps in the new work
 
-Everything from this session (death notice feature + full visual redesign) is **committed** on
-`alerts_size_and_order_circles` as a single commit, `93ca0a5` — Sylvie committed it herself, using
-the message drafted for her this session, on top of `424980b`.
+- Phone recovery shares the OTP fields with step-up: a step-up code sent during a pending recovery
+  would make it look "approved". Edge case, accepted for now.
+- The contact-details filter is a heuristic (regex): spelled-out numbers get through.
 
-**Not yet pushed**: `alerts_size_and_order_circles` is one commit ahead of
-`origin/alerts_size_and_order_circles` (`93ca0a5`). No PR open for this branch yet.
+## Left to do / not yet addressed (carried over)
 
-Sylvie has since moved on: checked out `dev` (fast-forwarded to origin), then `code_quality_check`
-— that's the branch actually checked out right now, so a fresh session should confirm which branch
-to resume on before touching anything.
+- **Dashboard's "Raise Alert" tile content** — waiting on Sylvie's clarification.
+- **`MessagingMode.GROUP`** — still behaves like `INDIVIDUAL`, not exposed in the UI.
+- **The 0–10 availability-reply scale** — not started.
+- `claimOrCreateByPhone` race condition — accepted gap, documented in `plan.txt`.
+- Real SMS/email provider — console-only stubs; the inbound SMS webhook needs signature
+  verification first (main security hole, deferred: "on verra tout sur les sms après").
+- `organization` backend module — empty skeleton (out of MVP scope).
+- `MessageType.SYSTEM` — unused.
+- `npm audit`: backend's remaining 13 — judged not worth it.
+- Before real users: see `deployment_plan.txt` (providers, legal texts, CSP/HSTS, TLS, backups,
+  `NODE_ENV`, `ALLOW_DEV_ROUTES`, `ADMIN_EMAILS`, `/health` monitoring, data protection).
 
-`main`/`dev` are otherwise up to date through PR #45; the Lead-claim/Group-circles/paywall work
-(`e7472de`/`c72688c`/`424980b`) and the outer-circle-batching commit (`05ce6bd`) were already merged
-to `alerts_size_and_order_circles` before this session started.
+## Git
 
-Not pushed — ask Sylvie before pushing or opening a PR.
+On `check_front`, ~46 changed/new files uncommitted (items 2, 4, 5, 6 + migration). Nothing pushed.
+Never push; ask before committing (commit message = text only).

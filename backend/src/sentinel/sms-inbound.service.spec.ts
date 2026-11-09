@@ -26,6 +26,7 @@ describe('SmsInboundService', () => {
     listInvitationsByPhone: jest.Mock;
     listActiveLinksByPhone: jest.Mock;
     leaveLinkBySms: jest.Mock;
+    languageByPhone: jest.Mock;
   };
   let alert: {
     listOpenQuestionsByPhone: jest.Mock;
@@ -41,6 +42,7 @@ describe('SmsInboundService', () => {
       listInvitationsByPhone: jest.fn().mockResolvedValue([]),
       listActiveLinksByPhone: jest.fn().mockResolvedValue([]),
       leaveLinkBySms: jest.fn().mockResolvedValue(true),
+      languageByPhone: jest.fn().mockResolvedValue(null),
     };
     alert = {
       listOpenQuestionsByPhone: jest.fn().mockResolvedValue([]),

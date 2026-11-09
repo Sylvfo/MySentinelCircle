@@ -369,6 +369,7 @@ describe('UserService', () => {
       expect(otpSender.send).toHaveBeenCalledWith(
         '+33600000000',
         expect.any(String),
+        undefined,
       );
       expect(result).toEqual({ message: 'Code sent' });
     });
@@ -626,6 +627,7 @@ describe('UserService', () => {
       expect(otpSender.send).toHaveBeenCalledWith(
         '+33600000002',
         expect.any(String),
+        undefined,
       );
     });
   });
@@ -765,6 +767,7 @@ describe('UserService', () => {
       expect(otpSender.send).toHaveBeenCalledWith(
         '+33600000000',
         expect.any(String),
+        undefined,
       );
     });
 

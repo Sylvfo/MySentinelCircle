@@ -4,11 +4,13 @@ import { errorText } from '../api/client';
 import {
   acceptCircleMove,
   confirmDeath,
+  confirmPhoneRecovery,
   declineCircleMove,
   getDeathNoticeAnnouncement,
   leaveMembership,
   moveSelfToReserve,
   rejectDeathReport,
+  rejectPhoneRecovery,
   reportDeath,
   type Companion,
   type DeathNoticeAnnouncement,
@@ -154,6 +156,7 @@ export function CompanionActions({
         </Modal>
       )}
 
+      <PhoneRecoverySection companion={c} onChange={onChange} onError={onError} />
       <DeathNoticeSection companion={c} onChange={onChange} onError={onError} />
 
       {/* "Not available for now": into their reserve, the link stays.
@@ -222,6 +225,63 @@ export function CompanionActions({
         </section>
       )}
     </div>
+  );
+}
+
+// Backend refusals worth saying in the viewer's language.
+const RECOVERY_ERRORS: Record<string, string> = {
+  'A Lead Sentinel must confirm too': 'companions.phoneRecovery.needsLead',
+  'This number already has an account': 'companions.phoneRecovery.numberTaken',
+};
+
+// They lost their phone and ask to move their account to a new number:
+// two people of their 1st circle (one a Lead) vouch for them, any one
+// can refuse. Only their 1st circle gets `phoneRecovery`.
+function PhoneRecoverySection({
+  companion,
+  onChange,
+  onError,
+}: {
+  companion: Companion;
+  onChange: () => void;
+  onError: (m: string) => void;
+}) {
+  const { t } = useTranslation();
+  const { busy, run } = useAction({
+    onError: (message) => onError(RECOVERY_ERRORS[message] ? t(RECOVERY_ERRORS[message]) : message),
+  });
+  const recovery = companion.phoneRecovery;
+  if (!recovery) return null;
+  const companionId = companion.companion.id;
+  const name = companion.companion.firstName;
+  const act = (action: (id: string) => Promise<unknown>) =>
+    void run(async () => {
+      await action(companionId);
+      onChange();
+    });
+
+  return (
+    <section className="member-panel-section">
+      <h4>{t('companions.sections.phoneRecovery')}</h4>
+      <p>{t('companions.phoneRecovery.asks', { name, phone: recovery.newPhone })}</p>
+      {recovery.codeSent ? (
+        <p className="muted">{t('companions.phoneRecovery.codeSent')}</p>
+      ) : recovery.confirmedByMe ? (
+        <p className="muted">{t('companions.phoneRecovery.waitingSecond')}</p>
+      ) : (
+        <>
+          <p className="muted muted-small">{t('companions.phoneRecovery.checkFirst', { name })}</p>
+          <span className="row-actions">
+            <button disabled={busy} onClick={() => act(confirmPhoneRecovery)}>
+              {t('companions.phoneRecovery.confirm')}
+            </button>
+            <button className="ghost" disabled={busy} onClick={() => act(rejectPhoneRecovery)}>
+              {t('companions.phoneRecovery.reject')}
+            </button>
+          </span>
+        </>
+      )}
+    </section>
   );
 }
 

@@ -1,14 +1,15 @@
 import { Gender } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 import {
-  IsEnum,
-  ValidateIf,
   IsBoolean,
+  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdateProfileDto {
@@ -61,4 +62,18 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsBoolean()
   alertChatWithFirstCircle?: boolean;
+
+  // The language of the SMS I receive ("fr" or "en"): the app's language,
+  // sent by the frontend when it changes.
+  @ApiProperty({ required: false, enum: ['fr', 'en'] })
+  @IsOptional()
+  @IsIn(['fr', 'en'])
+  language?: 'fr' | 'en';
+
+  // May my Sentinels give each other a phone number or an email during an
+  // alert about me? Off: such messages are refused in my alert chats.
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  alertContactSharing?: boolean;
 }

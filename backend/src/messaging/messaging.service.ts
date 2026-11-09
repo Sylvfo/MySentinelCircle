@@ -16,6 +16,11 @@ import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
 import type { RealtimeNotifier } from '../realtime/realtime-notifier.interface';
 import { NotificationService } from '../notification/notification.service';
 import { SupportService } from '../support/support.service';
+import { containsContactDetails } from '../common/contact-details';
+
+// Refusal the frontend recognizes and shows translated.
+export const CONTACT_DETAILS_REFUSED =
+  'Phone numbers and email addresses cannot be shared in this alert chat';
 
 @Injectable()
 export class MessagingService {
@@ -118,6 +123,29 @@ export class MessagingService {
     );
   }
 
+  // In an alert's chats, Sentinels may not give each other a phone number
+  // or an email unless the person the alert is about allows it
+  // (User.alertContactSharing): they keep talking inside the app. That
+  // person may always share their own.
+  private async assertNoContactDetails(
+    userId: string,
+    alertId: string,
+    body: string,
+  ) {
+    const alert = await this.prisma.alert.findUnique({
+      where: { id: alertId },
+      select: {
+        userCompanionId: true,
+        userCompanion: { select: { alertContactSharing: true } },
+      },
+    });
+    if (!alert || alert.userCompanionId === userId) return;
+    if (alert.userCompanion.alertContactSharing) return;
+    if (containsContactDetails(body)) {
+      throw new BadRequestException(CONTACT_DETAILS_REFUSED);
+    }
+  }
+
   private async createMessage(
     userId: string,
     conversationId: string,
@@ -140,6 +168,8 @@ export class MessagingService {
     // creation, so turning the setting off takes effect right away.
     if (conversation.alertId === null) {
       await this.assertDirectMessagingAllowed(userId, conversationId);
+    } else if (type === MessageType.TEXT) {
+      await this.assertNoContactDetails(userId, conversation.alertId, body);
     }
     const message = await this.prisma.message.create({
       data: { body, type, senderId: userId, conversationId },

@@ -6,6 +6,7 @@ import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 import { OtpVerifyPage } from './pages/OtpVerifyPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { RecoverPhonePage } from './pages/RecoverPhonePage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ConfirmEmailChangePage } from './pages/ConfirmEmailChangePage';
 import { WelcomePage } from './pages/WelcomePage';
@@ -40,6 +41,7 @@ function App() {
         <Route path="/welcome" element={<WelcomePage />} />
         <Route path="/a" element={<SentinelHomePage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/recover-phone" element={<RecoverPhonePage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/confirm-email" element={<ConfirmEmailChangePage />} />
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />

@@ -185,7 +185,7 @@ export class AuthService {
   async requestOtp(dto: RequestOtpDto) {
     const user = await this.findOrCreateByPhone(dto.phone);
     if (!this.isInResendCooldown(user)) {
-      await this.sendOtp(user.id, dto.phone);
+      await this.sendOtp(user.id, dto.phone, user.language);
     }
     return { userId: user.id };
   }
@@ -367,13 +367,24 @@ export class AuthService {
     return Date.now() - sentAt < OTP_RESEND_COOLDOWN_MS;
   }
 
-  private async sendOtp(userId: string, phone: string) {
+  private async sendOtp(
+    userId: string,
+    phone: string,
+    language: string | null,
+  ) {
     const { code, fields } = await newOneTimeCode();
     await this.prisma.user.update({
       where: { id: userId },
-      data: { ...fields, pendingPhone: null },
+      // Signing in with the old number: they still have it, a lost-phone
+      // request (if any) is cancelled.
+      data: {
+        ...fields,
+        pendingPhone: null,
+        phoneRecoveryRequestedAt: null,
+        phoneRecoveryConfirmedById: null,
+      },
     });
-    await this.otpSender.send(phone, code);
+    await this.otpSender.send(phone, code, language);
   }
 
   // Only blocks login if the account HAS a phone that isn't verified yet —

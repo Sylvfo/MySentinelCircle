@@ -7,6 +7,7 @@ import { useUnreadCounts, useUnreadCountsRefresher } from '../unreadCounts';
 import { UserMenu } from './UserMenu';
 import { AlertSignal } from './AlertSignal';
 import logo from '../assets/logo.png';
+import { useLanguageSync } from '../languageSync';
 
 // No separate "Dashboard" link — the logo itself always goes there (see
 // .brand below), so a second link to the same place would be redundant.
@@ -25,6 +26,8 @@ export function AppShell() {
   const { t } = useTranslation();
   // One refresher for every unread badge (bell, Messages tabs).
   useUnreadCountsRefresher();
+  // My SMS follow the app's language.
+  useLanguageSync();
   const { messages: unreadMessages, support: unreadSupport } = useUnreadCounts();
   return (
     <div className="app-shell">

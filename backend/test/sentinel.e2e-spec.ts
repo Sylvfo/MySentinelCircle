@@ -102,6 +102,32 @@ describe('Sentinel (e2e)', () => {
     return `Bearer ${token}`;
   }
 
+  async function acceptedFirstCircleLink(
+    companionToken: string,
+    sentinelToken: string,
+    sentinelPhone: string,
+  ) {
+    const circlesRes = await request(app.getHttpServer())
+      .get('/sentinel/circles')
+      .set('Authorization', auth(companionToken))
+      .expect(200);
+    const firstCircle = (circlesRes.body as CircleBody[]).find(
+      (c) => c.circleType === CircleType.FIRST,
+    )!;
+    const inviteRes = await request(app.getHttpServer())
+      .post(`/sentinel/circles/${firstCircle.id}/invite`)
+      .set('Authorization', auth(companionToken))
+      .send({ phone: sentinelPhone, name: 'Bob' })
+      .expect(201);
+    const link = inviteRes.body as LinkBody;
+    await request(app.getHttpServer())
+      .post(`/sentinel/memberships/${link.id}/accept`)
+      .set('Authorization', auth(sentinelToken))
+      .send({})
+      .expect(201);
+    return link;
+  }
+
   describe('Circles', () => {
     it('starts a new account with the default circles, sorted FIRST -> BASIC -> RESERVED', async () => {
       const { accessToken } = await signupAccount('Ada');
@@ -383,32 +409,6 @@ describe('Sentinel (e2e)', () => {
     }
 
     // A 1st-circle Sentinel must have an account — accepted from the app.
-    async function acceptedFirstCircleLink(
-      companionToken: string,
-      sentinelToken: string,
-      sentinelPhone: string,
-    ) {
-      const circlesRes = await request(app.getHttpServer())
-        .get('/sentinel/circles')
-        .set('Authorization', auth(companionToken))
-        .expect(200);
-      const firstCircle = (circlesRes.body as CircleBody[]).find(
-        (c) => c.circleType === CircleType.FIRST,
-      )!;
-      const inviteRes = await request(app.getHttpServer())
-        .post(`/sentinel/circles/${firstCircle.id}/invite`)
-        .set('Authorization', auth(companionToken))
-        .send({ phone: sentinelPhone, name: 'Bob' })
-        .expect(201);
-      const link = inviteRes.body as LinkBody;
-      await request(app.getHttpServer())
-        .post(`/sentinel/memberships/${link.id}/accept`)
-        .set('Authorization', auth(sentinelToken))
-        .send({})
-        .expect(201);
-      return link;
-    }
-
     it('removes a Sentinel (companion side)', async () => {
       const companion = await signupAccount('Ada');
       const sentinelPhone = testPhone();
@@ -663,6 +663,86 @@ describe('Sentinel (e2e)', () => {
         matched: false,
         reason: 'no_actionable_link',
       });
+    });
+  });
+
+  describe('Lost phone (1st circle vouches)', () => {
+    it('moves the account to a new number once two of the 1st circle confirm, one a Lead', async () => {
+      const companion = await signupAccount('Ada');
+      const lead = await signupAccount('Lea');
+      const other = await signupAccount('Max');
+      await acceptedFirstCircleLink(
+        companion.accessToken,
+        lead.accessToken,
+        lead.phone,
+      );
+      await acceptedFirstCircleLink(
+        companion.accessToken,
+        other.accessToken,
+        other.phone,
+      );
+      const newPhone = testPhone();
+      sentSms = [];
+
+      await request(app.getHttpServer())
+        .post('/auth/phone-recovery/request')
+        .send({ phone: companion.phone, newPhone })
+        .expect(201);
+      expect(sentSms.map((m) => m.phone).sort()).toEqual(
+        [companion.phone, lead.phone, other.phone].sort(),
+      );
+
+      // Their 1st circle sees the request on the person's card.
+      const listRes = await request(app.getHttpServer())
+        .get('/sentinel/companions')
+        .set('Authorization', auth(other.accessToken))
+        .expect(200);
+      const card = (
+        listRes.body as {
+          companion: { id: string };
+          phoneRecovery: { newPhone: string } | null;
+        }[]
+      ).find((c) => c.companion.id === companion.userId);
+      expect(card?.phoneRecovery?.newPhone).toBe(newPhone);
+
+      const confirm = (token: string) =>
+        request(app.getHttpServer())
+          .post(
+            `/sentinel/companions/${companion.userId}/phone-recovery/confirm`,
+          )
+          .set('Authorization', auth(token));
+      await confirm(other.accessToken).expect(201);
+      await confirm(other.accessToken).expect(409);
+      await confirm(lead.accessToken).expect(201);
+
+      const codeSms = sentSms.find((m) => m.phone === newPhone);
+      const code = /\d{6}/.exec(codeSms?.body ?? '')?.[0];
+      expect(code).toBeDefined();
+
+      // A token from the very second of the change still passes: wait one.
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      await request(app.getHttpServer())
+        .post('/auth/phone-recovery/verify')
+        .send({ newPhone, code })
+        .expect(201);
+
+      // Old devices are signed out, the new number signs in.
+      await request(app.getHttpServer())
+        .get('/user/me')
+        .set('Authorization', auth(companion.accessToken))
+        .expect(401);
+      await request(app.getHttpServer())
+        .post('/auth/login/phone')
+        .send({ phone: newPhone, password: 'password123' })
+        .expect(201);
+    });
+
+    it('answers the same for a number without an account', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/phone-recovery/request')
+        .send({ phone: testPhone(), newPhone: testPhone() })
+        .expect(201);
+      expect(sentSms).toEqual([]);
     });
   });
 });

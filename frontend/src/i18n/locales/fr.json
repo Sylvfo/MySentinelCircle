@@ -95,7 +95,24 @@
     "phoneOrEmailPlaceholder": "+41791234567 ou nom@mail.ch",
     "getSmsCode": "Recevoir un code par SMS",
     "forgotPasswordEmail": "Mot de passe oublié ? Recevoir un lien par e-mail",
-    "smsCodeNeedsPhone": "Entre ton numéro de téléphone ci-dessus pour recevoir un code par SMS."
+    "smsCodeNeedsPhone": "Entre ton numéro de téléphone ci-dessus pour recevoir un code par SMS.",
+    "recover": {
+      "link": "J'ai perdu mon téléphone",
+      "title": "Téléphone perdu",
+      "intro": "Ton compte passe sur ton nouveau numéro une fois que deux personnes de ton 1er cercle (dont au moins une Sentinelle Lead) ont confirmé dans l'app que c'est bien toi. Préviens-les. Le code arrive ensuite par SMS sur le nouveau numéro.",
+      "oldPhone": "Ancien numéro (celui du compte)",
+      "newPhone": "Nouveau numéro",
+      "submit": "Demander à mon 1er cercle",
+      "haveCode": "J'ai déjà reçu un code",
+      "asked": "Si ce numéro a un compte, ton 1er cercle a reçu un SMS. Dès que deux personnes ont confirmé, tu reçois un code sur ton nouveau numéro, valable 10 minutes.",
+      "codeHint": "Code expiré ou pas reçu ? Refais la demande avec les mêmes numéros : si ton 1er cercle a déjà confirmé, un nouveau code part.",
+      "again": "Refaire la demande",
+      "done": "C'est fait : ton compte utilise ton nouveau numéro. Tous tes appareils ont été déconnectés, connecte-toi à nouveau.",
+      "noCode": "Aucun code en attente pour ce numéro. Ton 1er cercle n'a peut-être pas encore confirmé.",
+      "invalidCode": "Code incorrect.",
+      "numberTaken": "Ce nouveau numéro a déjà un compte.",
+      "askAgain": "Ce code ne marche plus. Refais la demande pour en recevoir un nouveau."
+    }
   },
   "dashboard": {
     "title": "Dashboard",
@@ -275,7 +292,8 @@
     "sections": {
       "myPlace": "Ma place",
       "firstCircle": "Aussi dans le 1er cercle de {{name}}",
-      "deathNotice": "Avis de décès"
+      "deathNotice": "Avis de décès",
+      "phoneRecovery": "Téléphone perdu"
     },
     "firstCircleAlone": "Personne d'autre dans ce 1er cercle pour l'instant.",
     "firstCircleLead": "Sentinelle Lead",
@@ -346,6 +364,16 @@
       "inReserve_female": "Tu es dans la réserve de {{name}} : tu n'es pas contacté{{_e}} pour ses alertes. Seule {{name}} peut te remettre dans un cercle.",
       "inReserve_male": "Tu es dans la réserve de {{name}} : tu n'es pas contacté{{_e}} pour ses alertes. Seul {{name}} peut te remettre dans un cercle.",
       "inReserve_neutral": "Tu es dans la réserve de {{name}} : tu n'es pas contacté{{_e}} pour ses alertes. Il n'y a que {{name}} qui peut te remettre dans un cercle."
+    },
+    "phoneRecovery": {
+      "asks": "{{name}} dit avoir perdu son téléphone et demande à passer son compte sur le numéro {{phone}}.",
+      "checkFirst": "Vérifie avec {{name}} de vive voix ou en personne avant de confirmer. Il faut deux confirmations, dont au moins une Sentinelle Lead.",
+      "confirm": "C'est bien cette personne",
+      "reject": "Refuser",
+      "waitingSecond": "Tu as confirmé. En attente d'une deuxième personne du 1er cercle.",
+      "codeSent": "Deux personnes ont confirmé : le code est parti sur le nouveau numéro.",
+      "needsLead": "Une Sentinelle Lead doit aussi confirmer : ni toi ni la première personne n'êtes Lead.",
+      "numberTaken": "Ce nouveau numéro a déjà un compte : impossible de confirmer."
     }
   },
   "alerts": {
@@ -785,7 +813,8 @@
     "meNotForThem": "Tu ne veilles pas sur {{name}}",
     "roleCircle": "Sentinelle",
     "chipLead": "Sentinelle Lead · 1er cercle",
-    "chipFirstCircle": "1er cercle"
+    "chipFirstCircle": "1er cercle",
+    "contactDetailsRefused": "Ce message contient un numéro de téléphone ou une adresse e-mail. La personne concernée par l'alerte ne souhaite pas qu'on les échange : écrivez sans."
   },
   "notifications": {
     "title": "Notifications",
@@ -944,7 +973,9 @@
       "unknownDevice": "Appareil inconnu",
       "signOutEverywhere": "Me déconnecter de tous mes appareils",
       "signOutConfirm": "Tous tes appareils seront déconnectés, celui-ci aussi. Il faudra te reconnecter partout."
-    }
+    },
+    "alertContactSharing": "Pendant une alerte, mes Sentinelles peuvent échanger leur numéro ou leur e-mail",
+    "alertContactSharingHint": "Désactivé, les chats d'alerte refusent les numéros de téléphone et les adresses e-mail entre tes Sentinelles : elles restent en contact dans l'app."
   },
   "welcome": {
     "title": "Bienvenue",

@@ -18,6 +18,7 @@ import type { SmsSender } from '../sms/sms-sender.interface';
 import { NotificationService } from '../notification/notification.service';
 import { deathNoticeSms } from '../sms/messages';
 import { getUserOrThrow, userLabel } from './sentinel-helpers';
+import { smsLang } from '../sms/messages';
 
 // ---- Death notice (report / confirm / reject) ------------------------------
 //
@@ -213,7 +214,7 @@ export class DeathNoticeService {
         notifyOnDeath: true,
       },
       include: {
-        linkAsSentinel: { select: { id: true, phone: true } },
+        linkAsSentinel: { select: { id: true, phone: true, language: true } },
       },
     });
     if (recipients.length === 0) return;
@@ -222,7 +223,10 @@ export class DeathNoticeService {
       recipients
         .filter((r) => r.linkAsSentinel.phone)
         .map((r) =>
-          this.sms.send(r.linkAsSentinel.phone as string, deathNoticeSms()),
+          this.sms.send(
+            r.linkAsSentinel.phone as string,
+            deathNoticeSms(smsLang(r.linkAsSentinel.language)),
+          ),
         ),
     );
     for (const r of recipients) {

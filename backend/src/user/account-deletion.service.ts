@@ -37,6 +37,7 @@ import {
 import { MESSAGE_IMAGE_DIR } from '../messaging/messaging.controller';
 
 import { DELETED_ACCOUNT_LABEL } from './user-status.util';
+import { smsLang } from '../sms/messages';
 export { DELETED_ACCOUNT_LABEL };
 
 // Matched by the frontend's DeleteAccountPanel to show a translated message.
@@ -134,7 +135,9 @@ export class AccountDeletionService {
 
   // Read before anonymizing: names and numbers are gone afterwards.
   private async collectNotices(userId: string) {
-    const parties = { select: { firstName: true, phone: true } };
+    const parties = {
+      select: { firstName: true, phone: true, language: true },
+    };
     const asSentinel = await this.prisma.linkSentinels.findMany({
       where: { userSentinelId: userId, status: LinkStatus.ACCEPTED },
       include: { linkAsSentinel: parties, userCompanion: parties },
@@ -289,7 +292,10 @@ export class AccountDeletionService {
         }),
       );
       if (lastLeadCompanions.has(link.userCompanionId)) {
-        smsTo(link.userCompanion.phone, lastLeadLeftSms());
+        smsTo(
+          link.userCompanion.phone,
+          lastLeadLeftSms(smsLang(link.userCompanion.language)),
+        );
         sends.push(
           this.notifications.create({
             userId: link.userCompanionId,
@@ -304,7 +310,10 @@ export class AccountDeletionService {
     for (const link of asCompanion) {
       smsTo(
         link.linkAsSentinel.phone,
-        sentinelLeaveConfirmSms(link.userCompanion.firstName),
+        sentinelLeaveConfirmSms(
+          link.userCompanion.firstName,
+          smsLang(link.linkAsSentinel.language),
+        ),
       );
     }
 

@@ -50,6 +50,7 @@ import {
   isSubscribed,
   paymentSimulated,
 } from '../user/plan.util';
+import { smsLang, type SmsLang } from '../sms/messages';
 
 export const LEAD_CANNOT_PAUSE =
   'You are a Lead on an alert in progress — hand the lead over and leave that alert before pausing';
@@ -140,6 +141,7 @@ export class AlertService {
                 firstName: true,
                 phone: true,
                 pausedForOthers: true,
+                language: true,
               },
             },
           },
@@ -169,6 +171,7 @@ export class AlertService {
         lastName: true,
         phone: true,
         phoneVerifiedAt: true,
+        language: true,
       },
     });
     await this.assertAlertCanBeAnswered(
@@ -236,10 +239,13 @@ export class AlertService {
       return created;
     });
 
-    await this.notifyParticipants(
-      alert.id,
-      links,
-      alertRaisedSms(companionFullName(companion), location?.mapUrl, sharedBy),
+    await this.notifyParticipants(alert.id, links, (lang) =>
+      alertRaisedSms(
+        companionFullName(companion),
+        location?.mapUrl,
+        sharedBy,
+        lang,
+      ),
     );
 
     if (callerId !== dto.companionId && companion?.phone) {
@@ -251,7 +257,10 @@ export class AlertService {
       });
       await this.sms.send(
         companion.phone,
-        alertRaisedToCompanionSms(raiser?.firstName ?? 'Une personne Sentinel'),
+        alertRaisedToCompanionSms(
+          raiser?.firstName ?? 'Une personne Sentinel',
+          smsLang(companion.language),
+        ),
       );
     }
 
@@ -269,12 +278,16 @@ export class AlertService {
     const alert = await this.prisma.alert.findUnique({
       where: { id: alertId },
       include: {
-        userCompanion: { select: { firstName: true, phone: true } },
+        userCompanion: {
+          select: { firstName: true, phone: true, language: true },
+        },
         participants: {
           where: { status: { not: AlertParticipantStatus.CLOSED } },
           include: {
             userSentinels: {
-              include: { linkAsSentinel: { select: { phone: true } } },
+              include: {
+                linkAsSentinel: { select: { phone: true, language: true } },
+              },
             },
           },
         },
@@ -345,19 +358,29 @@ export class AlertService {
       }
     }
 
-    const text = alertClosedSms(alert.userCompanion.firstName, word);
     await Promise.allSettled(
       alert.participants
         .filter((p) => p.contactedAt && p.circleId !== alert.firstCircleId)
-        .map((p) => p.userSentinels.linkAsSentinel.phone)
-        .filter((phone): phone is string => !!phone)
-        .map((phone) => this.sms.send(phone, text)),
+        .map((p) => p.userSentinels.linkAsSentinel)
+        .filter(
+          (s): s is { phone: string; language: string | null } => !!s.phone,
+        )
+        .map((s) =>
+          this.sms.send(
+            s.phone,
+            alertClosedSms(
+              alert.userCompanion.firstName,
+              word,
+              smsLang(s.language),
+            ),
+          ),
+        ),
     );
 
     if (callerId !== alert.userCompanionId && alert.userCompanion.phone) {
       await this.sms.send(
         alert.userCompanion.phone,
-        alertClosedToCompanionSms(),
+        alertClosedToCompanionSms(smsLang(alert.userCompanion.language)),
       );
     }
 
@@ -1158,15 +1181,26 @@ export class AlertService {
 
   // ---- Notifications ------------------------------------------------------
 
+  // `text`: the same for everyone, or written in each one's language.
   async notifyParticipants(
     alertId: string,
-    links: { id: string; linkAsSentinel: { phone: string | null } }[],
-    text: string,
+    links: {
+      id: string;
+      linkAsSentinel: { phone: string | null; language?: string | null };
+    }[],
+    text: string | ((lang: SmsLang) => string),
   ) {
     await Promise.allSettled(
       links
         .filter((l) => l.linkAsSentinel.phone)
-        .map((l) => this.sms.send(l.linkAsSentinel.phone as string, text)),
+        .map((l) =>
+          this.sms.send(
+            l.linkAsSentinel.phone as string,
+            typeof text === 'string'
+              ? text
+              : text(smsLang(l.linkAsSentinel.language)),
+          ),
+        ),
     );
     await this.prisma.alertParticipant.updateMany({
       where: { alertId, userSentinelsId: { in: links.map((l) => l.id) } },
