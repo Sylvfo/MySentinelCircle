@@ -16,7 +16,7 @@ import {
 } from './account-deletion.service';
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { SentinelService } from '../sentinel/sentinel.service';
+import { GroupService } from '../sentinel/group.service';
 import { NotificationService } from '../notification/notification.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
@@ -35,10 +35,11 @@ describe('AccountDeletionService', () => {
       updateMany: jest.Mock;
     };
     notification: { updateMany: jest.Mock };
+    loginEvent: { deleteMany: jest.Mock };
     $transaction: jest.Mock;
   };
   let users: { assertStepUpFresh: jest.Mock };
-  let sentinel: { leaveGroup: jest.Mock; deleteGroup: jest.Mock };
+  let groups: { leaveGroup: jest.Mock; deleteGroup: jest.Mock };
   let notifications: { create: jest.Mock };
   let sms: { send: jest.Mock };
   let realtime: { disconnectUser: jest.Mock };
@@ -83,10 +84,11 @@ describe('AccountDeletionService', () => {
         updateMany: jest.fn(),
       },
       notification: { updateMany: jest.fn() },
+      loginEvent: { deleteMany: jest.fn() },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     users = { assertStepUpFresh: jest.fn() };
-    sentinel = { leaveGroup: jest.fn(), deleteGroup: jest.fn() };
+    groups = { leaveGroup: jest.fn(), deleteGroup: jest.fn() };
     notifications = { create: jest.fn() };
     sms = { send: jest.fn() };
     realtime = { disconnectUser: jest.fn() };
@@ -96,7 +98,7 @@ describe('AccountDeletionService', () => {
         AccountDeletionService,
         { provide: PrismaService, useValue: prisma },
         { provide: UserService, useValue: users },
-        { provide: SentinelService, useValue: sentinel },
+        { provide: GroupService, useValue: groups },
         { provide: NotificationService, useValue: notifications },
         { provide: SMS_SENDER, useValue: sms },
         { provide: REALTIME_NOTIFIER, useValue: realtime },
@@ -247,8 +249,8 @@ describe('AccountDeletionService', () => {
 
     await service.deleteAccount('me');
 
-    expect(sentinel.leaveGroup).toHaveBeenCalledWith('me', 'root');
-    expect(sentinel.deleteGroup).toHaveBeenCalledWith('me', 'founded');
+    expect(groups.leaveGroup).toHaveBeenCalledWith('me', 'root');
+    expect(groups.deleteGroup).toHaveBeenCalledWith('me', 'founded');
   });
 
   it('warns a companion left with no Lead', async () => {

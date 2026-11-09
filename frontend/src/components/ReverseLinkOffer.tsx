@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { ApiError } from '../api/client';
 import {
   inviteSentinel,
   listIncomingRequests,
@@ -10,6 +9,7 @@ import {
   type Circle,
 } from '../api/sentinel';
 import { Modal } from './Modal';
+import { useAction } from '../useAction';
 
 // On a person page linked one way only: offers the other direction.
 // - They watch over me → "Offer to watch over them" (they pick the circle).
@@ -37,8 +37,7 @@ export function ReverseLinkOffer({
   const [theyAsked, setTheyAsked] = useState(false);
   const [open, setOpen] = useState(false);
   const [sent, setSent] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { busy, error, run } = useAction();
   // Not the reserve (no direct placement) nor a group (own invite flow).
   const assignable = circles.filter((c) => c.circleType !== 'RESERVED' && c.circleType !== 'GROUP');
   const [circleId, setCircleId] = useState('');
@@ -66,10 +65,8 @@ export function ReverseLinkOffer({
   // Every companion has a phone (no Sentinel without one); just in case.
   if (!phone) return null;
 
-  const submit = async () => {
-    setBusy(true);
-    setError(null);
-    try {
+  const submit = () =>
+    run(async () => {
       if (direction === 'watchThem') {
         await requestToBeSentinel(phone);
         setSent(true);
@@ -79,12 +76,7 @@ export function ReverseLinkOffer({
         onChange();
       }
       setOpen(false);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
   return (
     <div className="reverse-link">

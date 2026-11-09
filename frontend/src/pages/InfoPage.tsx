@@ -13,6 +13,8 @@ import {
   PRIMARY_AVATAR_COLOR,
   PRIMARY_LEAD_COLOR,
 } from '../theme';
+import { LockShape, MessageBubbleShape } from '../components/icons';
+import { CollapsibleTile, TileIcon } from '../components/CollapsibleTile';
 
 // What the app is, plus the privacy/security promises it actually keeps —
 // every line here must match real backend behavior (see auth/user/alert
@@ -52,12 +54,7 @@ const ICONS: Record<SectionKey, ReactNode> = {
       <line x1="12" y1="17" x2="12.01" y2="17" />
     </>
   ),
-  privacy: (
-    <>
-      <rect x="5" y="11" width="14" height="10" rx="2" />
-      <path d="M8 11 V7.5 a4 4 0 0 1 8 0 V11" />
-    </>
-  ),
+  privacy: <LockShape />,
   security: <path d="M12 2 L20 5 V11 C20 16.5 16.5 20.5 12 22 C7.5 20.5 4 16.5 4 11 V5 Z" />,
 };
 
@@ -81,82 +78,47 @@ export function InfoPage() {
       <p className="info-intro">{t('info.intro')}</p>
 
       <div className="about-tiles">
-        {SECTIONS.map((key) => {
-          const isOpen = open === key;
-          return (
-            <section key={key} className={`about-tile${isOpen ? ' open' : ''}`}>
-              <button
-                type="button"
-                className="about-tile-head"
-                aria-expanded={isOpen}
-                aria-controls={`about-${key}`}
-                onClick={() => toggle(key)}
-              >
-                <svg
-                  className="about-tile-icon"
-                  viewBox="0 0 24 24"
-                  width="24"
-                  height="24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  {ICONS[key]}
-                </svg>
-                <span className="about-tile-title">{t(`info.sections.${key}.title`)}</span>
-                <svg className="about-tile-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                  <polyline points="6 9 12 15 18 9" fill="none" stroke="currentColor" strokeWidth="2" />
-                </svg>
-              </button>
-              {isOpen && key === 'symbols' && (
-                <div className="about-tile-body" id={`about-${key}`}>
-                  <SymbolsLegend />
-                </div>
-              )}
-              {isOpen && key !== 'symbols' && (
-                <div className="about-tile-body" id={`about-${key}`}>
-                  <ul>
-                    {list(`info.sections.${key}.summary`).map((item) => (
+        {SECTIONS.map((key) => (
+          <CollapsibleTile
+            key={key}
+            id={`about-${key}`}
+            open={open === key}
+            onToggle={() => toggle(key)}
+            icon={<TileIcon>{ICONS[key]}</TileIcon>}
+            title={t(`info.sections.${key}.title`)}
+          >
+            {key === 'symbols' ? (
+              <SymbolsLegend />
+            ) : (
+              <>
+                <ul>
+                  {list(`info.sections.${key}.summary`).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+                {more ? (
+                  <ul className="about-tile-more">
+                    {list(`info.sections.${key}.details`).map((item) => (
                       <li key={item}>{item}</li>
                     ))}
                   </ul>
-                  {more ? (
-                    <ul className="about-tile-more">
-                      {list(`info.sections.${key}.details`).map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <button type="button" className="about-more-btn" onClick={() => setMore(true)}>
-                      {t('info.learnMore')}
-                    </button>
-                  )}
-                </div>
-              )}
-            </section>
-          );
-        })}
+                ) : (
+                  <button type="button" className="about-more-btn" onClick={() => setMore(true)}>
+                    {t('info.learnMore')}
+                  </button>
+                )}
+              </>
+            )}
+          </CollapsibleTile>
+        ))}
       </div>
 
       {/* The user's thread with the team; the badge flags unread replies. */}
       <Link to="/feedback" className="about-tile about-feedback">
         <span className="about-tile-head static">
-          <svg
-            className="about-tile-icon"
-            viewBox="0 0 24 24"
-            width="24"
-            height="24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
+          <TileIcon>
+            <MessageBubbleShape />
+          </TileIcon>
           <span className="about-tile-title">
             {t('info.feedback.title')}
             <small>{unreadReplies > 0 ? t('info.feedback.newReply', { count: unreadReplies }) : t('info.feedback.hint')}</small>

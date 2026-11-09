@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
+import { errorText } from '../api/client';
 import { listCircles, listCompanions } from '../api/sentinel';
 import {
   isChatClosed,
@@ -13,7 +13,9 @@ import {
 } from '../api/messaging';
 import { PersonAvatar } from '../components/PersonAvatar';
 import { alertChatKind, alertChatTitle } from '../alertChatName';
-import { avatarPathOf, isPausedOf, isSubscribedOf, myCompanionColor, mySentinelColor } from '../relations';
+import { relationOf } from '../relations';
+import { useSocketEvent } from '../realtime/useSocketEvent';
+import { Loading } from '../components/Loading';
 
 type RosterContact = Omit<Contact, 'lastMessage' | 'unreadCount'>;
 
@@ -32,7 +34,7 @@ interface Contact {
 
 export function MessagesPage() {
   const { t } = useTranslation();
-  const { socket, user } = useAuth();
+  const { user } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [alertChats, setAlertChats] = useState<AlertChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +93,7 @@ export function MessagesPage() {
         applyConversations(conversations);
         setAlertChats(chats);
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : String(err)));
+      .catch((err) => setError(errorText(err)));
   };
 
   const loadAll = () => {
@@ -116,17 +118,20 @@ export function MessagesPage() {
         for (const c of [...mySentinels, ...myCompanions]) {
           if (!byUserId.has(c.userId)) byUserId.set(c.userId, c);
         }
-        rosterRef.current = [...byUserId.values()].map((c) => ({
-          ...c,
-          sentinelColor: mySentinelColor(circles, c.userId),
-          companionColor: myCompanionColor(companions, c.userId),
-          avatarPath: avatarPathOf(circles, companions, c.userId),
-          paused: isPausedOf(circles, companions, c.userId),
-          subscribed: isSubscribedOf(circles, companions, c.userId),
-        }));
+        rosterRef.current = [...byUserId.values()].map((c) => {
+          const rel = relationOf(circles, companions, c.userId);
+          return {
+            ...c,
+            sentinelColor: rel.sentinelColor,
+            companionColor: rel.companionColor,
+            avatarPath: rel.avatarPath,
+            paused: rel.paused,
+            subscribed: rel.subscribed,
+          };
+        });
         return refreshConversations();
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
+      .catch((err) => setError(errorText(err)))
       .finally(() => setLoading(false));
   };
 
@@ -135,23 +140,15 @@ export function MessagesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!socket) return;
-    const onNewMessage = () => {
-      void refreshConversations();
-    };
-    socket.on('message:new', onNewMessage);
-    return () => {
-      socket.off('message:new', onNewMessage);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket]);
+  useSocketEvent('message:new', () => {
+    void refreshConversations();
+  });
 
   // Old /messages?with=<userId> links: the conversation has its own page now.
   const withUserId = searchParams.get('with');
   if (withUserId) return <Navigate to={`/messages/${withUserId}`} replace />;
 
-  if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
+  if (loading) return <Loading />;
 
   // Only real conversations are listed; everyone else in my roster is reached
   // through the search box ("New message"), so the list never fills up with
@@ -240,14 +237,7 @@ export function MessagesPage() {
               className={`conversation-row${c.unreadCount > 0 ? ' unread' : ''}`}
               onClick={() => navigate(`/messages/${c.userId}`)}
             >
-              <PersonAvatar
-                userId={c.userId}
-                avatarPath={c.avatarPath}
-                paused={c.paused}
-                subscribed={c.subscribed}
-                sentinelColor={c.sentinelColor}
-                companionColor={c.companionColor}
-              />
+              <ContactAvatar contact={c} />
               <span className="conversation-text">
                 <span className="conversation-name">
                   {c.name}
@@ -267,14 +257,7 @@ export function MessagesPage() {
           <h2 className="conversation-list-title">{t('messages.newMessage')}</h2>
           {newContacts.map((c) => (
             <button key={c.userId} className="conversation-row" onClick={() => navigate(`/messages/${c.userId}`)}>
-              <PersonAvatar
-                userId={c.userId}
-                avatarPath={c.avatarPath}
-                paused={c.paused}
-                subscribed={c.subscribed}
-                sentinelColor={c.sentinelColor}
-                companionColor={c.companionColor}
-              />
+              <ContactAvatar contact={c} />
               <span className="conversation-text">
                 <span className="conversation-name">{c.name}</span>
                 <span className="conversation-preview">{t('messages.startConversation')}</span>
@@ -291,5 +274,19 @@ export function MessagesPage() {
       )}
 
     </div>
+  );
+}
+
+// A contact's photo with their relation figures, in both lists.
+function ContactAvatar({ contact }: { contact: RosterContact }) {
+  return (
+    <PersonAvatar
+      userId={contact.userId}
+      avatarPath={contact.avatarPath}
+      paused={contact.paused}
+      subscribed={contact.subscribed}
+      sentinelColor={contact.sentinelColor}
+      companionColor={contact.companionColor}
+    />
   );
 }

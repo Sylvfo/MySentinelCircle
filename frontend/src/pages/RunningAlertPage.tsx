@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
 import { isOuterCircleViewer, listAlerts, type MyAlertSummary } from '../api/alert';
-import { AlertDetailPanel, StopAlertButton } from './AlertsPage';
+import { useLoad } from '../useLoad';
+import { AlertDetailPanel } from '../components/AlertDetailPanel';
+import { StopAlertButton } from '../components/StopAlertButton';
+import { useSocketEvent } from '../realtime/useSocketEvent';
+import { Loading } from '../components/Loading';
 
 // Only reached from the Dashboard's "Running Alert" card, which only shows
 // up while an alert concerning this viewer is active — this page is the
@@ -14,35 +16,13 @@ import { AlertDetailPanel, StopAlertButton } from './AlertsPage';
 // Its chats live in Messages (/running-alert/:alertId/chat redirects there).
 export function RunningAlertPage() {
   const { t } = useTranslation();
-  const { user, socket } = useAuth();
+  const { user } = useAuth();
   const { alertId } = useParams();
-  const [alerts, setAlerts] = useState<MyAlertSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: alerts = [], loading, error, reload } = useLoad(listAlerts);
 
-  const reload = async () => {
-    setError(null);
-    try {
-      setAlerts(await listAlerts());
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
+  useSocketEvent('alert:changed', reload);
 
-  useEffect(() => {
-    void reload().finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (!socket) return;
-    socket.on('alert:changed', reload);
-    return () => {
-      socket.off('alert:changed', reload);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket]);
-
-  if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
+  if (loading) return <Loading />;
 
   const ongoing = alerts.filter((a) => a.alertStatus !== 'RESOLVED');
   const concerns = (a: MyAlertSummary) =>
@@ -119,7 +99,7 @@ export function RunningAlertPage() {
   return (
     <div>
       <h1>{t('runningAlertPage.title')}</h1>
-      <p style={{ color: 'var(--text-muted)' }}>{t('runningAlertPage.intro')}</p>
+      <p className="muted">{t('runningAlertPage.intro')}</p>
       {error && <p className="form-error">{error}</p>}
 
       {ongoing.length === 0 ? (

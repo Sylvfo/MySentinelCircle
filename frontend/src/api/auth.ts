@@ -1,4 +1,4 @@
-import { apiPost } from './client';
+import { apiGet, apiPost } from './client';
 import type { Gender } from '../gender';
 
 export const signupEmail = (
@@ -60,3 +60,20 @@ export const confirmPasswordReset = (token: string, newPassword: string) =>
   apiPost<{ message: string }>('/auth/password-reset/confirm', { token, newPassword });
 
 // Dev-only — backend refuses in production regardless.
+
+export type LoginMethod = 'EMAIL_PASSWORD' | 'PHONE_PASSWORD' | 'GOOGLE' | 'SMS_CODE';
+
+// One sign-in attempt on my account (newest first), for my Settings.
+export interface LoginEvent {
+  createdAt: string;
+  method: LoginMethod;
+  success: boolean;
+  // The network, never the exact address ("203.0.113.x").
+  ipPrefix: string | null;
+  userAgent: string | null;
+}
+
+export const listMyLogins = () => apiGet<LoginEvent[]>('/auth/logins');
+
+// Every device is signed out, this one included.
+export const logoutEverywhere = () => apiPost<{ message: string }>('/auth/logout-everywhere', {});

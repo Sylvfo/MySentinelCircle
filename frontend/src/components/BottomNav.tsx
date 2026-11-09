@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { NotificationBell } from './NotificationBell';
 import { useUnreadCounts } from '../unreadCounts';
 import logo from '../assets/logo.png';
+import { MessageBubbleShape } from './icons';
 
 // Mobile-only bottom icon bar (see index.css's @media max-width: 640px) —
 // the desktop side nav stays as-is. Covers Info/History/Messages/
@@ -32,7 +33,7 @@ export function BottomNav() {
       </NavLink>
       <NavLink to="/messages" className={({ isActive }) => (isActive ? 'active' : '')} aria-label={t('nav.messages')}>
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          <MessageBubbleShape />
         </svg>
         {/* New messages show here, not in the bell. */}
         {unreadMessages > 0 && <span className="notification-count messages">{unreadMessages}</span>}

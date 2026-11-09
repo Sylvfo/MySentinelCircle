@@ -1,5 +1,5 @@
 import type { Gender } from '../gender';
-import { apiGet, apiPatch, apiPost } from './client';
+import { apiGet, apiGetShared, apiPatch, apiPost } from './client';
 
 export type AlertType = 'BYCOMPANION' | 'LITTLEWORRY' | 'MISSING' | 'INCIDENT' | 'UNKNOWN' | 'EMERGENCY' | 'NOCONTACT';
 export type AlertStatus = 'SENT' | 'LAUNCHED' | 'ACTIVE' | 'CLOSING' | 'RESOLVED';
@@ -172,7 +172,8 @@ export const claimLead = (id: string) => apiPost<AlertDetail>(`/alert/${id}/clai
 // can only leave once another Lead has taken the lead after them.
 export const leaveAlert = (id: string) => apiPost<AlertParticipant>(`/alert/${id}/leave`, {});
 
-export const listAlerts = () => apiGet<MyAlertSummary[]>('/alert/mine');
+// Shared between pages for a few seconds (see apiGetShared).
+export const listAlerts = () => apiGetShared<MyAlertSummary[]>('/alert/mine');
 
 export const getAlert = (id: string) => apiGet<AlertDetail>(`/alert/${id}`);
 

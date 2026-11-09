@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { UserType } from '@prisma/client';
-import { AlertService } from '../alert/alert.service';
-import type { OpenAlertQuestion } from '../alert/alert.service';
+import { OuterCirclesService } from '../alert/outer-circles.service';
+import type { OpenAlertQuestion } from '../alert/outer-circles.service';
 import { repliesFor } from '../alert/alert-replies';
 import type { AlertQuestionKind } from '../alert/alert-replies';
 import {
@@ -43,7 +43,7 @@ export class SmsInboundService {
 
   constructor(
     private readonly sentinel: SentinelService,
-    private readonly alert: AlertService,
+    private readonly outerCircles: OuterCirclesService,
     private readonly retention: RetentionService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
   ) {}
@@ -86,7 +86,7 @@ export class SmsInboundService {
   // Alerts first, being more urgent, newest first.
   private async listRequests(phone: string): Promise<SmsRequest[]> {
     const [questions, invitations] = await Promise.all([
-      this.alert.listOpenQuestionsByPhone(phone),
+      this.outerCircles.listOpenQuestionsByPhone(phone),
       this.sentinel.listInvitationsByPhone(phone),
     ]);
     return [
@@ -104,7 +104,8 @@ export class SmsInboundService {
       name: question.alertParticipant.alert.userCompanion.firstName,
       answered: question.response !== null,
       exampleReply: repliesFor(kind).length > 0 ? '1' : 'votre reponse',
-      answer: (reply) => this.alert.answerQuestion(question, phone, reply),
+      answer: (reply) =>
+        this.outerCircles.answerQuestion(question, phone, reply),
     };
   }
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiError } from '../api/client';
+import { errorText } from '../api/client';
 import {
   acceptCircleMove,
   confirmDeath,
@@ -13,10 +13,11 @@ import {
   type Companion,
   type DeathNoticeAnnouncement,
 } from '../api/sentinel';
-import { Modal } from './Modal';
+import { ConfirmModal, Modal } from './Modal';
 import { Link } from 'react-router-dom';
 import { getDirectConversation, sendMessage } from '../api/messaging';
 import { genderContext } from '../gender';
+import { useAction } from '../useAction';
 
 type RequestKind = 'joinFirstCircle' | 'leaveFirstCircle' | 'becomeLead' | 'stopLead';
 
@@ -39,6 +40,7 @@ export function CompanionActions({
   onError: (m: string) => void;
 }) {
   const { t } = useTranslation();
+  const { run: runAction } = useAction({ onError });
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const [confirmingReserve, setConfirmingReserve] = useState(false);
   // Asking them for a change (join their 1st circle, become / stop being
@@ -49,22 +51,21 @@ export function CompanionActions({
   const requestKinds: RequestKind[] = !c.circle.isPrimary
     ? ['joinFirstCircle']
     : [c.leadSlot ? 'stopLead' : 'becomeLead', 'leaveFirstCircle'];
-  const sendRequest = async (kind: RequestKind) => {
+  const sendRequest = (kind: RequestKind) => {
     setAsking(null);
-    try {
+    void runAction(async () => {
       const conv = await getDirectConversation(c.companion.id);
       await sendMessage(conv.id, t(`companions.requests.${kind}.message`, { name: c.companion.firstName }));
       setSent({ kind, conversationUserId: c.companion.id });
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
+    });
   };
   // Accepting / declining a move into their 1st circle: confirmed first.
   const [pendingMove, setPendingMove] = useState<'accept' | 'decline' | null>(null);
   const run = (action: () => Promise<unknown>) =>
-    action()
-      .then(onChange)
-      .catch((err) => onError(err instanceof ApiError ? err.message : String(err)));
+    runAction(async () => {
+      await action();
+      onChange();
+    });
 
   return (
     <div className="companion-panel">
@@ -86,7 +87,7 @@ export function CompanionActions({
         <section className="member-panel-section">
           <h4>{t('companions.sections.firstCircle', { name: c.companion.firstName })}</h4>
           {c.firstCircleMembers.length === 0 ? (
-            <p style={{ margin: 0, color: 'var(--text-muted)' }}>{t('companions.firstCircleAlone')}</p>
+            <p className="muted" style={{ margin: 0 }}>{t('companions.firstCircleAlone')}</p>
           ) : (
             <div>
               {c.firstCircleMembers.map((m) => (
@@ -250,20 +251,15 @@ function DeathNoticeControls({
   onError: (m: string) => void;
 }) {
   const { t } = useTranslation();
-  const [busy, setBusy] = useState(false);
+  const { busy, run: runAction } = useAction({ onError });
   const [announcement, setAnnouncement] = useState<DeathNoticeAnnouncement | null>(null);
+  const [askingReport, setAskingReport] = useState(false);
 
-  const run = async (action: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
+  const run = (action: () => Promise<unknown>) =>
+    runAction(async () => {
       await action();
       onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
   const { deathNotice } = companion;
   const companionId = companion.companion.id;
@@ -279,7 +275,7 @@ function DeathNoticeControls({
           onClick={() =>
             getDeathNoticeAnnouncement(companionId)
               .then(setAnnouncement)
-              .catch((err) => onError(err instanceof ApiError ? err.message : String(err)))
+              .catch((err) => onError(errorText(err)))
           }
         >
           {t('companions.deathNotice.viewAnnouncement')}
@@ -320,15 +316,22 @@ function DeathNoticeControls({
 
   if (deathNotice.canReport) {
     return (
-      <button
-        className="ghost"
-        disabled={busy}
-        onClick={() => {
-          if (window.confirm(t('companions.deathNotice.confirmReport'))) void run(() => reportDeath(companionId));
-        }}
-      >
-        {t('companions.deathNotice.report')}
-      </button>
+      <>
+        <button className="ghost" disabled={busy} onClick={() => setAskingReport(true)}>
+          {t('companions.deathNotice.report')}
+        </button>
+        {askingReport && (
+          <ConfirmModal
+            message={t('companions.deathNotice.confirmReport')}
+            confirmLabel={t('companions.deathNotice.report')}
+            onConfirm={() => {
+              setAskingReport(false);
+              void run(() => reportDeath(companionId));
+            }}
+            onCancel={() => setAskingReport(false)}
+          />
+        )}
+      </>
     );
   }
 

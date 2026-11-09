@@ -130,6 +130,13 @@ enum Gender {
   NEUTRAL
 }
 
+enum LoginMethod {
+  EMAIL_PASSWORD
+  PHONE_PASSWORD
+  GOOGLE
+  SMS_CODE
+}
+
 model User {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
@@ -145,6 +152,10 @@ model User {
   passwordHash String?
   loginAttempts    Int       @default(0)
   loginLockedUntil DateTime?
+  lastLoginAt      DateTime?
+  // "Sign me out everywhere": any login token issued before this is refused.
+  sessionsValidAfter DateTime?
+
   gender Gender? // how texts speak about me; null = inclusive wording
 
 
@@ -164,7 +175,7 @@ model User {
   pendingPhone String?
 
   isMajor      Boolean @default(true)
-  publicStatus String?
+  publicStatus String? @db.VarChar(200)
 
   userType         UserType @default(ONLY_SMS)
  //hasPaid          Boolean  @default(false)
@@ -181,7 +192,7 @@ model User {
   passwordResetExpiresAt  DateTime?
 
   deceasedAt DateTime?
-  deathAnnouncementMessage String?
+  deathAnnouncementMessage String?  @db.Text
 
   myCircles   Circle[]        @relation("MyCirclesAsCompanion")
   myUserSentinels LinkSentinels[] @relation("SentinelCompanion")
@@ -197,6 +208,9 @@ model User {
   requestedAlertParticipations AlertParticipant[] @relation("AlertParticipantRequestedBy")
   statusUpdatedAlerts          Alert[]            @relation("AlertStatusUpdatedBy")
   labelUpdatedAlerts           Alert[]            @relation("AlertLabelUpdatedBy")
+
+  loginEvents        LoginEvent[]
+
 
   notifications      Notification[] @relation("NotificationRecipient")
   actorNotifications Notification[] @relation("NotificationActor")
@@ -323,15 +337,15 @@ model Alert {
   closedAt    DateTime?
 
   label        String
-  messageAlert String
+  messageAlert String  @db.Text
   alertStatus  AlertStatus @default(SENT)
   alertType    AlertType   @default(UNKNOWN)
 
   paidById String? // who paid for this single alert (outside any subscription)
   paidBy   User?   @relation("AlertPaidBy", fields: [paidById], references: [id], onDelete: Restrict)
 
-  statusByCompanion   String?
-  statusByFirstCircle String?
+  statusByCompanion   String?  @db.VarChar(500)
+  statusByFirstCircle String?  @db.VarChar(500)
   statusUpdatedById String?
   statusUpdatedBy   User?     @relation("AlertStatusUpdatedBy", fields: [statusUpdatedById], references: [id], onDelete: Restrict)
   statusUpdatedAt   DateTime?
@@ -435,7 +449,7 @@ model Message {
   //editedAt  DateTime?
   deletedAt DateTime?
 
-  body String
+  body String @db.Text
   type MessageType @default(TEXT)
 
   senderId String
@@ -485,6 +499,25 @@ model AlertQuestion {
   alertParticipant   AlertParticipant @relation(fields: [alertParticipantId], references: [id], onDelete: Restrict)
 
   @@index([alertParticipantId, createdAt])
+}
+
+// One line per sign-in attempt on an account, success or failure: shown to
+// the person in their Settings and counted on the admin page. Kept 90 days
+// (RetentionService). The IP is stored cut short (its last part removed).
+model LoginEvent {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  method    LoginMethod
+  success   Boolean
+  ipPrefix  String? @db.VarChar(64)
+  userAgent String? @db.VarChar(255)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 /*

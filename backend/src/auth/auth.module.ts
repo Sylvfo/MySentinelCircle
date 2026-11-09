@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { OTP_SENDER } from './otp/otp-sender.interface';
 import { ConsoleOtpSenderService } from './otp/console-otp-sender.service';
+import { LoginLogService } from './login-log.service';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ConsoleOtpSenderService } from './otp/console-otp-sender.service';
   ],
   providers: [
     AuthService,
+    LoginLogService,
     JwtStrategy,
     { provide: OTP_SENDER, useClass: ConsoleOtpSenderService },
   ],

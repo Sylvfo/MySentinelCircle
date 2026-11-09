@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
+import { errorText } from '../api/client';
 import { MessageBubbles } from '../components/MessageBubbles';
+import { AttachMenu } from '../components/ChatComposer';
 import { NOTIFICATIONS_CHANGED } from '../api/notification';
 import {
   getSupportConversation,
@@ -12,6 +13,9 @@ import {
   sendMessage,
   type Message,
 } from '../api/messaging';
+import { useSocketEvent } from '../realtime/useSocketEvent';
+import { Loading } from '../components/Loading';
+import { useAction } from '../useAction';
 
 // Give feedback: the user's own thread with the team — an ordinary direct
 // conversation with the feedback inbox account (backend SupportService),
@@ -23,16 +27,14 @@ type Kind = (typeof KINDS)[number];
 
 export function FeedbackPage() {
   const { t } = useTranslation();
-  const { user, socket } = useAuth();
+  const { user } = useAuth();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [kind, setKind] = useState<Kind | null>(null);
   const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [attachOpen, setAttachOpen] = useState(false);
+  const { busy: sending, error, setError, run } = useAction();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // listMessages() also marks the team's replies read (About badge clears).
@@ -47,57 +49,38 @@ export function FeedbackPage() {
         setConversationId(conv.id);
         await reload(conv.id);
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
+      .catch((err) => setError(errorText(err)))
       .finally(() => setLoading(false));
-  }, []);
+    // setError never changes (a state setter, through useAction).
+  }, [setError]);
 
-  useEffect(() => {
-    if (!socket || !conversationId) return;
-    const onNewMessage = (payload: { conversationId: string }) => {
-      if (payload.conversationId === conversationId) void reload(conversationId);
-    };
-    socket.on('message:new', onNewMessage);
-    return () => {
-      socket.off('message:new', onNewMessage);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, conversationId]);
+  useSocketEvent('message:new', (payload: { conversationId: string }) => {
+    if (payload.conversationId === conversationId) void reload(conversationId);
+  });
 
-  const submit = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!conversationId || !draft.trim()) return;
-    setSending(true);
-    setError(null);
-    try {
+    void run(async () => {
       const prefix = kind ? `${t(`feedback.kinds.${kind}`)} : ` : '';
       await sendMessage(conversationId, prefix + draft.trim());
       setDraft('');
       setKind(null);
       setSent(true);
       await reload(conversationId);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSending(false);
-    }
+    });
   };
 
   // A screenshot or photo, sent as its own message (same as in Messages).
-  const submitImage = async (e: ChangeEvent<HTMLInputElement>) => {
+  const submitImage = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!conversationId || !file) return;
-    setSending(true);
-    setError(null);
-    try {
+    void run(async () => {
       await sendImageMessage(conversationId, file);
       setSent(true);
       await reload(conversationId);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSending(false);
-    }
+    });
   };
 
   return (
@@ -107,7 +90,7 @@ export function FeedbackPage() {
       <p className="form-hint">{t('feedback.intro')}</p>
 
       {loading ? (
-        <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>
+        <Loading />
       ) : !conversationId ? (
         <p className="form-error">{error ?? t('feedback.unavailable')}</p>
       ) : (
@@ -128,7 +111,7 @@ export function FeedbackPage() {
               ))}
             </div>
             <textarea
-              id="feedback-message"
+              id="feedback-message" maxLength={1900}
               rows={4}
               placeholder={t('feedback.placeholder')}
               value={draft}
@@ -139,40 +122,7 @@ export function FeedbackPage() {
             />
             <div className="feedback-actions">
               {/* "+" menu, as in a conversation: a photo now, more later. */}
-              <div className="compose-attach">
-                <button
-                  type="button"
-                  className="compose-icon-btn"
-                  aria-label={t('conversation.attach')}
-                  aria-expanded={attachOpen}
-                  disabled={sending}
-                  onClick={() => setAttachOpen((o) => !o)}
-                >
-                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                </button>
-                {attachOpen && (
-                  <div className="compose-attach-menu" role="menu">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setAttachOpen(false);
-                        fileInputRef.current?.click();
-                      }}
-                    >
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-                        <rect x="3" y="5" width="18" height="14" rx="2" />
-                        <circle cx="8.5" cy="10" r="1.6" />
-                        <path d="M21 16 L15.5 11 L6 19" />
-                      </svg>
-                      {t('conversation.attachPhoto')}
-                    </button>
-                  </div>
-                )}
-              </div>
+              <AttachMenu disabled={sending} onPickPhoto={() => fileInputRef.current?.click()} />
               {/* Small hint next to the "+": a screenshot often says more. */}
               <button
                 type="button"

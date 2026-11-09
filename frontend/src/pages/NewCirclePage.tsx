@@ -1,12 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
-import { ApiError } from '../api/client';
 import { createCircle, createGroup, type Circle } from '../api/sentinel';
 import { Tile } from '../components/Tile';
 import { UpgradeNotice } from '../components/Upgrade';
 import { usePlan } from '../plan';
 import { IncludedStar } from '../components/SubscribedStar';
+import { useAction } from '../useAction';
 
 // One page per creation flow (reached from My Circles), each with a short
 // explanation above the form. Both only take a name for now.
@@ -46,20 +46,14 @@ function CreatePage({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [label, setLabel] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { busy: submitting, error, run } = useAction();
 
-  const submit = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
+    void run(async () => {
       const created = await create(label.trim());
       navigate(expandAfter ? `/circles/${created.id}` : '/circles');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -69,7 +63,7 @@ function CreatePage({
         {t(`${i18nKey}.title`)}
         {included && <IncludedStar />}
       </h1>
-      <p style={{ color: 'var(--text-muted)' }}>{t(`${i18nKey}.intro`)}</p>
+      <p className="muted">{t(`${i18nKey}.intro`)}</p>
       {locked ? (
         <UpgradeNotice reason="groups" />
       ) : (

@@ -28,6 +28,7 @@ import { PersonPage } from './pages/PersonPage';
 import { LegalPage } from './pages/legal/LegalPage';
 import { PlansPage } from './pages/PlansPage';
 import { NewCompanionPage } from './pages/NewCompanionPage';
+import { AdminPage } from './pages/AdminPage';
 
 function App() {
   return (
@@ -69,6 +70,7 @@ function App() {
             <Route path="/messages/:userId" element={<ConversationPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/plans" element={<PlansPage />} />
+            <Route path="/admin" element={<AdminPage />} />
             <Route path="/info" element={<InfoPage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/people/:userId" element={<PersonPage />} />

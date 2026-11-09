@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ApiError } from "../api/client";
 import { PRIMARY_AVATAR_COLOR, circlePalette } from "../theme";
 import { Modal } from "./Modal";
 import {
@@ -11,6 +10,7 @@ import {
   type Membership,
 } from "../api/sentinel";
 import { genderContext } from "../gender";
+import { useAction } from '../useAction';
 
 // What I can do about one of my Sentinels (role, placement) —
 // shown on their person page (PersonPage), under "watches over you".
@@ -51,16 +51,15 @@ export function SentinelActions({
   const [pending, setPending] = useState<{ text: string; confirm: string; danger?: boolean; run: () => Promise<unknown> } | null>(null);
   const ask = (text: string, confirm: string, run: () => Promise<unknown>, danger = false) =>
     setPending({ text, confirm, run, danger });
-  const runPending = async () => {
+  const { run } = useAction({ onError });
+  const runPending = () => {
     const p = pending;
     setPending(null);
-    if (!p) return;
-    try {
-      await p.run();
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
+    if (p)
+      void run(async () => {
+        await p.run();
+        onChange();
+      });
   };
   const name = m.linkAsSentinel.firstName;
   const circleLabel = (id: string) => circles.find((c) => c.id === id)?.label ?? "";
@@ -137,7 +136,7 @@ export function SentinelActions({
               {m.leadSlot && (
                 <label className="row" style={{ gap: "0.3rem" }}>
                   <span
-                    style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}
+                    className="muted" style={{ fontSize: "0.85rem" }}
                   >
                     {t("circles.leadOrder.label")}
                   </span>

@@ -2,6 +2,11 @@ services:
   mariadb:
     image: mariadb:11
     container_name: mysentinelcircle-db
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     restart: unless-stopped
     environment:
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
@@ -22,6 +27,11 @@ services:
     build:
       context: ./backend
     container_name: mysentinelcircle-backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     restart: unless-stopped
     env_file:
       - backend/.env
@@ -44,6 +54,11 @@ services:
     build:
       context: ./frontend
     container_name: mysentinelcircle-frontend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     restart: unless-stopped
     environment:
       VITE_API_URL: ""
@@ -59,6 +74,11 @@ services:
     build:
       context: ./nginx
     container_name: mysentinelcircle-nginx
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     restart: unless-stopped
     ports:
       - "8081:80"

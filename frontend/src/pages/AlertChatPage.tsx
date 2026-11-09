@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { isChatClosed, listMyAlertChats, type AlertChatSummary } from '../api/messaging';
-import { AlertDetailPanel, ConversationThread } from './AlertsPage';
+import { AlertDetailPanel } from '../components/AlertDetailPanel';
+import { ConversationThread } from '../components/ConversationThread';
 import { alertChatKind, alertChatTitle } from '../alertChatName';
+import { Loading } from '../components/Loading';
 
 // /messages/alert/:conversationId — an alert's chat, in Messages:
 // - the 1st-circle room: with the room's tools above it (responsible Lead,
@@ -23,7 +25,7 @@ export function AlertChatPage() {
       .catch(() => setChat(null));
   }, [conversationId]);
 
-  if (chat === undefined) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
+  if (chat === undefined) return <Loading />;
   if (chat === null) return <Navigate to="/messages" replace />;
 
   const resolved = chat.alertStatus === 'RESOLVED';

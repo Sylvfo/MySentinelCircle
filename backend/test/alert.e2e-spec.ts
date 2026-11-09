@@ -479,6 +479,62 @@ describe('Alert (e2e)', () => {
     });
   });
 
+  describe('long texts', () => {
+    it('keeps a 2,000-character alert text with its position and a 500-character status note, and refuses longer', async () => {
+      const companion = await signupAccount('Ada');
+      await buildFirstCircle(companion.accessToken, 2);
+      const reason = 'a'.repeat(2000);
+
+      await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason: `${reason}b`,
+        })
+        .expect(400);
+
+      // The position is added to the text: the column must hold more than the 2,000 typed.
+      const res = await request(app.getHttpServer())
+        .post('/alert/raise')
+        .set('Authorization', auth(companion.accessToken))
+        .send({
+          companionId: companion.userId,
+          alertType: AlertType.BYCOMPANION,
+          reason,
+          location: { latitude: 46.2044, longitude: 6.1432, accuracy: 20 },
+        })
+        .expect(201);
+      const alert = res.body as AlertBody;
+      expect(alert.messageAlert.startsWith(reason)).toBe(true);
+      expect(alert.messageAlert.length).toBeGreaterThan(2000);
+
+      const note = 'n'.repeat(500);
+      await request(app.getHttpServer())
+        .patch(`/alert/${alert.id}/status`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ message: `${note}x` })
+        .expect(400);
+      await request(app.getHttpServer())
+        .patch(`/alert/${alert.id}/status`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ message: note })
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/alert/${alert.id}/label`)
+        .set('Authorization', auth(companion.accessToken))
+        .send({ label: 'l'.repeat(121) })
+        .expect(400);
+
+      const detailRes = await request(app.getHttpServer())
+        .get(`/alert/${alert.id}`)
+        .set('Authorization', auth(companion.accessToken))
+        .expect(200);
+      expect((detailRes.body as AlertDetailBody).statusByCompanion).toBe(note);
+    });
+  });
+
   describe('POST /alert/:id/close', () => {
     async function raiseAlert(companion: {
       accessToken: string;

@@ -3,10 +3,11 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { addSubscriptionYear, type Plan } from '../api/user';
-import { ApiError } from '../api/client';
 import type { UpgradeReason } from '../plan';
 import { Modal } from './Modal';
 import { genderContext, type Gender } from '../gender';
+import { LockShape } from './icons';
+import { useAction } from '../useAction';
 
 // Shown where a paid feature is reached on a free account: what's missing
 // and a link to the Plans page.
@@ -59,8 +60,7 @@ export function PayForAlertChoice({
 function LockIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="5" y="11" width="14" height="10" rx="2" />
-      <path d="M8 11 V7.5 a4 4 0 0 1 8 0 V11" fill="none" />
+      <LockShape />
     </svg>
   );
 }
@@ -130,22 +130,14 @@ export function GiftYearButton({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { busy, error, run } = useAction();
 
-  const gift = async () => {
-    setBusy(true);
-    setError(null);
-    try {
+  const gift = () =>
+    run(async () => {
       await addSubscriptionYear(userId);
       setOpen(false);
       onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
   return (
     <span className="gift-year-wrap" onClick={(e) => e.stopPropagation()}>

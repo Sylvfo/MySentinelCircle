@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { requestOtp } from '../api/auth';
-import { ApiError } from '../api/client';
+import { useAction } from '../useAction';
 
 // The login reached from a SMS link: number, then code, nothing else. Someone
 // who has no account has no password to look for.
@@ -10,21 +10,14 @@ export function SmsCodeLogin() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [phone, setPhone] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { busy: submitting, error, run } = useAction({ fallback: t('auth.errors.generic') });
 
-  const submit = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
+    void run(async () => {
       const { userId } = await requestOtp(phone.trim());
       navigate('/otp', { state: { userId, phone, next: '/a' } });
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (

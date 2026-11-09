@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiError } from '../api/client';
+import { useAction } from '../useAction';
 import { stepUpPassword, stepUpGoogle, stepUpCodeRequest, stepUpCodeVerify, type Me } from '../api/user';
 import { GoogleSignInButton } from './GoogleSignInButton';
+import { Loading } from './Loading';
 
 type Method = 'password' | 'google' | 'code';
 
@@ -24,62 +25,38 @@ export function StepUpPanel({
   const [password, setPassword] = useState('');
   const [channel, setChannel] = useState<'phone' | 'email' | null>(null);
   const [code, setCode] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const { busy: submitting, run } = useAction({ onError });
 
   const canPassword = me.hasPassword;
   const canGoogle = me.hasGoogle;
   const canPhone = !!(me.phone && me.phoneVerifiedAt);
   const canEmail = !!me.email;
 
-  const submitPassword = async (e: FormEvent) => {
+  // Proven with one credential: the change can go on.
+  const verify = (check: () => Promise<unknown>) =>
+    void run(async () => {
+      await check();
+      onVerified();
+    });
+
+  const submitPassword = (e: FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-    try {
-      await stepUpPassword(password);
-      onVerified();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
+    verify(() => stepUpPassword(password));
   };
 
-  const onGoogleCredential = async (idToken: string) => {
-    setSubmitting(true);
-    try {
-      await stepUpGoogle(idToken);
-      onVerified();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const onGoogleCredential = (idToken: string) => verify(() => stepUpGoogle(idToken));
 
-  const requestCode = async (ch: 'phone' | 'email') => {
+  const requestCode = (ch: 'phone' | 'email') => {
     setMethod('code');
-    setSubmitting(true);
-    try {
+    void run(async () => {
       await stepUpCodeRequest(ch);
       setChannel(ch);
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
-  const submitCode = async (e: FormEvent) => {
+  const submitCode = (e: FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-    try {
-      await stepUpCodeVerify(code);
-      onVerified();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
+    verify(() => stepUpCodeVerify(code));
   };
 
   if (method === 'password') {
@@ -101,7 +78,7 @@ export function StepUpPanel({
   }
 
   if (method === 'code') {
-    if (!channel) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
+    if (!channel) return <Loading />;
     return (
       <form onSubmit={submitCode}>
         <p>{channel === 'phone' ? t('settings.stepUp.codeSentPhone') : t('settings.stepUp.codeSentEmail')}</p>

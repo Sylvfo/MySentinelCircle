@@ -14,6 +14,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DEFAULT_CIRCLES } from '../sentinel/default-circles';
 import { OTP_SENDER } from './otp/otp-sender.interface';
 import { EMAIL_SENDER } from '../email/email-sender.interface';
+import { LoginMethod } from '@prisma/client';
+import { LoginLogService } from './login-log.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -28,6 +30,7 @@ describe('AuthService', () => {
   let otpSender: { send: jest.Mock };
   let emailSender: { send: jest.Mock };
   let config: { get: jest.Mock };
+  let loginLog: { record: jest.Mock; listMine: jest.Mock };
 
   beforeEach(async () => {
     config = { get: jest.fn() };
@@ -39,6 +42,7 @@ describe('AuthService', () => {
       },
     };
     jwt = { sign: jest.fn().mockReturnValue('signed-jwt') };
+    loginLog = { record: jest.fn(), listMine: jest.fn() };
     otpSender = { send: jest.fn() };
     emailSender = { send: jest.fn() };
 
@@ -50,6 +54,7 @@ describe('AuthService', () => {
         { provide: ConfigService, useValue: config },
         { provide: OTP_SENDER, useValue: otpSender },
         { provide: EMAIL_SENDER, useValue: emailSender },
+        { provide: LoginLogService, useValue: loginLog },
       ],
     }).compile();
 
@@ -767,9 +772,85 @@ describe('AuthService', () => {
           passwordHash: expect.any(String),
           passwordResetTokenHash: null,
           passwordResetExpiresAt: null,
+          sessionsValidAfter: expect.any(Date) as Date,
         },
       });
       expect(result).toEqual({ message: 'Password updated' });
+    });
+  });
+
+  describe('sign-in journal', () => {
+    const ctx = { ip: '203.0.113.42', userAgent: 'Firefox' };
+
+    it('notes a successful password sign-in, with where it came from', async () => {
+      const passwordHash = await bcrypt.hash('correct-password', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        email: 'ada@example.com',
+        passwordHash,
+        phone: null,
+        phoneVerifiedAt: null,
+        loginAttempts: 0,
+        loginLockedUntil: null,
+      });
+
+      await service.loginEmail(
+        { email: 'ada@example.com', password: 'correct-password' },
+        ctx,
+      );
+
+      expect(loginLog.record).toHaveBeenCalledWith(
+        'id',
+        LoginMethod.EMAIL_PASSWORD,
+        true,
+        ctx,
+      );
+    });
+
+    it('notes a wrong password as a failure, for the account owner to see', async () => {
+      const passwordHash = await bcrypt.hash('correct-password', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'id',
+        passwordHash,
+        loginAttempts: 0,
+        loginLockedUntil: null,
+      });
+
+      await expect(
+        service.loginPhone(
+          { phone: '+41790000000', password: 'wrong-password' },
+          ctx,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(loginLog.record).toHaveBeenCalledWith(
+        'id',
+        LoginMethod.PHONE_PASSWORD,
+        false,
+        ctx,
+      );
+    });
+
+    it('notes nothing for an unknown account', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.loginEmail(
+          { email: 'nobody@example.com', password: 'whatever-pass' },
+          ctx,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(loginLog.record).not.toHaveBeenCalled();
+    });
+
+    it('signs out everywhere by moving the date tokens must be issued after', async () => {
+      await service.logoutEverywhere('id');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'id' },
+        data: { sessionsValidAfter: expect.any(Date) as Date },
+      });
     });
   });
 });

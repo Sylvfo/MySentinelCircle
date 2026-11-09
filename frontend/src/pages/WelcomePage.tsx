@@ -3,7 +3,8 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { completeProfile, requestEmailChange } from '../api/user';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
+import { useAction } from '../useAction';
+import { EmailField, PasswordField } from '../components/AuthFields';
 
 export function WelcomePage() {
   const { user, loading, refreshUser } = useAuth();
@@ -16,40 +17,27 @@ export function WelcomePage() {
   const [password, setPassword] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { busy: submitting, error, run } = useAction({ fallback: t('auth.errors.generic') });
 
-  if (loading) return <p className="page-loading">Chargement…</p>;
+  if (loading) return <p className="page-loading">{t('common.loading')}</p>;
   if (!user) return <Navigate to="/login" replace />;
   if (step === 'profile' && user.userType !== 'ONLY_SMS') return <Navigate to="/dashboard" replace />;
 
-  const handleProfileSubmit = async (e: FormEvent) => {
+  const handleProfileSubmit = (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
+    void run(async () => {
       await completeProfile(firstName.trim(), password, lastName.trim() || undefined);
       setStep('email');
       await refreshUser();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
-  const handleEmailSubmit = async (e: FormEvent) => {
+  const handleEmailSubmit = (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
+    void run(async () => {
       await requestEmailChange(email.trim());
       setStep('emailSent');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   if (step === 'profile') {
@@ -57,7 +45,7 @@ export function WelcomePage() {
       <div className="auth-page">
         <h1>{t('welcome.title')}</h1>
         {user.firstName && (
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('welcome.alreadySentinel')}</p>
+          <p className="muted muted-small">{t('welcome.alreadySentinel')}</p>
         )}
         <form onSubmit={handleProfileSubmit}>
           <label>
@@ -68,16 +56,7 @@ export function WelcomePage() {
             {t('auth.lastName')}
             <input maxLength={80} value={lastName} onChange={(e) => setLastName(e.target.value)} />
           </label>
-          <label>
-            {t('auth.password')}
-            <input
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
+          <PasswordField label={t('auth.password')} value={password} onChange={setPassword} />
           {error && <p className="form-error">{error}</p>}
           <button type="submit" disabled={submitting || !firstName.trim()}>
             {t('auth.continue')}
@@ -92,30 +71,23 @@ export function WelcomePage() {
       <h1>{t('welcome.emailTitle')}</h1>
       {step === 'email' ? (
         <>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('welcome.emailHint')}</p>
+          <p className="muted muted-small">{t('welcome.emailHint')}</p>
           <form onSubmit={handleEmailSubmit}>
-            <label>
-              {t('auth.email')}
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
+            <EmailField value={email} onChange={setEmail} />
             {error && <p className="form-error">{error}</p>}
             <button type="submit" disabled={submitting}>
               {t('welcome.emailSubmit')}
             </button>
           </form>
           <p className="switch-link">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer' }}
-            >
+            <button type="button" className="link-button" onClick={() => navigate('/dashboard')}>
               {t('welcome.later')}
             </button>
           </p>
         </>
       ) : (
         <>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('welcome.emailSent', { email })}</p>
+          <p className="muted muted-small">{t('welcome.emailSent', { email })}</p>
           <button type="button" onClick={() => navigate('/dashboard')}>
             {t('auth.continue')}
           </button>

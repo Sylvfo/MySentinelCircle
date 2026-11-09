@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { signupEmail, signupGoogle } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
-import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { useAction } from '../useAction';
+import { EmailField, LanguageRow, PasswordField } from '../components/AuthFields';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { TermsCheckbox } from '../components/TermsGate';
 import { GenderSelect } from '../components/GenderSelect';
@@ -32,11 +32,10 @@ export function SignupPage() {
 
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [gender, setGender] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const { applyToken } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { busy: submitting, error, run } = useAction({ fallback: t('auth.errors.signup') });
 
   const handleStep1EmailNext = (e: FormEvent) => {
     e.preventDefault();
@@ -54,12 +53,10 @@ export function SignupPage() {
     if (!usernameEdited) setUserName(suggestUsername(value));
   };
 
-  const handleStep2Submit = async (e: FormEvent) => {
+  const handleStep2Submit = (e: FormEvent) => {
     e.preventDefault();
     if (!credential || !termsAccepted) return;
-    setError(null);
-    setSubmitting(true);
-    try {
+    void run(async () => {
       const { accessToken } =
         credential.method === 'email'
           ? await signupEmail(
@@ -80,37 +77,19 @@ export function SignupPage() {
 
       await applyToken(accessToken);
       navigate('/dashboard');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.signup'));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
     <div className="auth-page">
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <LanguageSwitcher />
-      </div>
+      <LanguageRow />
       <h1>{t('auth.signupTitle')}</h1>
 
       {step === 1 ? (
         <>
           <form onSubmit={handleStep1EmailNext}>
-            <label>
-              {t('auth.email')}
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-            <label>
-              {t('auth.password')}
-              <input
-                type="password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </label>
+            <EmailField value={email} onChange={setEmail} />
+            <PasswordField label={t('auth.password')} value={password} onChange={setPassword} />
             <button type="submit">{t('auth.continue')}</button>
           </form>
 
@@ -128,12 +107,12 @@ export function SignupPage() {
               type="text"
               required
               value={firstName}
-              onChange={(e) => handleFirstNameChange(e.target.value)}
+              onChange={(e) => handleFirstNameChange(e.target.value)} maxLength={80}
             />
           </label>
           <label>
             {t('auth.lastName')}
-            <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+            <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={80} />
           </label>
           <label>
             {t('auth.username')}
@@ -149,12 +128,12 @@ export function SignupPage() {
               }}
             />
           </label>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('auth.usernameHint')}</p>
+          <p className="muted muted-small">{t('auth.usernameHint')}</p>
           <label>
             {t('gender.label')}
             <GenderSelect value={gender} onChange={setGender} />
           </label>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('gender.hint')}</p>
+          <p className="muted muted-small">{t('gender.hint')}</p>
           <TermsCheckbox checked={termsAccepted} onChange={setTermsAccepted} />
           {error && <p className="form-error">{error}</p>}
           <button type="submit" disabled={submitting || !termsAccepted}>

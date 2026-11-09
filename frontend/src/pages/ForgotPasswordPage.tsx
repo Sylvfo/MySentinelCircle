@@ -2,47 +2,35 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { requestPasswordReset } from '../api/auth';
-import { ApiError } from '../api/client';
-import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { useAction } from '../useAction';
+import { EmailField, LanguageRow } from '../components/AuthFields';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const { t } = useTranslation();
+  const { busy, error, run } = useAction({ fallback: t('auth.errors.generic') });
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
+    void run(async () => {
       await requestPasswordReset(email);
       setSent(true);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
     <div className="auth-page">
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <LanguageSwitcher />
-      </div>
+      <LanguageRow />
       <h1>{t('auth.forgotTitle')}</h1>
 
       {sent ? (
         <p>{t('auth.forgotSent')}</p>
       ) : (
         <form onSubmit={handleSubmit}>
-          <label>
-            {t('auth.email')}
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
+          <EmailField value={email} onChange={setEmail} />
           {error && <p className="form-error">{error}</p>}
-          <button type="submit" disabled={submitting}>
+          <button type="submit" disabled={busy}>
             {t('auth.forgotSubmit')}
           </button>
         </form>

@@ -71,6 +71,11 @@ export function UserMenu() {
           <Link to="/settings" role="menuitem">
             {t('nav.settings')}
           </Link>
+          {user.isAdmin && (
+            <Link to="/admin" role="menuitem">
+              {t('nav.admin')}
+            </Link>
+          )}
           {/* Quick day/night switch (the full choice, incl. Automatic, is in
               Settings). */}
           <button type="button" role="menuitem" onClick={() => setThemeChoice(isDark ? 'light' : 'dark')}>

@@ -1,10 +1,9 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { addSubscriptionYear } from '../api/user';
-import { ApiError } from '../api/client';
 import { Tile } from '../components/Tile';
 import { usePlan } from '../plan';
 import { IncludedStar } from '../components/SubscribedStar';
+import { useAction } from '../useAction';
 
 // Free vs paid for private users (organisations come later). The lists
 // must match what the backend actually enforces (backend/src/user/
@@ -16,27 +15,19 @@ export function PlansPage() {
   const { t, i18n } = useTranslation();
   const { plan, reload } = usePlan();
   const current = plan?.hasPaid ? 'paid' : 'free';
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { busy, error, run } = useAction();
   const until = plan?.paidUntil ? new Date(plan.paidUntil).toLocaleDateString(i18n.language) : null;
 
-  const subscribe = async () => {
-    setBusy(true);
-    setError(null);
-    try {
+  const subscribe = () =>
+    run(async () => {
       await addSubscriptionYear();
       reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
   return (
     <div className="plans-page">
       <h1>{t('plans.title')}</h1>
-      <p style={{ color: 'var(--text-muted)' }}>{t('plans.intro')}</p>
+      <p className="muted">{t('plans.intro')}</p>
       {plan && !plan.hasPaid && plan.freeAlertsLeft !== null && (
         <p className="plans-usage">{t('plans.alertsLeft', { count: plan.freeAlertsLeft, limit: plan.freeAlertLimit })}</p>
       )}

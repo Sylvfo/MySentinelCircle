@@ -1,76 +1,73 @@
-import type { Circle, Companion } from './api/sentinel';
+import type { Circle, Companion, Membership } from './api/sentinel';
 import { PRIMARY_AVATAR_COLOR, PRIMARY_LEAD_COLOR, circlePalette, companionColor, companionGold } from './theme';
 
-// Colors of the two possible links with one person, so they look the same
-// everywhere as on My Circles (their Sentinel avatar) and My Companions
-// (their companion outline). null = no such link.
+// Everything the app shows about one person, found in one pass over my two
+// lists: they watch over me (in one of my circles), I watch over them, or
+// both — or we're both in the 1st circle of someone I watch over.
+export interface Relation {
+  // They watch over me: their row in one of my circles, whatever its
+  // status. One at most: one link ever per pair (plan.txt).
+  sentinel: { circle: Circle; membership: Membership } | null;
+  // I watch over them.
+  companion: Companion | null;
+  // Colors of the two links, the same everywhere as on My Circles (their
+  // Sentinel avatar) and My Companions (their companion outline). null = no
+  // such link.
+  sentinelColor: string | null;
+  companionColor: string | null;
+  // Their profile photo's file name (PersonAvatar's cache key); null = none.
+  avatarPath: string | null;
+  // Their status line, as known to me (null = none, or not visible to me).
+  publicStatus: string | null;
+  // On pause, as far as it concerns me: a Sentinel of mine (or a 1st-circle
+  // co-member) paused for others, or a companion of mine paused for me.
+  paused: boolean;
+  // A running subscription: the gold star.
+  subscribed: boolean;
+}
 
-// They watch over me: same rule as CircleRing — gold family in my 1st circle
-// (darker for a Lead), otherwise their circle's own color.
-export function mySentinelColor(circles: Circle[], userId: string): string | null {
+export function relationOf(circles: Circle[], companions: Companion[], userId: string): Relation {
+  const memberships = circles.flatMap((circle) =>
+    circle.userSentinels.filter((s) => s.linkAsSentinel.id === userId).map((membership) => ({ circle, membership })),
+  );
+  const asSentinel = memberships.map((m) => m.membership.linkAsSentinel);
+  const companion = companions.find((c) => c.companion.id === userId) ?? null;
+  // Seen in the 1st circle of someone I watch over.
+  const coMembers = companions.flatMap((c) => c.firstCircleMembers.filter((f) => f.id === userId));
+
+  return {
+    sentinel: memberships[0] ?? null,
+    companion,
+    sentinelColor: sentinelColorOf(circles, memberships.find((m) => m.membership.status === 'ACCEPTED')),
+    // I watch over them: gold when I'm in their 1st circle, else their own shade.
+    companionColor: companion
+      ? (companionGold(!!companion.leadSlot, companion.circle.isPrimary) ?? companionColor(userId))
+      : null,
+    avatarPath: companion ? companion.companion.avatarPath : (asSentinel[0]?.avatarPath ?? null),
+    // `||`, not `??`: an empty status line counts as none.
+    publicStatus:
+      companion?.companion.publicStatus ||
+      asSentinel.find((s) => s.publicStatus)?.publicStatus ||
+      coMembers.find((f) => f.publicStatus)?.publicStatus ||
+      null,
+    paused:
+      !!companion?.companion.pausedForMe ||
+      asSentinel.some((s) => s.pausedForOthers) ||
+      coMembers.some((f) => f.pausedForOthers),
+    subscribed:
+      !!companion?.companion.subscribed || asSentinel.some((s) => s.subscribed) || coMembers.some((f) => f.subscribed),
+  };
+}
+
+// They watch over me (accepted link only): same rule as CircleRing — gold
+// family in my 1st circle (darker for a Lead), otherwise their circle's own
+// color.
+function sentinelColorOf(circles: Circle[], accepted?: { circle: Circle; membership: Membership }): string | null {
+  if (!accepted) return null;
+  const { circle, membership } = accepted;
+  const isLead = membership.leadSlot !== null;
+  if (circle.circleType === 'FIRST') return isLead ? PRIMARY_LEAD_COLOR : PRIMARY_AVATAR_COLOR;
+  if (isLead) return PRIMARY_AVATAR_COLOR;
   const others = circles.filter((c) => c.circleType !== 'FIRST' && c.circleType !== 'RESERVED');
-  for (const c of circles) {
-    const m = c.userSentinels.find((s) => s.linkAsSentinel.id === userId && s.status === 'ACCEPTED');
-    if (!m) continue;
-    const isLead = m.leadSlot !== null;
-    if (c.circleType === 'FIRST') return isLead ? PRIMARY_LEAD_COLOR : PRIMARY_AVATAR_COLOR;
-    if (isLead) return PRIMARY_AVATAR_COLOR;
-    return circlePalette(Math.max(0, others.indexOf(c))).color;
-  }
-  return null;
-}
-
-// I watch over them: gold when I'm in their 1st circle, else their own shade.
-export function myCompanionColor(companions: Companion[], userId: string): string | null {
-  const c = companions.find((x) => x.companion.id === userId);
-  if (!c) return null;
-  return companionGold(!!c.leadSlot, c.circle.isPrimary) ?? companionColor(userId);
-}
-
-// Their profile photo's file name, from whichever list knows them (null =
-// no photo). Used as PersonAvatar's cache key.
-export function avatarPathOf(circles: Circle[], companions: Companion[], userId: string): string | null {
-  const comp = companions.find((c) => c.companion.id === userId);
-  if (comp) return comp.companion.avatarPath;
-  for (const c of circles) {
-    const m = c.userSentinels.find((s) => s.linkAsSentinel.id === userId);
-    if (m) return m.linkAsSentinel.avatarPath ?? null;
-  }
-  return null;
-}
-
-// Their status line, as known to me: they're linked to me, or we share a
-// 1st circle of someone I watch over (null = none, or not visible to me).
-export function publicStatusOf(circles: Circle[], companions: Companion[], userId: string): string | null {
-  const comp = companions.find((c) => c.companion.id === userId);
-  if (comp?.companion.publicStatus) return comp.companion.publicStatus;
-  for (const c of circles) {
-    const m = c.userSentinels.find((s) => s.linkAsSentinel.id === userId);
-    if (m?.linkAsSentinel.publicStatus) return m.linkAsSentinel.publicStatus;
-  }
-  for (const c of companions) {
-    const m = c.firstCircleMembers.find((f) => f.id === userId);
-    if (m?.publicStatus) return m.publicStatus;
-  }
-  return null;
-}
-
-// On pause, as far as it concerns me: a Sentinel of mine (or a 1st-circle
-// co-member) paused for others, or a companion of mine paused for me.
-export function isPausedOf(circles: Circle[], companions: Companion[], userId: string): boolean {
-  if (companions.some((c) => c.companion.id === userId && c.companion.pausedForMe)) return true;
-  for (const c of circles) {
-    if (c.userSentinels.some((s) => s.linkAsSentinel.id === userId && s.linkAsSentinel.pausedForOthers)) return true;
-  }
-  return companions.some((c) => c.firstCircleMembers.some((f) => f.id === userId && f.pausedForOthers));
-}
-
-// Same lookup for the gold star: a running subscription, seen by the
-// people linked to them.
-export function isSubscribedOf(circles: Circle[], companions: Companion[], userId: string): boolean {
-  if (companions.some((c) => c.companion.id === userId && c.companion.subscribed)) return true;
-  for (const c of circles) {
-    if (c.userSentinels.some((s) => s.linkAsSentinel.id === userId && s.linkAsSentinel.subscribed)) return true;
-  }
-  return companions.some((c) => c.firstCircleMembers.some((f) => f.id === userId && f.subscribed));
+  return circlePalette(Math.max(0, others.indexOf(circle))).color;
 }

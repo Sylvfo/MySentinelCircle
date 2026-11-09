@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useAuth } from './auth/AuthContext';
 import { NOTIFICATIONS_CHANGED, getUnreadCount } from './api/notification';
+import { useSocketEvent } from './realtime/useSocketEvent';
 
 // Unread counts shared by every badge (the bell, the Messages tab in the
 // bottom bar and in the side nav): one request feeds them all, instead of
@@ -41,7 +41,6 @@ export function useUnreadCounts(): UnreadCounts {
 // Mounted once (AppShell): refreshes on navigation, on a live notification,
 // and when a page marks notifications read itself (opening a conversation).
 export function useUnreadCountsRefresher() {
-  const { socket } = useAuth();
   const { pathname } = useLocation();
 
   useEffect(() => {
@@ -53,11 +52,5 @@ export function useUnreadCountsRefresher() {
     return () => window.removeEventListener(NOTIFICATIONS_CHANGED, refreshUnreadCounts);
   }, []);
 
-  useEffect(() => {
-    if (!socket) return;
-    socket.on('notification:new', refreshUnreadCounts);
-    return () => {
-      socket.off('notification:new', refreshUnreadCounts);
-    };
-  }, [socket]);
+  useSocketEvent('notification:new', refreshUnreadCounts);
 }

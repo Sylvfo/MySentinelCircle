@@ -3,9 +3,9 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
 import { updatePause } from '../api/user';
 import { Modal } from './Modal';
+import { useAction } from '../useAction';
 
 // Reminder that one of my pauses is on, linking to Settings where it's
 // changed. `which` = the pause that matters on this page: My Circles shows
@@ -34,8 +34,10 @@ export function PausePill({ which, small }: { which: 'forMe' | 'forOthers'; smal
   const key = which === 'forMe' ? 'pausedForMe' : 'pausedForOthers';
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { busy: saving, run } = useAction({
+    onError: (m) => setError(m.startsWith('You are a Lead') ? t('pause.settings.leadBlocked') : m),
+  });
   if (!user?.[key]) return null;
 
   const openModal = (e: MouseEvent) => {
@@ -44,19 +46,13 @@ export function PausePill({ which, small }: { which: 'forMe' | 'forOthers'; smal
     setError(null);
     setOpen(true);
   };
-  const save = async () => {
-    setSaving(true);
+  const save = () => {
     setError(null);
-    try {
+    return run(async () => {
       await updatePause({ [key]: value });
       await refreshUser();
       setOpen(false);
-    } catch (err) {
-      const m = err instanceof ApiError ? err.message : String(err);
-      setError(m.startsWith('You are a Lead') ? t('pause.settings.leadBlocked') : m);
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   return (

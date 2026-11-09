@@ -19,9 +19,13 @@ import { SentinelService } from './sentinel.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import { NotificationService } from '../notification/notification.service';
+import { GroupService } from './group.service';
+import { DeathNoticeService } from './death-notice.service';
 
 describe('SentinelService', () => {
   let service: SentinelService;
+  let groups: GroupService;
+  let deathNotice: DeathNoticeService;
   let prisma: {
     circle: {
       findFirst: jest.Mock;
@@ -104,6 +108,8 @@ describe('SentinelService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SentinelService,
+        GroupService,
+        DeathNoticeService,
         { provide: PrismaService, useValue: prisma },
         { provide: SMS_SENDER, useValue: sms },
         { provide: NotificationService, useValue: notifications },
@@ -111,6 +117,8 @@ describe('SentinelService', () => {
     }).compile();
 
     service = module.get<SentinelService>(SentinelService);
+    groups = module.get<GroupService>(GroupService);
+    deathNotice = module.get<DeathNoticeService>(DeathNoticeService);
   });
 
   describe('listCircles', () => {
@@ -651,7 +659,7 @@ describe('SentinelService', () => {
         });
         prisma.circle.create.mockResolvedValueOnce({ id: 'root-1' });
 
-        await service.createGroup('alice', { label: 'Choir' });
+        await groups.createGroup('alice', { label: 'Choir' });
 
         expect(prisma.circle.create).toHaveBeenCalledWith({
           data: {
@@ -670,7 +678,7 @@ describe('SentinelService', () => {
         });
 
         await expect(
-          service.createGroup('alice', { label: 'Choir' }),
+          groups.createGroup('alice', { label: 'Choir' }),
         ).rejects.toThrow(ForbiddenException);
         expect(prisma.circle.create).not.toHaveBeenCalled();
       });
@@ -710,7 +718,7 @@ describe('SentinelService', () => {
             },
           ]);
 
-        const result = await service.listMyGroups('alice');
+        const result = await groups.listMyGroups('alice');
 
         expect(result).toEqual([
           {
@@ -737,7 +745,7 @@ describe('SentinelService', () => {
       it('returns an empty list with no extra query when the caller is in no groups', async () => {
         prisma.circle.findMany.mockResolvedValueOnce([]);
 
-        const result = await service.listMyGroups('alice');
+        const result = await groups.listMyGroups('alice');
 
         expect(result).toEqual([]);
         expect(prisma.circle.findMany).toHaveBeenCalledTimes(1);
@@ -753,7 +761,7 @@ describe('SentinelService', () => {
         prisma.circle.findFirst.mockResolvedValueOnce(null);
 
         await expect(
-          service.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
+          groups.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
         ).rejects.toThrow(ForbiddenException);
       });
 
@@ -765,7 +773,7 @@ describe('SentinelService', () => {
         prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
 
         await expect(
-          service.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
+          groups.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
         ).rejects.toThrow(ForbiddenException);
       });
 
@@ -776,7 +784,7 @@ describe('SentinelService', () => {
         prisma.circle.findFirst.mockResolvedValueOnce({ id: 'root-1' });
 
         await expect(
-          service.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
+          groups.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
         ).rejects.toThrow(BadRequestException);
       });
 
@@ -797,7 +805,7 @@ describe('SentinelService', () => {
           id: 'invite-1',
         });
 
-        await service.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' });
+        await groups.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' });
 
         expect(prisma.sentinelGroupInvitation.create).toHaveBeenCalledWith({
           data: {
@@ -829,7 +837,7 @@ describe('SentinelService', () => {
         });
 
         await expect(
-          service.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
+          groups.inviteToGroup('alice', 'root-1', { targetUserId: 'bob' }),
         ).rejects.toThrow(ConflictException);
       });
     });
@@ -955,7 +963,7 @@ describe('SentinelService', () => {
         });
         prisma.circle.findUnique.mockResolvedValueOnce({ label: 'Choir' });
 
-        await service.inviteToGroup('alice', 'root-1', {
+        await groups.inviteToGroup('alice', 'root-1', {
           phone: '+41790000009',
           name: 'Dan',
         });
@@ -1000,7 +1008,7 @@ describe('SentinelService', () => {
         });
         prisma.circle.findUnique.mockResolvedValueOnce({ label: 'Choir' });
 
-        await service.inviteToGroup('alice', 'root-1', {
+        await groups.inviteToGroup('alice', 'root-1', {
           phone: '+41790000002',
           name: 'Bob',
         });
@@ -1027,7 +1035,7 @@ describe('SentinelService', () => {
         prisma.circle.findFirst.mockResolvedValueOnce({ id: 'root-1' });
 
         await expect(
-          service.inviteToGroup('alice', 'root-1', dto),
+          groups.inviteToGroup('alice', 'root-1', dto),
         ).rejects.toThrow(BadRequestException);
         expect(prisma.sentinelGroupInvitation.create).not.toHaveBeenCalled();
       });
@@ -1052,7 +1060,7 @@ describe('SentinelService', () => {
         });
 
         await expect(
-          service.respondToGroupInvitation('carol', 'invite-1', true),
+          groups.respondToGroupInvitation('carol', 'invite-1', true),
         ).rejects.toThrow(ForbiddenException);
         expect(prisma.sentinelGroupInvitation.update).not.toHaveBeenCalled();
       });
@@ -1072,7 +1080,7 @@ describe('SentinelService', () => {
         });
         prisma.linkSentinels.findUnique.mockResolvedValue(null);
 
-        await service.respondToGroupInvitation('carol', 'invite-1', true);
+        await groups.respondToGroupInvitation('carol', 'invite-1', true);
 
         expect(prisma.sentinelGroupInvitation.update).toHaveBeenCalledWith({
           where: { id: 'invite-1' },
@@ -1131,7 +1139,7 @@ describe('SentinelService', () => {
           .mockResolvedValueOnce({ id: 'l1', status: LinkStatus.REMOVED }) // carol -> alice
           .mockResolvedValueOnce({ id: 'l2', status: LinkStatus.REMOVED }); // alice -> carol
 
-        await service.respondToGroupInvitation('carol', 'invite-1', true);
+        await groups.respondToGroupInvitation('carol', 'invite-1', true);
 
         expect(prisma.circle.create).not.toHaveBeenCalled();
         expect(prisma.circle.update).toHaveBeenCalledWith({
@@ -1168,7 +1176,7 @@ describe('SentinelService', () => {
           .mockResolvedValueOnce({ id: 'l1', status: LinkStatus.ACCEPTED }) // carol -> bob: already connected
           .mockResolvedValueOnce({ id: 'l2', status: LinkStatus.ACCEPTED }); // bob -> carol: already connected
 
-        await service.respondToGroupInvitation('carol', 'invite-1', true);
+        await groups.respondToGroupInvitation('carol', 'invite-1', true);
 
         expect(prisma.linkSentinels.create).toHaveBeenCalledTimes(2); // alice <-> carol only
       });
@@ -1182,7 +1190,7 @@ describe('SentinelService', () => {
           status: LinkStatus.DECLINED,
         });
 
-        await service.respondToGroupInvitation('carol', 'invite-1', false);
+        await groups.respondToGroupInvitation('carol', 'invite-1', false);
 
         expect(prisma.sentinelGroupInvitation.update).toHaveBeenCalledWith({
           where: { id: 'invite-1' },
@@ -1197,7 +1205,7 @@ describe('SentinelService', () => {
         );
 
         await expect(
-          service.respondToGroupInvitation('mallory', 'invite-1', true),
+          groups.respondToGroupInvitation('mallory', 'invite-1', true),
         ).rejects.toThrow(ForbiddenException);
       });
 
@@ -1207,7 +1215,7 @@ describe('SentinelService', () => {
         );
 
         await expect(
-          service.respondToGroupInvitation('carol', 'invite-1', true),
+          groups.respondToGroupInvitation('carol', 'invite-1', true),
         ).rejects.toThrow(ConflictException);
       });
     });
@@ -1234,7 +1242,7 @@ describe('SentinelService', () => {
             { id: 'link-cb-1', circleId: 'some-other-circle' },
           ]);
 
-        await service.leaveGroup('carol', 'root-1');
+        await groups.leaveGroup('carol', 'root-1');
 
         expect(prisma.circle.update).toHaveBeenCalledWith({
           where: { id: 'circle-carol' },
@@ -1254,7 +1262,7 @@ describe('SentinelService', () => {
       it('rejects leaving a group the caller is not a member of', async () => {
         prisma.circle.findFirst.mockResolvedValueOnce(null);
 
-        await expect(service.leaveGroup('carol', 'root-1')).rejects.toThrow(
+        await expect(groups.leaveGroup('carol', 'root-1')).rejects.toThrow(
           NotFoundException,
         );
       });
@@ -1280,7 +1288,7 @@ describe('SentinelService', () => {
           { id: 'link-ab', circleId: 'root-1' },
         ]);
 
-        await service.deleteGroup('alice', 'root-1');
+        await groups.deleteGroup('alice', 'root-1');
 
         expect(prisma.circle.update).toHaveBeenCalledWith({
           where: { id: 'root-1' },
@@ -1297,7 +1305,7 @@ describe('SentinelService', () => {
           activeRoot({ userCompanionId: 'alice' }),
         );
 
-        await expect(service.deleteGroup('bob', 'root-1')).rejects.toThrow(
+        await expect(groups.deleteGroup('bob', 'root-1')).rejects.toThrow(
           ForbiddenException,
         );
         expect(prisma.circle.update).not.toHaveBeenCalled();
@@ -1306,7 +1314,7 @@ describe('SentinelService', () => {
       it('rejects deleting a group that does not exist', async () => {
         prisma.circle.findUnique.mockResolvedValueOnce(null);
 
-        await expect(service.deleteGroup('alice', 'root-1')).rejects.toThrow(
+        await expect(groups.deleteGroup('alice', 'root-1')).rejects.toThrow(
           NotFoundException,
         );
       });
@@ -1316,7 +1324,7 @@ describe('SentinelService', () => {
           activeRoot({ status: CircleStatus.CLOSED }),
         );
 
-        await expect(service.deleteGroup('alice', 'root-1')).rejects.toThrow(
+        await expect(groups.deleteGroup('alice', 'root-1')).rejects.toThrow(
           ConflictException,
         );
       });
@@ -1328,7 +1336,7 @@ describe('SentinelService', () => {
           { id: 'invite-1', groupRoot: { id: 'root-1', label: 'Choir' } },
         ]);
 
-        const result = await service.listMyGroupInvitations('carol');
+        const result = await groups.listMyGroupInvitations('carol');
 
         expect(prisma.sentinelGroupInvitation.findMany).toHaveBeenCalledWith({
           where: { invitedUserId: 'carol', status: LinkStatus.PENDING },
@@ -1996,7 +2004,9 @@ describe('SentinelService', () => {
         },
       ]);
 
-      await expect(service.listMyDeathNotices('sentinel-1')).resolves.toEqual([
+      await expect(
+        deathNotice.listMyDeathNotices('sentinel-1'),
+      ).resolves.toEqual([
         {
           companionName: 'Marc Dupont',
           announcementMessage: 'Annonce',
@@ -2086,7 +2096,7 @@ describe('SentinelService', () => {
         { userSentinelId: 'lead-2' },
       ]); // getEligibleConfirmerIds: 2 Leads
 
-      const result = await service.reportDeath('lead-1', 'companion-1');
+      const result = await deathNotice.reportDeath('lead-1', 'companion-1');
 
       expect(result).toEqual({ reported: true });
       expect(prisma.user.update).toHaveBeenCalledWith({
@@ -2120,7 +2130,7 @@ describe('SentinelService', () => {
       prisma.linkSentinels.findFirst.mockResolvedValueOnce(null); // not a Lead there
 
       await expect(
-        service.reportDeath('stranger', 'companion-1'),
+        deathNotice.reportDeath('stranger', 'companion-1'),
       ).rejects.toThrow(ForbiddenException);
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
@@ -2133,7 +2143,7 @@ describe('SentinelService', () => {
       });
 
       await expect(
-        service.reportDeath('lead-1', 'companion-1'),
+        deathNotice.reportDeath('lead-1', 'companion-1'),
       ).rejects.toThrow(ConflictException);
       expect(prisma.circle.findFirst).not.toHaveBeenCalled();
     });
@@ -2146,7 +2156,7 @@ describe('SentinelService', () => {
       });
 
       await expect(
-        service.reportDeath('lead-1', 'companion-1'),
+        deathNotice.reportDeath('lead-1', 'companion-1'),
       ).rejects.toThrow(ConflictException);
     });
   });
@@ -2178,7 +2188,7 @@ describe('SentinelService', () => {
           },
         ]); // fan-out: opted-in ACCEPTED recipients
 
-      const result = await service.confirmDeath('lead-2', 'companion-1');
+      const result = await deathNotice.confirmDeath('lead-2', 'companion-1');
 
       expect(result).toEqual({ confirmed: true });
       expect(prisma.user.update).toHaveBeenCalledWith({
@@ -2233,7 +2243,10 @@ describe('SentinelService', () => {
         .mockResolvedValueOnce([{ userSentinelId: 'sentinel-2' }]) // fallback: other accepted Sentinels
         .mockResolvedValueOnce([]); // fan-out: nobody opted in
 
-      const result = await service.confirmDeath('sentinel-2', 'companion-1');
+      const result = await deathNotice.confirmDeath(
+        'sentinel-2',
+        'companion-1',
+      );
 
       expect(result).toEqual({ confirmed: true });
       expect(sms.send).not.toHaveBeenCalled();
@@ -2248,7 +2261,7 @@ describe('SentinelService', () => {
       prisma.circle.findFirst.mockResolvedValueOnce({ id: 'first-1' });
 
       await expect(
-        service.confirmDeath('lead-1', 'companion-1'),
+        deathNotice.confirmDeath('lead-1', 'companion-1'),
       ).rejects.toThrow(ForbiddenException);
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
@@ -2261,7 +2274,7 @@ describe('SentinelService', () => {
       });
 
       await expect(
-        service.confirmDeath('lead-2', 'companion-1'),
+        deathNotice.confirmDeath('lead-2', 'companion-1'),
       ).rejects.toThrow(ConflictException);
       expect(prisma.circle.findFirst).not.toHaveBeenCalled();
     });
@@ -2280,7 +2293,10 @@ describe('SentinelService', () => {
         { userSentinelId: 'lead-2' },
       ]);
 
-      const result = await service.rejectDeathReport('lead-2', 'companion-1');
+      const result = await deathNotice.rejectDeathReport(
+        'lead-2',
+        'companion-1',
+      );
 
       expect(result).toEqual({ rejected: true });
       expect(prisma.user.update).toHaveBeenCalledWith({
