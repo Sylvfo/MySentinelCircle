@@ -2229,14 +2229,6 @@ a.map-link, .app-content button.map-link, button.map-link {
 }
 @media (hover: hover) { .app-content button.map-link:hover, button.map-link:hover { background: rgba(19, 67, 86, 0.08); } }
 .bubble .map-choice { display: inline-flex; flex-direction: column; gap: 0.3rem; margin: 0.3rem 0; }
-.map-choice-list { display: flex; flex-direction: column; gap: 0.25rem; padding-left: 0.2rem; }
-.map-choice-list a,
-.app-content .map-choice-list button,
-.map-choice-list button {
-  display: block; padding: 0.5rem 0.7rem; min-height: 40px; box-sizing: border-box; text-align: left;
-  border: 1px solid var(--border, rgba(127,127,127,0.35)); border-radius: 8px;
-  background: var(--surface, transparent); color: var(--text); font: inherit; text-decoration: none; cursor: pointer; margin: 0;
-}
 .bubble .map-choice { display: flex; width: fit-content; }
 
 /* Timeline: the launch message keeps its line breaks; its map link is a button. */
@@ -2453,3 +2445,13 @@ details.role-banner[open] > ol{margin-top:0.5rem;}
   .app-nav a.alert-signal.urgent{animation:alert-signal-pulse 1.6s ease-in-out infinite;}
   @keyframes alert-signal-pulse{0%,100%{transform:scale(1);} 50%{transform:scale(1.12);}}
 }
+
+/* Secondary grey text (hints, empty states, loading). */
+.muted { color: var(--text-muted); }
+.muted-small { font-size: 0.9rem; }
+
+/* The language choice, top right of the pages shown before signing in. */
+.language-row { display: flex; justify-content: flex-end; }
+
+/* A button that looks like a link ("Keep my password", "Later"). */
+.app-content button.link-button, button.link-button { background: none; border: none; color: var(--accent); cursor: pointer; }

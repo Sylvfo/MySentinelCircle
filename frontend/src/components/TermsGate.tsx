@@ -2,8 +2,8 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { acceptTerms } from '../api/user';
-import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { useAction } from '../useAction';
 
 // Before anything else, a logged-in person must have accepted the current
 // terms of use + privacy policy (nLPD / GDPR): new accounts made by phone,
@@ -12,23 +12,15 @@ export function TermsGate({ children }: { children: ReactNode }) {
   const { user, refreshUser, logout } = useAuth();
   const { t } = useTranslation();
   const [checked, setChecked] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { busy: saving, error, run } = useAction();
 
   if (!user || user.termsUpToDate) return <>{children}</>;
 
-  const accept = async () => {
-    setSaving(true);
-    setError(null);
-    try {
+  const accept = () =>
+    run(async () => {
       await acceptTerms();
       await refreshUser();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
+    });
 
   return (
     <div className="auth-page terms-gate">

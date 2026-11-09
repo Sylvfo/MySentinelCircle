@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
+import { errorText } from '../api/client';
 import { listCircles, listCompanions } from '../api/sentinel';
 import { listAlerts, type MyAlertSummary } from '../api/alert';
 import { NOTIFICATIONS_CHANGED } from '../api/notification';
@@ -10,26 +10,19 @@ import {
   getDirectConversation,
   listMessages,
   listMyConversations,
-  sendImageMessage,
-  sendMessage,
   type Message,
 } from '../api/messaging';
+import { ChatComposer } from '../components/ChatComposer';
 import { CallButton } from '../components/CallButton';
 import { PersonAvatar } from '../components/PersonAvatar';
 import { CircleChip } from '../components/CircleChip';
 import { SentinelIcon } from '../components/SentinelIcon';
 import { CompanionIcon } from '../components/CompanionIcon';
 import { MessageBubbles } from '../components/MessageBubbles';
-import { EmojiButton } from '../components/EmojiButton';
-import {
-  avatarPathOf,
-  isPausedOf,
-  isSubscribedOf,
-  myCompanionColor,
-  mySentinelColor,
-  publicStatusOf,
-} from '../relations';
+import { relationOf } from '../relations';
 import { NameStar } from '../components/SubscribedStar';
+import { useSocketEvent } from '../realtime/useSocketEvent';
+import { Loading } from '../components/Loading';
 
 // Everything known about the other person, from both directions of the
 // relationship: they can be my Sentinel, someone I watch over, or both.
@@ -57,7 +50,7 @@ interface ContactInfo {
 // the messages scroll underneath.
 export function ConversationPage() {
   const { t } = useTranslation();
-  const { user, socket } = useAuth();
+  const { user } = useAuth();
   const { userId = '' } = useParams();
   const [info, setInfo] = useState<ContactInfo | null>(null);
   const [alerts, setAlerts] = useState<MyAlertSummary[]>([]);
@@ -65,10 +58,6 @@ export function ConversationPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [attachOpen, setAttachOpen] = useState(false);
 
   // listMessages() also marks this conversation's unread notifications read
   // server-side, so going back to the list shows it as read.
@@ -82,16 +71,18 @@ export function ConversationPage() {
     setError(null);
     Promise.all([listCircles(), listCompanions(), listAlerts()])
       .then(async ([circles, companions, myAlerts]) => {
-        let sentinel: { firstName: string; lastName?: string | null; phone: string } | null = null;
-        let asMySentinel: ContactInfo['asMySentinel'] = null;
-        for (const c of circles) {
-          const m = c.userSentinels.find((s) => s.linkAsSentinel.id === userId && s.status === 'ACCEPTED');
-          if (m) {
-            sentinel = m.linkAsSentinel;
-            asMySentinel = { circle: c.label, isLead: m.leadSlot !== null, isFirstCircle: c.circleType === 'FIRST' };
-          }
-        }
-        const comp = companions.find((c) => c.companion.id === userId);
+        const rel = relationOf(circles, companions, userId);
+        // They watch over me: an accepted link only.
+        const mine = rel.sentinel?.membership.status === 'ACCEPTED' ? rel.sentinel : null;
+        const sentinel = mine?.membership.linkAsSentinel ?? null;
+        const asMySentinel: ContactInfo['asMySentinel'] = mine
+          ? {
+              circle: mine.circle.label,
+              isLead: mine.membership.leadSlot !== null,
+              isFirstCircle: mine.circle.circleType === 'FIRST',
+            }
+          : null;
+        const comp = rel.companion;
         const asMyCompanion = comp
           ? { circle: comp.circle.label, isLead: comp.leadSlot !== null, isFirstCircle: comp.circle.isPrimary }
           : null;
@@ -105,12 +96,12 @@ export function ConversationPage() {
             email: comp?.companion.email ?? null,
             asMySentinel,
             asMyCompanion,
-            sentinelColor: mySentinelColor(circles, userId),
-            companionColor: myCompanionColor(companions, userId),
-            avatarPath: avatarPathOf(circles, companions, userId),
-            paused: isPausedOf(circles, companions, userId),
-            subscribed: isSubscribedOf(circles, companions, userId),
-            publicStatus: publicStatusOf(circles, companions, userId),
+            sentinelColor: rel.sentinelColor,
+            companionColor: rel.companionColor,
+            avatarPath: rel.avatarPath,
+            paused: rel.paused,
+            subscribed: rel.subscribed,
+            publicStatus: rel.publicStatus,
           });
         } else {
           // Not in my circles: someone writing to the feedback inbox. Only
@@ -144,22 +135,14 @@ export function ConversationPage() {
         setConversationId(conv.id);
         await reloadMessages(conv.id);
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
+      .catch((err) => setError(errorText(err)))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  useEffect(() => {
-    if (!socket || !conversationId) return;
-    const onNewMessage = (payload: { conversationId: string }) => {
-      if (payload.conversationId === conversationId) void reloadMessages(conversationId);
-    };
-    socket.on('message:new', onNewMessage);
-    return () => {
-      socket.off('message:new', onNewMessage);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, conversationId]);
+  useSocketEvent('message:new', (payload: { conversationId: string }) => {
+    if (payload.conversationId === conversationId) void reloadMessages(conversationId);
+  });
 
   // Newest message in view: the page opens at the bottom, and follows new
   // messages (sent or received).
@@ -168,36 +151,6 @@ export function ConversationPage() {
     // message above the fixed composer.
     window.scrollTo({ top: document.documentElement.scrollHeight });
   }, [messages.length]);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!conversationId || !draft.trim()) return;
-    setSending(true);
-    try {
-      await sendMessage(conversationId, draft.trim());
-      setDraft('');
-      await reloadMessages(conversationId);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const submitImage = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!conversationId || !file) return;
-    setSending(true);
-    try {
-      await sendImageMessage(conversationId, file);
-      await reloadMessages(conversationId);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSending(false);
-    }
-  };
 
   const name = info?.firstName ?? '';
   // Always just "Sentinel" in the sentence: which circle (Lead, 1st circle
@@ -270,84 +223,26 @@ export function ConversationPage() {
       </div>
 
       {loading ? (
-        <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>
+        <Loading />
       ) : !conversationId ? (
         <p className="form-error">{error}</p>
       ) : (
         <>
           {messages.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>{t('alerts.detail.noMessages')}</p>
+            <p className="muted">{t('alerts.detail.noMessages')}</p>
           ) : (
             // Oldest at the top, newest at the bottom next to the composer.
             <MessageBubbles messages={messages} myId={user?.id} />
           )}
           {error && <p className="form-error">{error}</p>}
-          {/* Messaging-app composer, fixed at the bottom of the screen
-              (above the mobile bottom bar), like WhatsApp: "+" menu (photo
-              now, GPS position later), text field, paper-plane send. */}
-          <form className="conversation-compose" autoComplete="off" onSubmit={submit}>
-            <div className="compose-attach">
-              <button
-                type="button"
-                className="compose-icon-btn"
-                aria-label={t('conversation.attach')}
-                aria-expanded={attachOpen}
-                disabled={sending}
-                onClick={() => setAttachOpen((o) => !o)}
-              >
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </button>
-              {attachOpen && (
-                <div className="compose-attach-menu" role="menu">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setAttachOpen(false);
-                      fileInputRef.current?.click();
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-                      <rect x="3" y="5" width="18" height="14" rx="2" />
-                      <circle cx="8.5" cy="10" r="1.6" />
-                      <path d="M21 16 L15.5 11 L6 19" />
-                    </svg>
-                    {t('conversation.attachPhoto')}
-                  </button>
-                </div>
-              )}
-            </div>
-            <input
-              id="conversation-draft"
-              autoComplete="off"
-              className="compose-input"
-              placeholder={t('alerts.detail.messagePlaceholder')}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-            <EmojiButton onPick={(emoji) => setDraft((d) => d + emoji)} />
-            <button
-              type="submit"
-              className="compose-icon-btn compose-send"
-              aria-label={t('alerts.detail.send')}
-              disabled={sending || !draft.trim()}
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                <path d="M3 11.2 L20.5 3.5 C21.2 3.2 21.8 3.8 21.5 4.5 L13.8 22 C13.5 22.7 12.5 22.6 12.3 21.9 L10.4 14.6 L3.1 12.7 C2.4 12.5 2.3 11.5 3 11.2 Z" />
-              </svg>
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              hidden
-              disabled={sending}
-              onChange={submitImage}
-            />
-          </form>
+          {/* Fixed at the bottom of the screen (above the mobile bottom
+              bar), like WhatsApp. */}
+          <ChatComposer
+            conversationId={conversationId}
+            inputId="conversation-draft"
+            onSent={() => reloadMessages(conversationId)}
+            onError={setError}
+          />
         </>
       )}
     </div>

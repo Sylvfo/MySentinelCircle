@@ -9,7 +9,12 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes, randomInt, createHash } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
+import {
+  checkOneTimeCode,
+  newOneTimeCode,
+  NO_ONE_TIME_CODE,
+} from '../common/one-time-code';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { CircleType, LinkStatus, UserType, UserStatus } from '@prisma/client';
@@ -38,8 +43,6 @@ import { DevSetHasPaidDto } from './dto/dev-set-has-paid.dto';
 import { UpdateDeathNoticeDto } from './dto/update-death-notice.dto';
 import { SetDeathNoticeRecipientsDto } from './dto/set-death-notice-recipients.dto';
 
-const OTP_TTL_MINUTES = 10;
-const OTP_MAX_ATTEMPTS = 5;
 const STEP_UP_TTL_MINUTES = 10;
 const PENDING_EMAIL_TTL_MINUTES = 60;
 
@@ -236,16 +239,10 @@ export class UserService {
       throw new ConflictException('Phone already in use');
     }
 
-    const code = String(randomInt(100000, 1000000));
-    const otpCodeHash = await bcrypt.hash(code, 10);
+    const { code, fields } = await newOneTimeCode();
     await this.prisma.user.update({
       where: { id: userId },
-      data: {
-        pendingPhone: phone,
-        otpCodeHash,
-        otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60_000),
-        otpAttempts: 0,
-      },
+      data: { pendingPhone: phone, ...fields },
     });
     await this.otpSender.send(phone, code);
     return { message: 'Code sent' };
@@ -258,24 +255,10 @@ export class UserService {
   // (never deleted, per the schema's historization rule).
   async verifyAddPhone(userId: string, code: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user?.pendingPhone || !user.otpCodeHash || !user.otpExpiresAt) {
+    if (!user?.pendingPhone) {
       throw new UnauthorizedException('No pending code');
     }
-    if (user.otpAttempts >= OTP_MAX_ATTEMPTS) {
-      throw new UnauthorizedException('Too many attempts, request a new code');
-    }
-    if (user.otpExpiresAt < new Date()) {
-      throw new UnauthorizedException('Code expired, request a new one');
-    }
-
-    const valid = await bcrypt.compare(code, user.otpCodeHash);
-    if (!valid) {
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { otpAttempts: { increment: 1 } },
-      });
-      throw new UnauthorizedException('Invalid code');
-    }
+    await checkOneTimeCode(this.prisma, user, code, 'No pending code');
 
     const existing = await this.prisma.user.findUnique({
       where: { phone: user.pendingPhone },
@@ -312,9 +295,7 @@ export class UserService {
       data: {
         phone: user.pendingPhone,
         pendingPhone: null,
-        otpCodeHash: null,
-        otpExpiresAt: null,
-        otpAttempts: 0,
+        ...NO_ONE_TIME_CODE,
         phoneVerifiedAt: new Date(),
         userType:
           user.userType === UserType.UNCOMPLETE
@@ -396,62 +377,35 @@ export class UserService {
   // sent to another channel must never validate the pending number.
   async stepUpCodeRequest(userId: string, dto: StepUpCodeRequestDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    const code = String(randomInt(100000, 1000000));
-    const otpCodeHash = await bcrypt.hash(code, 10);
+    const phone = user?.phoneVerifiedAt ? user.phone : null;
+    const email = user?.email ?? null;
+    if (dto.channel === 'phone' && !phone) {
+      throw new UnauthorizedException('No verified phone on this account');
+    }
+    if (dto.channel === 'email' && !email) {
+      throw new UnauthorizedException('No email on this account');
+    }
 
-    if (dto.channel === 'phone') {
-      if (!user?.phone || !user.phoneVerifiedAt) {
-        throw new UnauthorizedException('No verified phone on this account');
-      }
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: {
-          otpCodeHash,
-          otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60_000),
-          otpAttempts: 0,
-          pendingPhone: null,
-        },
-      });
-      await this.otpSender.send(user.phone, code);
-    } else {
-      if (!user?.email)
-        throw new UnauthorizedException('No email on this account');
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: {
-          otpCodeHash,
-          otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60_000),
-          otpAttempts: 0,
-          pendingPhone: null,
-        },
-      });
-      await this.emailSender.send(user.email, 'Code de vérification', code);
+    const { code, fields } = await newOneTimeCode();
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { ...fields, pendingPhone: null },
+    });
+    if (dto.channel === 'phone' && phone) {
+      await this.otpSender.send(phone, code);
+    } else if (email) {
+      await this.emailSender.send(email, 'Code de vérification', code);
     }
     return { message: 'Code sent' };
   }
 
   async stepUpCodeVerify(userId: string, code: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user?.otpCodeHash || !user.otpExpiresAt) {
-      throw new UnauthorizedException('No pending code');
-    }
-    if (user.otpAttempts >= OTP_MAX_ATTEMPTS) {
-      throw new UnauthorizedException('Too many attempts, request a new code');
-    }
-    if (user.otpExpiresAt < new Date()) {
-      throw new UnauthorizedException('Code expired, request a new one');
-    }
-    const valid = await bcrypt.compare(code, user.otpCodeHash);
-    if (!valid) {
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { otpAttempts: { increment: 1 } },
-      });
-      throw new UnauthorizedException('Invalid code');
-    }
+    if (!user) throw new UnauthorizedException('No pending code');
+    await checkOneTimeCode(this.prisma, user, code, 'No pending code');
     await this.prisma.user.update({
       where: { id: userId },
-      data: { otpCodeHash: null, otpExpiresAt: null, otpAttempts: 0 },
+      data: NO_ONE_TIME_CODE,
     });
     await this.markStepUpVerified(userId);
     return { message: 'Identity verified' };

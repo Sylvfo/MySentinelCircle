@@ -1,19 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 type EndKind = 'end' | 'block';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { isChatClosed } from '../api/messaging';
-import { ApiError } from '../api/client';
-import { getAlert, type AlertDetail } from '../api/alert';
+import { getAlert } from '../api/alert';
 import { useAuth } from '../auth/AuthContext';
 import {
   blockRelationship,
   endRelationship,
   listCircles,
   listCompanions,
-  type Circle,
-  type Companion,
 } from '../api/sentinel';
 import { Modal } from '../components/Modal';
 import { PersonAvatar } from '../components/PersonAvatar';
@@ -24,17 +21,13 @@ import { CallButton } from '../components/CallButton';
 import { CircleChip } from '../components/CircleChip';
 import { SentinelIcon } from '../components/SentinelIcon';
 import { CompanionIcon } from '../components/CompanionIcon';
-import {
-  avatarPathOf,
-  isPausedOf,
-  isSubscribedOf,
-  myCompanionColor,
-  mySentinelColor,
-  publicStatusOf,
-} from '../relations';
+import { relationOf } from '../relations';
 import { NameStar } from '../components/SubscribedStar';
-import { companionColor, companionGold } from '../theme';
 import { genderContext } from '../gender';
+import { Loading } from '../components/Loading';
+import { CollapsibleTile } from '../components/CollapsibleTile';
+import { useLoad } from '../useLoad';
+import { useAction } from '../useAction';
 
 // /people/:userId — everything about one person in one place (a "friend
 // page"): who they are, then one section per direction of the relationship
@@ -55,13 +48,22 @@ export function PersonPage() {
   // Opened from an alert's detail: also show their place in that alert —
   // even with no direct link to me (then: first name only, no contact).
   const alertId = searchParams.get('alert');
-  const [alert, setAlert] = useState<AlertDetail | null>(null);
-  const [circles, setCircles] = useState<Circle[]>([]);
-  const [companions, setCompanions] = useState<Companion[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, error, setError, reload } = useLoad(async () => {
+    const [circles, companions, alert] = await Promise.all([
+      listCircles(),
+      listCompanions(),
+      // Only the companion and their 1st circle may read an alert's
+      // detail; anyone else just gets the page without the alert part.
+      alertId ? getAlert(alertId).catch(() => null) : Promise.resolve(null),
+    ]);
+    return { circles, companions, alert };
+  }, [userId, alertId]);
+  const circles = data?.circles ?? [];
+  const companions = data?.companions ?? [];
+  const alert = data?.alert ?? null;
   // Ending / blocking the whole relationship, waiting for confirmation.
   const [confirming, setConfirming] = useState<EndKind | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { run } = useAction({ onError: setError });
   const [open, setOpen] = useState<Set<SectionKey>>(
     () =>
       new Set<SectionKey>(
@@ -75,37 +77,14 @@ export function PersonPage() {
       ),
   );
 
-  const reload = async () => {
-    setError(null);
-    try {
-      const [c, comp, a] = await Promise.all([
-        listCircles(),
-        listCompanions(),
-        // Only the companion and their 1st circle may read an alert's
-        // detail; anyone else just gets the page without the alert part.
-        alertId ? getAlert(alertId).catch(() => null) : Promise.resolve(null),
-      ]);
-      setCircles(c);
-      setCompanions(comp);
-      setAlert(a);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
+  if (loading) return <Loading />;
 
-  useEffect(() => {
-    setLoading(true);
-    void reload().finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, alertId]);
-
-  if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
-
+  const rel = relationOf(circles, companions, userId);
   // They watch over me: my membership with them, in whichever circle of mine.
-  const circle = circles.find((c) => c.userSentinels.some((m) => m.linkAsSentinel.id === userId));
-  const membership = circle?.userSentinels.find((m) => m.linkAsSentinel.id === userId) ?? null;
+  const circle = rel.sentinel?.circle;
+  const membership = rel.sentinel?.membership ?? null;
   // I watch over them.
-  const companion = companions.find((c) => c.companion.id === userId) ?? null;
+  const companion = rel.companion;
 
   // Their place in the alert I came from: a contacted Sentinel, or the
   // person the alert is about.
@@ -146,7 +125,7 @@ export function PersonPage() {
     email: companion?.companion.email ?? null,
   };
   const name = person.firstName;
-  const publicStatus = publicStatusOf(circles, companions, userId);
+  const publicStatus = rel.publicStatus;
 
   // A Sentinel SMS has no account: no in-app conversation with them.
   const canMessage =
@@ -169,12 +148,21 @@ export function PersonPage() {
   const order: SectionKey[] = ['alert', 'sentinel', 'companion'];
   const sections = order.filter((k) => (k === 'alert' ? inAlert : k === 'sentinel' ? !!membership : !!companion));
 
-  const sentinelIconColor = membership ? (mySentinelColor(circles, userId) ?? 'var(--text-muted)') : undefined;
-  const companionIconColor = companion
-    ? (myCompanionColor(companions, userId) ??
-      companionGold(!!companion.leadSlot, companion.circle.isPrimary) ??
-      companionColor(userId))
-    : undefined;
+  const sentinelIconColor = membership ? (rel.sentinelColor ?? 'var(--text-muted)') : undefined;
+  const companionIconColor = rel.companionColor ?? undefined;
+  // Which circle, as a pill: in the header and on each section's figure.
+  const sentinelChip = membership && (
+    <CircleChip
+      relation={{ isLead: !!membership.leadSlot, isFirstCircle, circle: circle?.label ?? '' }}
+      color={sentinelIconColor}
+    />
+  );
+  const companionChip = companion && (
+    <CircleChip
+      relation={{ isLead: !!companion.leadSlot, isFirstCircle: companion.circle.isPrimary, circle: companion.circle.label }}
+      color={companionIconColor}
+    />
+  );
 
   // Same wording as the conversation header: just "Sentinel"; the circle
   // (Lead, 1st circle or its name) is the pill after it (CircleChip).
@@ -191,7 +179,7 @@ export function PersonPage() {
 
   return (
     // On pause: every little figure of them on this page turns dashed.
-    <div className={`person-page${isPausedOf(circles, companions, userId) ? ' is-paused' : ''}`}>
+    <div className={`person-page${rel.paused ? ' is-paused' : ''}`}>
       <button type="button" className="link-button" onClick={() => navigate(-1)}>
         {t('person.back')}
       </button>
@@ -200,18 +188,10 @@ export function PersonPage() {
       <div className="person-head">
         <PersonAvatar
           userId={userId}
-          avatarPath={avatarPathOf(circles, companions, userId)}
+          avatarPath={rel.avatarPath}
           // No direct link (seen from an alert): a neutral grey silhouette.
-          sentinelColor={
-            membership ? (mySentinelColor(circles, userId) ?? 'var(--text-muted)') : linked ? null : '#9a9a9a'
-          }
-          companionColor={
-            companion
-              ? (myCompanionColor(companions, userId) ??
-                companionGold(!!companion.leadSlot, companion.circle.isPrimary) ??
-                companionColor(userId))
-              : null
-          }
+          sentinelColor={membership ? (rel.sentinelColor ?? 'var(--text-muted)') : linked ? null : '#9a9a9a'}
+          companionColor={rel.companionColor}
           size={96}
           // The relations have their own figures below: photo only.
           photoRing="#134356"
@@ -222,7 +202,7 @@ export function PersonPage() {
         <div className="person-head-text">
           <h1>
             {person.firstName} {person.lastName}
-            {isSubscribedOf(circles, companions, userId) && <NameStar title={t('plans.star')} />}
+            {rel.subscribed && <NameStar title={t('plans.star')} />}
           </h1>
           {(membership || companion) && (
             <div className="conversation-relations">
@@ -230,24 +210,14 @@ export function PersonPage() {
                 <span className="conversation-rel" style={{ color: sentinelIconColor }}>
                   <SentinelIcon size={16} />
                   <span>{t('conversation.theyForMe', { name, role: sentinelRoleLabel })}</span>
-                  <CircleChip
-                    relation={{ isLead: !!membership.leadSlot, isFirstCircle, circle: circle?.label ?? '' }}
-                    color={sentinelIconColor}
-                  />
+                  {sentinelChip}
                 </span>
               )}
               {companion && (
                 <span className="conversation-rel">
                   <CompanionIcon size={17} color={companionIconColor} />
                   <span>{t('conversation.meForThem', { name, role: companionRoleLabel })}</span>
-                  <CircleChip
-                    relation={{
-                      isLead: !!companion.leadSlot,
-                      isFirstCircle: companion.circle.isPrimary,
-                      circle: companion.circle.label,
-                    }}
-                    color={companionIconColor}
-                  />
+                  {companionChip}
                 </span>
               )}
             </div>
@@ -284,120 +254,104 @@ export function PersonPage() {
       )}
 
       <div className="about-tiles">
-        {sections.map((key) => {
-          const isOpen = open.has(key);
-          return (
-            <section key={key} className={`about-tile${isOpen ? ' open' : ''}`}>
-              <button
-                type="button"
-                className="about-tile-head"
-                aria-expanded={isOpen}
-                aria-controls={`person-${key}`}
-                onClick={() => toggle(key)}
-              >
-                {/* The same little figures as everywhere else: filled = they
-                    watch over me, outline = I watch over them. */}
-                {/* Which circle: the pill right under the figure. */}
+        {sections.map((key) => (
+          <CollapsibleTile
+            key={key}
+            id={`person-${key}`}
+            open={open.has(key)}
+            onToggle={() => toggle(key)}
+            bodyClassName="person-section"
+            // The same little figures as everywhere else: filled = they
+            // watch over me, outline = I watch over them. Which circle: the
+            // pill right under the figure.
+            icon={
+              <>
                 {key === 'sentinel' && membership && (
                   <span className="person-section-icon" style={{ color: sentinelIconColor }}>
                     <SentinelIcon size={34} />
-                    <CircleChip
-                      relation={{ isLead: !!membership.leadSlot, isFirstCircle, circle: circle?.label ?? '' }}
-                      color={sentinelIconColor}
-                    />
+                    {sentinelChip}
                   </span>
                 )}
                 {key === 'companion' && companion && (
                   <span className="person-section-icon">
                     <CompanionIcon size={36} color={companionIconColor} />
-                    <CircleChip
-                      relation={{
-                        isLead: !!companion.leadSlot,
-                        isFirstCircle: companion.circle.isPrimary,
-                        circle: companion.circle.label,
-                      }}
-                      color={companionIconColor}
-                    />
+                    {companionChip}
                   </span>
                 )}
-                <span className="about-tile-title">
-                  {key === 'alert'
-                    ? t('person.alert.title', { label: alert?.label })
-                    : key === 'sentinel'
-                      ? t('conversation.theyForMe', { name, role: sentinelRoleLabel })
-                      : t('conversation.meForThem', { name, role: companionRoleLabel })}
-                  {/* What that means in plain words, then the role detail. */}
-                  {key !== 'alert' && (
-                    <span className="about-tile-plain">
-                      {key === 'sentinel' ? t('person.theyWatchYou', { name }) : t('person.youWatchThem', { name })}
-                    </span>
-                  )}
-                  {key === 'alert' && (
-                    <small>
-                      {isAlertSubject
-                        ? t('person.alert.isSubject', { name })
-                        : t(participant?.isLead ? 'person.alert.inCircleLead' : 'person.alert.inCircle', {
-                            name,
-                            circle: participant?.circleName,
-                            who: alert?.userCompanion.firstName,
-                          })}
-                    </small>
-                  )}
-                </span>
-                <svg className="about-tile-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                  <polyline points="6 9 12 15 18 9" fill="none" stroke="currentColor" strokeWidth="2" />
-                </svg>
-              </button>
-              {isOpen && (
-                <div className="about-tile-body person-section" id={`person-${key}`}>
-                  {key === 'alert' ? (
-                    <ul className="person-alert-facts">
-                      {participant && (
-                        <li>{t(`alerts.detail.participantStatus.${participant.status}`)}</li>
-                      )}
-                      <li>{linked ? t('person.alert.linked') : t('person.alert.notLinked', { name })}</li>
-                      <li>
-                        {sharedAlertChat ? (
-                          <>
-                            {t('person.alert.canWriteInChat')}{' '}
-                            <Link to={`/running-alert/${alertId}/chat`}>{t('person.alert.openChat')}</Link>
-                          </>
-                        ) : canMessage ? (
-                          t('person.alert.canWriteDirect')
-                        ) : (
-                          t('person.alert.cannotWrite')
-                        )}
-                      </li>
-                    </ul>
-                  ) : key === 'sentinel' && membership && circle ? (
+              </>
+            }
+            title={
+              <>
+                {key === 'alert'
+                  ? t('person.alert.title', { label: alert?.label })
+                  : key === 'sentinel'
+                    ? t('conversation.theyForMe', { name, role: sentinelRoleLabel })
+                    : t('conversation.meForThem', { name, role: companionRoleLabel })}
+                {/* What that means in plain words, then the role detail. */}
+                {key !== 'alert' && (
+                  <span className="about-tile-plain">
+                    {key === 'sentinel' ? t('person.theyWatchYou', { name }) : t('person.youWatchThem', { name })}
+                  </span>
+                )}
+                {key === 'alert' && (
+                  <small>
+                    {isAlertSubject
+                      ? t('person.alert.isSubject', { name })
+                      : t(participant?.isLead ? 'person.alert.inCircleLead' : 'person.alert.inCircle', {
+                          name,
+                          circle: participant?.circleName,
+                          who: alert?.userCompanion.firstName,
+                        })}
+                  </small>
+                )}
+              </>
+            }
+          >
+            {key === 'alert' ? (
+              <ul className="person-alert-facts">
+                {participant && (
+                  <li>{t(`alerts.detail.participantStatus.${participant.status}`)}</li>
+                )}
+                <li>{linked ? t('person.alert.linked') : t('person.alert.notLinked', { name })}</li>
+                <li>
+                  {sharedAlertChat ? (
                     <>
-                      {/* The role in short, shown once the tile is open. */}
-                      <p className="person-role-hint">{t(`person.sentinelHint.${sentinelRole}`)}</p>
-                      <SentinelActions
-                        key={membership.id}
-                        m={membership}
-                        circles={circles}
-                        isPrimary={isFirstCircle}
-                        onChange={reload}
-                        onError={setError}
-                      />
+                      {t('person.alert.canWriteInChat')}{' '}
+                      <Link to={`/running-alert/${alertId}/chat`}>{t('person.alert.openChat')}</Link>
                     </>
-                  ) : companion ? (
-                    <>
-                      <p className="person-role-hint">{t(`companions.groupHints.${companionGroup}`)}</p>
-                      <CompanionActions
-                        companion={companion}
-                        linkedIds={linkedIds}
-                        onChange={reload}
-                        onError={setError}
-                      />
-                    </>
-                  ) : null}
-                </div>
-              )}
-            </section>
-          );
-        })}
+                  ) : canMessage ? (
+                    t('person.alert.canWriteDirect')
+                  ) : (
+                    t('person.alert.cannotWrite')
+                  )}
+                </li>
+              </ul>
+            ) : key === 'sentinel' && membership && circle ? (
+              <>
+                {/* The role in short, shown once the tile is open. */}
+                <p className="person-role-hint">{t(`person.sentinelHint.${sentinelRole}`)}</p>
+                <SentinelActions
+                  key={membership.id}
+                  m={membership}
+                  circles={circles}
+                  isPrimary={isFirstCircle}
+                  onChange={reload}
+                  onError={setError}
+                />
+              </>
+            ) : companion ? (
+              <>
+                <p className="person-role-hint">{t(`companions.groupHints.${companionGroup}`)}</p>
+                <CompanionActions
+                  companion={companion}
+                  linkedIds={linkedIds}
+                  onChange={reload}
+                  onError={setError}
+                />
+              </>
+            ) : null}
+          </CollapsibleTile>
+        ))}
       </div>
 
       {/* Linked one way only: offer the other direction. An SMS-only or
@@ -441,15 +395,13 @@ export function PersonPage() {
           <div className="row">
             <button
               className="danger"
-              onClick={async () => {
+              onClick={() => {
                 const kind = confirming;
                 setConfirming(null);
-                try {
+                void run(async () => {
                   await (kind === 'block' ? blockRelationship(userId) : endRelationship(userId));
                   navigate('/dashboard', { replace: true });
-                } catch (err) {
-                  setError(err instanceof ApiError ? err.message : String(err));
-                }
+                });
               }}
             >
               {t(`person.${confirming}.confirm`)}

@@ -10,7 +10,13 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes, randomInt, createHash } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
+import {
+  checkOneTimeCode,
+  newOneTimeCode,
+  NO_ONE_TIME_CODE,
+  OTP_TTL_MINUTES,
+} from '../common/one-time-code';
 import { Prisma, User, UserType } from '@prisma/client';
 import { CURRENT_TERMS_VERSION } from '../privacy/terms';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,8 +35,6 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
 
-const OTP_TTL_MINUTES = 10;
-const OTP_MAX_ATTEMPTS = 5;
 const OTP_RESEND_COOLDOWN_MS = 60_000;
 const PASSWORD_RESET_TTL_MINUTES = 60;
 const LOGIN_MAX_ATTEMPTS = 5;
@@ -176,36 +180,16 @@ export class AuthService {
       where: { id: dto.userId },
     });
     // A code sent for a pending number proves that number, not `phone`.
-    if (
-      !user?.phone ||
-      user.pendingPhone ||
-      !user.otpCodeHash ||
-      !user.otpExpiresAt
-    ) {
-      throw new UnauthorizedException('No pending OTP for this account');
+    const noPending = 'No pending OTP for this account';
+    if (!user?.phone || user.pendingPhone) {
+      throw new UnauthorizedException(noPending);
     }
-    if (user.otpAttempts >= OTP_MAX_ATTEMPTS) {
-      throw new UnauthorizedException('Too many attempts, request a new code');
-    }
-    if (user.otpExpiresAt < new Date()) {
-      throw new UnauthorizedException('Code expired, request a new one');
-    }
-
-    const valid = await bcrypt.compare(dto.code, user.otpCodeHash);
-    if (!valid) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { otpAttempts: { increment: 1 } },
-      });
-      throw new UnauthorizedException('Invalid code');
-    }
+    await checkOneTimeCode(this.prisma, user, dto.code, noPending);
 
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        otpCodeHash: null,
-        otpExpiresAt: null,
-        otpAttempts: 0,
+        ...NO_ONE_TIME_CODE,
         phoneVerifiedAt: user.phoneVerifiedAt ?? new Date(),
         // Just proved the phone: no second code to add a recovery email
         // or set a new password.
@@ -339,16 +323,10 @@ export class AuthService {
   }
 
   private async sendOtp(userId: string, phone: string) {
-    const code = String(randomInt(100000, 1000000));
-    const otpCodeHash = await bcrypt.hash(code, 10);
+    const { code, fields } = await newOneTimeCode();
     await this.prisma.user.update({
       where: { id: userId },
-      data: {
-        otpCodeHash,
-        otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
-        otpAttempts: 0,
-        pendingPhone: null,
-      },
+      data: { ...fields, pendingPhone: null },
     });
     await this.otpSender.send(phone, code);
   }

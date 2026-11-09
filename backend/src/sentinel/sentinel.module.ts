@@ -5,13 +5,20 @@ import { SentinelService } from './sentinel.service';
 import { SmsInboundService } from './sms-inbound.service';
 import { SentinelController } from './sentinel.controller';
 import { SentinelSmsController } from './sentinel-sms.controller';
+import { GroupService } from './group.service';
+import { DeathNoticeService } from './death-notice.service';
 
 @Module({
   imports: [AlertModule, PrivacyModule],
-  providers: [SentinelService, SmsInboundService],
+  providers: [
+    SentinelService,
+    GroupService,
+    DeathNoticeService,
+    SmsInboundService,
+  ],
   controllers: [SentinelController, SentinelSmsController],
   // MessagingService calls canSendDirectMessage() for the permanent
-  // Me<->Sentinel channel.
-  exports: [SentinelService],
+  // Me<->Sentinel channel; account deletion leaves or deletes groups.
+  exports: [SentinelService, GroupService],
 })
 export class SentinelModule {}

@@ -6,11 +6,42 @@ export function getToken(): string | null {
 }
 
 export function setToken(token: string): void {
+  forgetSharedGets();
   localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearToken(): void {
+  forgetSharedGets();
   localStorage.removeItem(TOKEN_KEY);
+}
+
+// A short memory of the few lists almost every page loads (my circles, the
+// people I watch over, my alerts): pages opened within a few seconds of each
+// other share one request instead of each asking again (the API has a
+// per-minute rate limit). Forgotten on every change I make (any call that
+// isn't a GET), on every live event from the server (realtime/socket.ts),
+// and on login/logout, so a page never shows data older than that.
+const SHARED_GET_TTL_MS = 30_000;
+const sharedGets = new Map<string, { at: number; promise: Promise<unknown> }>();
+
+export function forgetSharedGets(): void {
+  sharedGets.clear();
+}
+
+export function apiGetShared<T>(path: string): Promise<T> {
+  let entry = sharedGets.get(path);
+  if (!entry || Date.now() - entry.at >= SHARED_GET_TTL_MS) {
+    const promise = apiGet<T>(path);
+    entry = { at: Date.now(), promise };
+    sharedGets.set(path, entry);
+    // A failed call isn't kept: the next page asks again.
+    promise.catch(() => {
+      if (sharedGets.get(path)?.promise === promise) sharedGets.delete(path);
+    });
+  }
+  // Each caller gets its own copy: a page sorting or editing its list can't
+  // change another page's.
+  return entry.promise.then((data) => structuredClone(data) as T);
 }
 
 export class ApiError extends Error {
@@ -22,6 +53,13 @@ export class ApiError extends Error {
   }
 }
 
+// What to show the user for a failed call: the server's own message, else
+// the fallback (or the raw error, for an unexpected one).
+export function errorText(err: unknown, fallback?: string): string {
+  if (err instanceof ApiError) return err.message;
+  return fallback ?? String(err);
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const res = await fetch(`${API_URL}${path}`, {
@@ -31,8 +69,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
+  }).finally(() => {
+    // Once the change is done (or failed), the next list load asks again.
+    if (options.method !== 'GET') forgetSharedGets();
   });
+  return readResponse<T>(res);
+}
 
+// The server's answer: its JSON body, or an ApiError carrying its message.
+async function readResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) return null as T;
 
   let body: any;
@@ -82,25 +127,6 @@ export async function apiPostForm<T>(path: string, formData: FormData): Promise<
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
-  });
-
-  if (res.status === 204) return null as T;
-
-  let body: any;
-  let parseFailed = false;
-  try {
-    body = await res.json();
-  } catch {
-    parseFailed = true;
-  }
-
-  if (!res.ok) {
-    const message = Array.isArray(body?.message) ? body.message.join(', ') : (body?.message ?? res.statusText);
-    throw new ApiError(res.status, message);
-  }
-  if (parseFailed) {
-    throw new ApiError(res.status, 'Unexpected non-JSON response');
-  }
-
-  return body as T;
+  }).finally(forgetSharedGets);
+  return readResponse<T>(res);
 }

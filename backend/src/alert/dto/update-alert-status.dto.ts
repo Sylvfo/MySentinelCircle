@@ -1,4 +1,4 @@
-import { IsString, MinLength } from 'class-validator';
+import { IsString, MaxLength, MinLength } from 'class-validator';
 
 // Updates Alert.statusByCompanion or .statusByFirstCircle (whichever side
 // the caller is on) — a free-text progress note, independent of the
@@ -7,5 +7,6 @@ import { IsString, MinLength } from 'class-validator';
 export class UpdateAlertStatusDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(500)
   message: string;
 }

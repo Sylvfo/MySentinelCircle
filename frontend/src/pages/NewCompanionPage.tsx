@@ -1,39 +1,32 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { ApiError } from '../api/client';
 import { requestToBeSentinel } from '../api/sentinel';
 import { Tile } from '../components/Tile';
+import { useAction } from '../useAction';
 
 // Asking to become someone's Sentinel, reached from Companions' "New" button.
 export function NewCompanionPage() {
   const { t } = useTranslation();
   const [phone, setPhone] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { busy: submitting, error, run } = useAction();
 
-  const submit = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-    setError(null);
     setSent(false);
-    try {
+    void run(async () => {
       await requestToBeSentinel(phone.trim());
       setPhone('');
       setSent(true);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
     <div>
       <Link to="/companions">{t('common.back')}</Link>
       <h1>{t('companions.requestTitle')}</h1>
-      <p style={{ color: 'var(--text-muted)' }}>{t('companions.requestIntro')}</p>
+      <p className="muted">{t('companions.requestIntro')}</p>
       <Tile>
         <form onSubmit={submit}>
           <label>

@@ -266,7 +266,7 @@
       "confirm": "Confirmer",
       "reject": "Rejeter (erreur)",
       "report": "Signaler un décès",
-      "confirmReport": "Signaler le décès de cette personne ? Une deuxième personne devra confirmer avant que les autres soient prévenus."
+      "confirmReport": "Signaler le décès de cette personne ? Une deuxième personne devra confirmer avant que les autres soient prévenu.e.s."
     },
     "new": "Devenir Sentinel de quelqu'un",
     "backToList": "← Retour aux Companions",
@@ -484,7 +484,7 @@
       },
       "roster": "1er cercle",
       "leadExplain": "Tout le 1er cercle agit ensemble, la Lead responsable coordonne. Quand c'est fini, n'importe qui du 1er cercle peut arrêter l'alerte avec un petit mot pour tout le monde.",
-      "takeOverConfirm": "Reprendre la responsabilité de cette alerte ? La Lead responsable actuelle sera prévenue."
+      "takeOverConfirm": "Reprendre la responsabilité de cette alerte ? La personne responsable jusqu'ici sera prévenue."
     },
     "backToTiles": "← Retour",
     "seeRunningAlert": "Voir l'alerte en cours",

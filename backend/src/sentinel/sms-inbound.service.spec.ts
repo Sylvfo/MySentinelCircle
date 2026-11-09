@@ -1,6 +1,6 @@
 import { SmsInboundService } from './sms-inbound.service';
 import { SentinelService } from './sentinel.service';
-import { AlertService } from '../alert/alert.service';
+import { OuterCirclesService } from '../alert/outer-circles.service';
 import { RetentionService } from '../privacy/retention.service';
 
 const link = (firstName: string, userType = 'ONLY_SMS') => ({
@@ -50,7 +50,7 @@ describe('SmsInboundService', () => {
     retention = { eraseStubIfUnused: jest.fn().mockResolvedValue(true) };
     service = new SmsInboundService(
       sentinel as unknown as SentinelService,
-      alert as unknown as AlertService,
+      alert as unknown as OuterCirclesService,
       retention as unknown as RetentionService,
       sms,
     );

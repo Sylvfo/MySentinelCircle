@@ -1,5 +1,5 @@
 import type { Gender } from '../gender';
-import { apiDelete, apiGet, apiPatch, apiPost } from './client';
+import { apiDelete, apiGet, apiGetShared, apiPatch, apiPost } from './client';
 
 export type SentinelType = 'ONLY_SMS' | 'SENTINEL' | 'LEAD' | 'FIRSTCIRCLE' | 'UNCOMPLETE';
 export type LinkStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'REMOVED' | 'BLOCKED';
@@ -132,7 +132,8 @@ export interface Companion {
 
 // ---- Circles (companion side) -----------------------------------------------
 
-export const listCircles = () => apiGet<Circle[]>('/sentinel/circles');
+// Shared between pages for a few seconds (see apiGetShared).
+export const listCircles = () => apiGetShared<Circle[]>('/sentinel/circles');
 
 export interface SecurityScore {
   score: number;
@@ -207,7 +208,8 @@ export const listMyInvitations = () => apiGet<Invitation[]>('/sentinel/invitatio
 export const requestToBeSentinel = (targetPhone: string) =>
   apiPost<Membership>('/sentinel/requests', { targetPhone });
 
-export const listCompanions = () => apiGet<Companion[]>('/sentinel/companions');
+// Shared between pages for a few seconds (see apiGetShared).
+export const listCompanions = () => apiGetShared<Companion[]>('/sentinel/companions');
 
 // ---- Death notice (report / confirm / reject by a qualifying Sentinel) ------
 

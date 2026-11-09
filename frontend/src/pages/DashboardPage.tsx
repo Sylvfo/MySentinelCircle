@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
 import { alertNeedsMe, getMyParticipation, listAlerts, type MyAlertSummary, type MyParticipation } from '../api/alert';
 import { replyLabel } from '../components/replyLabel';
 import { firstCircleAskKey } from '../alertAsk';
-import { listCircles, listCompanions, type Circle, type Companion } from '../api/sentinel';
+import { listCircles, listCompanions, type Circle } from '../api/sentinel';
 import { PauseBadge } from '../components/PauseBadge';
 import { PauseNotice, PausePill } from '../components/PauseNotice';
 import { PlanNudge } from '../components/PlanNudge';
@@ -18,32 +17,25 @@ import { SentinelIcon } from '../components/SentinelIcon';
 import { CompanionIcon } from '../components/CompanionIcon';
 import { CircleRing } from '../components/CircleRing';
 import { companionColor, companionGold } from '../theme';
+import { Loading } from '../components/Loading';
+import { useLoad } from '../useLoad';
 
 export function DashboardPage() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  const [alerts, setAlerts] = useState<MyAlertSummary[]>([]);
-  const [circles, setCircles] = useState<Circle[]>([]);
-  const [companions, setCompanions] = useState<Companion[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useLoad(async () => {
+    const [alerts, circles, companions] = await Promise.all([listAlerts(), listCircles(), listCompanions()]);
+    return { alerts, circles, companions };
+  });
+  const alerts = data?.alerts ?? [];
+  const circles = data?.circles ?? [];
+  const companions = data?.companions ?? [];
   // alertId -> first name of the person each running alert is about.
   const [aboutNames, setAboutNames] = useState<Record<string, string>>({});
   // alertId -> my own participation (my answer, the questions put to me),
   // to say on the tile exactly what is asked of me.
   const [mine, setMine] = useState<Record<string, MyParticipation>>({});
   const { plan } = usePlan();
-
-  useEffect(() => {
-    Promise.all([listAlerts(), listCircles(), listCompanions()])
-      .then(([a, c, comp]) => {
-        setAlerts(a);
-        setCircles(c);
-        setCompanions(comp);
-      })
-      .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
-      .finally(() => setLoading(false));
-  }, []);
 
   // Normal vs Alert mode: a "Running Alert" card takes over the top whenever
   // an active alert needs this viewer to act (see alertNeedsMe). The red
@@ -114,7 +106,7 @@ export function DashboardPage() {
     return t('dashboard.runningAlert.ask.thanks');
   };
 
-  if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
+  if (loading) return <Loading />;
 
   return (
     // has-alert: the Running Alert tile takes the room, My Circles / My

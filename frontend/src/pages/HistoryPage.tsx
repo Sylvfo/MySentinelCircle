@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
 import { isOuterCircleViewer, listAlerts, type MyAlertSummary } from '../api/alert';
-import { AlertDetailPanel } from './AlertsPage';
+import { useLoad } from '../useLoad';
+import { AlertDetailPanel } from '../components/AlertDetailPanel';
+import { Loading } from '../components/Loading';
 
 // Resolved alerts only — AlertsPage shows everything still in progress,
 // this is where they land once closed, so the two never overlap.
@@ -13,18 +13,9 @@ export function HistoryPage() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const { alertId } = useParams();
-  const [alerts, setAlerts] = useState<MyAlertSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: alerts = [], loading, error } = useLoad(listAlerts);
 
-  useEffect(() => {
-    listAlerts()
-      .then(setAlerts)
-      .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
+  if (loading) return <Loading />;
 
   const resolved = alerts.filter((a) => a.alertStatus === 'RESOLVED');
   const concerns = (a: MyAlertSummary) =>
@@ -40,7 +31,7 @@ export function HistoryPage() {
       <div>
         <Link to="/history">{t('history.backToList')}</Link>
         <h1>{a.label}</h1>
-        <p style={{ color: 'var(--text-muted)' }}>
+        <p className="muted">
           {t('history.concerns', { who: concerns(a) })}
           {!isOuterCircleViewer(a, user?.id) && ` · ${t(`alerts.type.${a.alertType}`)}`} · {date(a)}
         </p>
@@ -55,7 +46,7 @@ export function HistoryPage() {
   return (
     <div>
       <h1>{t('history.title')}</h1>
-      <p style={{ color: 'var(--text-muted)' }}>{t('history.intro')}</p>
+      <p className="muted">{t('history.intro')}</p>
       {error && <p className="form-error">{error}</p>}
 
       {resolved.length === 0 ? (

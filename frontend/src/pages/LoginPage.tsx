@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { PasswordInput } from '../components/PasswordInput';
 import { linkGoogle, loginEmail, loginGoogle, loginPhone, requestOtp } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
-import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { useAction } from '../useAction';
+import { LanguageRow } from '../components/AuthFields';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { LegalLinks } from './legal/LegalPage';
 
@@ -17,23 +17,20 @@ export function LoginPage() {
   // One field for both: an "@" means an email, anything else a phone number.
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const { applyToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
+  const { busy: submitting, error, setError, run } = useAction({ fallback: t('auth.errors.login') });
   const pendingGoogleIdToken = (location.state as LocationState | null)?.pendingGoogleIdToken;
 
   const isEmail = identifier.includes('@');
   // "+41 79 123 45 67" → "+41791234567", as the backend expects.
   const phone = identifier.replace(/[\s.()-]/g, '');
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
+    void run(async () => {
       const { accessToken } = isEmail
         ? await loginEmail(identifier.trim(), password)
         : await loginPhone(phone, password);
@@ -46,54 +43,36 @@ export function LoginPage() {
         });
       }
       navigate('/dashboard');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.login'));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
-  const handleGoogleCredential = async (idToken: string) => {
-    setError(null);
-    setSubmitting(true);
-    try {
+  const handleGoogleCredential = (idToken: string) => {
+    void run(async () => {
       const { accessToken } = await loginGoogle(idToken);
       await applyToken(accessToken);
       navigate('/dashboard');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.login'));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   // First time, or forgot the password: a code by SMS logs them in.
-  const handleCodeRequest = async () => {
-    setError(null);
+  const handleCodeRequest = () => {
     if (!identifier.trim() || isEmail) {
       setError(t('auth.smsCodeNeedsPhone'));
       return;
     }
-    setSubmitting(true);
-    try {
+    void run(async () => {
       const { userId } = await requestOtp(phone);
       navigate('/otp', { state: { userId, phone } });
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
-    } finally {
-      setSubmitting(false);
-    }
+    }, t('auth.errors.generic'));
   };
 
   return (
     <div className="auth-page">
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <LanguageSwitcher />
-      </div>
+      <LanguageRow />
       <h1>{t('auth.loginTitle')}</h1>
 
       {pendingGoogleIdToken && (
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('auth.linkGooglePrompt')}</p>
+        <p className="muted muted-small">{t('auth.linkGooglePrompt')}</p>
       )}
 
       <form onSubmit={handleSubmit}>

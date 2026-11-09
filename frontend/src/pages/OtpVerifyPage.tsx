@@ -3,7 +3,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { requestOtp, verifyOtp } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
+import { useAction } from '../useAction';
 
 interface LocationState {
   userId: string;
@@ -20,44 +20,34 @@ export function OtpVerifyPage() {
   const state = location.state as LocationState | null;
 
   const [code, setCode] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { busy: submitting, error, run } = useAction({ fallback: t('auth.errors.invalidCode') });
 
   if (!state?.userId) {
     return <Navigate to="/login" replace />;
   }
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
+    void run(async () => {
       const { accessToken } = await verifyOtp(state.userId, code);
       await applyToken(accessToken);
       navigate(state.next ?? '/new-password');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.invalidCode'));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
-  const handleResend = async () => {
-    setError(null);
+  const handleResend = () => {
     setInfo(null);
-    try {
+    void run(async () => {
       await requestOtp(state.phone);
       setInfo(t('auth.resent'));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
-    }
+    }, t('auth.errors.generic'));
   };
 
   return (
     <div className="auth-page">
       <h1>{t('auth.verifyTitle')}</h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+      <p className="muted muted-small">
         {t('auth.otpSent', { phone: state.phone })}
       </p>
       <form onSubmit={handleSubmit}>
@@ -73,17 +63,13 @@ export function OtpVerifyPage() {
           />
         </label>
         {error && <p className="form-error">{error}</p>}
-        {info && <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{info}</p>}
+        {info && <p className="muted muted-small">{info}</p>}
         <button type="submit" disabled={submitting}>
           {t('auth.validate')}
         </button>
       </form>
       <p className="switch-link">
-        <button
-          type="button"
-          onClick={handleResend}
-          style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer' }}
-        >
+        <button type="button" className="link-button" onClick={handleResend}>
           {t('auth.resend')}
         </button>
       </p>

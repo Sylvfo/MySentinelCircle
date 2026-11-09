@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { confirmEmailChange } from '../api/user';
-import { ApiError } from '../api/client';
-import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { errorText } from '../api/client';
+import { LanguageRow } from '../components/AuthFields';
+import { Loading } from '../components/Loading';
 
 export function ConfirmEmailChangePage() {
   const [searchParams] = useSearchParams();
@@ -21,19 +22,17 @@ export function ConfirmEmailChangePage() {
     confirmEmailChange(token)
       .then(() => setStatus('done'))
       .catch((err) => {
-        setError(err instanceof ApiError ? err.message : t('auth.errors.generic'));
+        setError(errorText(err, t('auth.errors.generic')));
         setStatus('error');
       });
   }, [token, t]);
 
   return (
     <div className="auth-page">
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <LanguageSwitcher />
-      </div>
+      <LanguageRow />
       <h1>{t('settings.changeEmail.confirmTitle')}</h1>
 
-      {status === 'pending' && <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>}
+      {status === 'pending' && <Loading />}
 
       {status === 'done' && (
         <>

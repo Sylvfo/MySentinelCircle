@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 // Native <dialog> instead of an ARIA-roled div stack — gets modal
 // semantics, focus handling, and Escape-to-close from the browser instead
@@ -51,5 +52,35 @@ export function Modal({
         {children}
       </div>
     </dialog>
+  );
+}
+
+// "Are you sure?" in the app's own box rather than the browser's
+// window.confirm, which some in-app browsers show badly. The confirm button
+// repeats the action's own label ("Leave group"), Cancel closes.
+export function ConfirmModal({
+  message,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+}: {
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Modal title={t('common.confirm')} onClose={onCancel}>
+      <p>{message}</p>
+      <div className="row">
+        <button type="button" onClick={onConfirm}>
+          {confirmLabel}
+        </button>
+        <button type="button" className="ghost" onClick={onCancel}>
+          {t('common.cancel')}
+        </button>
+      </div>
+    </Modal>
   );
 }

@@ -179,6 +179,28 @@ describe('Messaging (e2e)', () => {
       expect(messages[0].body).toBe('Je suis en route');
     });
 
+    it('keeps a 2,000-character message whole, and refuses a longer one', async () => {
+      const { sentinel, conversationId } = await buildAlertWithConversation();
+      const long = 'm'.repeat(2000);
+
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .send({ body: `${long}x` })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .send({ body: long })
+        .expect(201);
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .expect(200);
+      expect((listRes.body as MessageBody[])[0].body).toBe(long);
+    });
+
     it('lets the companion write and read in the 1st circle room — they are seated there', async () => {
       const { companion, conversationId } = await buildAlertWithConversation();
 

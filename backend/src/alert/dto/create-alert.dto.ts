@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
   MinLength,
   ValidateNested,
@@ -42,6 +43,7 @@ export class CreateAlertDto {
 
   @IsString()
   @MinLength(1)
+  @MaxLength(2000)
   reason: string;
 
   @IsOptional()

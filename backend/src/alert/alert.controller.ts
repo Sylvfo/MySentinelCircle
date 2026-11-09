@@ -17,11 +17,15 @@ import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
 import { UpdateAlertStatusDto } from './dto/update-alert-status.dto';
 import { UpdateAlertLabelDto } from './dto/update-alert-label.dto';
+import { OuterCirclesService } from './outer-circles.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('alert')
 export class AlertController {
-  constructor(private readonly alert: AlertService) {}
+  constructor(
+    private readonly alert: AlertService,
+    private readonly outerCircles: OuterCirclesService,
+  ) {}
 
   // Not POST/GET on the bare /alert root — nginx's reverse-proxy location
   // blocks for every backend module require a trailing path segment (see
@@ -57,7 +61,7 @@ export class AlertController {
     @Param('id') id: string,
     @Body() dto: RequestCircleDto,
   ) {
-    return this.alert.requestCircle(user.userId, id, dto);
+    return this.outerCircles.requestCircle(user.userId, id, dto);
   }
 
   @Post(':id/questions')
@@ -66,7 +70,7 @@ export class AlertController {
     @Param('id') id: string,
     @Body() dto: AskQuestionDto,
   ) {
-    return this.alert.askQuestion(user.userId, id, dto);
+    return this.outerCircles.askQuestion(user.userId, id, dto);
   }
 
   @Post(':id/respond')
@@ -75,7 +79,7 @@ export class AlertController {
     @Param('id') id: string,
     @Body() dto: RespondAlertDto,
   ) {
-    return this.alert.respond(user.userId, id, dto);
+    return this.outerCircles.respond(user.userId, id, dto);
   }
 
   @Patch(':id/status')

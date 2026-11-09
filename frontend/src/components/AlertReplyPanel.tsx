@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiError } from '../api/client';
+import { errorText } from '../api/client';
 import {
   FIRST_CIRCLE_REPLY_CODES,
   QUESTION_REPLY_CODES,
@@ -141,7 +141,7 @@ export function AlertReplyPanel({
     setError(null);
     respondToAlert(alertId, text, questionId)
       .then(onChange)
-      .catch((err) => setError(err instanceof ApiError ? err.message : String(err)));
+      .catch((err) => setError(errorText(err)));
   };
 
   return (

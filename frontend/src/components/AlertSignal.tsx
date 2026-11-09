@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { alertNeedsMe, listAlerts, type MyAlertSummary } from '../api/alert';
+import { useSocketEvent } from '../realtime/useSocketEvent';
 
 // Warning triangle in the top bar, between the app's name and mine, on
 // every page:
@@ -13,7 +14,7 @@ import { alertNeedsMe, listAlerts, type MyAlertSummary } from '../api/alert';
 // Nothing otherwise. A tap opens the alert (or the list, if several).
 export function AlertSignal() {
   const { t } = useTranslation();
-  const { user, socket } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
   const [alerts, setAlerts] = useState<MyAlertSummary[]>([]);
 
@@ -26,14 +27,7 @@ export function AlertSignal() {
   // On each page change (answering happens on another page) and live, on
   // every change pushed for an alert of mine.
   useEffect(reload, [location.pathname]);
-  useEffect(() => {
-    if (!socket) return;
-    socket.on('alert:changed', reload);
-    return () => {
-      socket.off('alert:changed', reload);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket]);
+  useSocketEvent('alert:changed', reload);
 
   const running = alerts.filter((a) => alertNeedsMe(a, user?.id));
   const waiting = running.filter(

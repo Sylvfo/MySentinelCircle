@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { ApiError } from '../api/client';
 import {
   ALERT_QUESTION_KINDS,
   askQuestion,
@@ -13,6 +12,7 @@ import {
 import { replyLabel } from './replyLabel';
 import { LinkifiedText } from './LinkifiedText';
 import { genderContext } from '../gender';
+import { useAction } from '../useAction';
 
 // The companion's other circles during an alert (the 1st circle has its own
 // room): one tile per circle with its people, whether it was asked, and
@@ -103,8 +103,7 @@ function CircleTile({
   const { t } = useTranslation();
   const [form, setForm] = useState<'request' | 'ask' | null>(null);
   const [kind, setKind] = useState<AlertQuestionKind>('CAN_VISIT');
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { busy: sending, error, run } = useAction();
 
   const contacted = members.filter((p) => p.contactedAt);
   const askable = contacted.filter((p) => p.status !== 'CLOSED');
@@ -115,10 +114,8 @@ function CircleTile({
     null,
   );
 
-  const send = async () => {
-    setSending(true);
-    setError(null);
-    try {
+  const send = () =>
+    run(async () => {
       if (form === 'ask') {
         await askQuestion(alertId, { questionKind: kind, participantIds: askable.map((p) => p.id) });
       } else {
@@ -126,12 +123,7 @@ function CircleTile({
       }
       setForm(null);
       await onChange();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSending(false);
-    }
-  };
+    });
 
   const open = (next: 'request' | 'ask') => {
     setKind(next === 'ask' ? 'SEEMED_OK' : 'CAN_VISIT');

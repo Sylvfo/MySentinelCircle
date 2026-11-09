@@ -164,7 +164,7 @@ model User {
   pendingPhone String?
 
   isMajor      Boolean @default(true)
-  publicStatus String?
+  publicStatus String? @db.VarChar(200)
 
   userType         UserType @default(ONLY_SMS)
  //hasPaid          Boolean  @default(false)
@@ -181,7 +181,7 @@ model User {
   passwordResetExpiresAt  DateTime?
 
   deceasedAt DateTime?
-  deathAnnouncementMessage String?
+  deathAnnouncementMessage String?  @db.Text
 
   myCircles   Circle[]        @relation("MyCirclesAsCompanion")
   myUserSentinels LinkSentinels[] @relation("SentinelCompanion")
@@ -323,15 +323,15 @@ model Alert {
   closedAt    DateTime?
 
   label        String
-  messageAlert String
+  messageAlert String  @db.Text
   alertStatus  AlertStatus @default(SENT)
   alertType    AlertType   @default(UNKNOWN)
 
   paidById String? // who paid for this single alert (outside any subscription)
   paidBy   User?   @relation("AlertPaidBy", fields: [paidById], references: [id], onDelete: Restrict)
 
-  statusByCompanion   String?
-  statusByFirstCircle String?
+  statusByCompanion   String?  @db.VarChar(500)
+  statusByFirstCircle String?  @db.VarChar(500)
   statusUpdatedById String?
   statusUpdatedBy   User?     @relation("AlertStatusUpdatedBy", fields: [statusUpdatedById], references: [id], onDelete: Restrict)
   statusUpdatedAt   DateTime?
@@ -435,7 +435,7 @@ model Message {
   //editedAt  DateTime?
   deletedAt DateTime?
 
-  body String
+  body String @db.Text
   type MessageType @default(TEXT)
 
   senderId String

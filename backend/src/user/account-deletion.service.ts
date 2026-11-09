@@ -22,7 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
 import type { RealtimeNotifier } from '../realtime/realtime-notifier.interface';
-import { SentinelService } from '../sentinel/sentinel.service';
+import { GroupService } from '../sentinel/group.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import { lastLeadLeftSms, sentinelLeaveConfirmSms } from '../sms/messages';
@@ -57,7 +57,7 @@ export class AccountDeletionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly users: UserService,
-    private readonly sentinel: SentinelService,
+    private readonly groups: GroupService,
     private readonly notifications: NotificationService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
     @Inject(REALTIME_NOTIFIER) private readonly realtime: RealtimeNotifier,
@@ -125,9 +125,9 @@ export class AccountDeletionService {
     });
     for (const circle of groupCircles) {
       if (circle.groupRootId) {
-        await this.sentinel.leaveGroup(userId, circle.groupRootId);
+        await this.groups.leaveGroup(userId, circle.groupRootId);
       } else {
-        await this.sentinel.deleteGroup(userId, circle.id);
+        await this.groups.deleteGroup(userId, circle.id);
       }
     }
   }

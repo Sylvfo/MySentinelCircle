@@ -21,12 +21,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
 import { NotificationService } from '../notification/notification.service';
+import { OuterCirclesService } from './outer-circles.service';
 
 // A subscription that is still running.
 const SUBSCRIBED = new Date('2999-01-01');
 
 describe('AlertService', () => {
   let service: AlertService;
+  let outerCircles: OuterCirclesService;
   let prisma: {
     alert: {
       findFirst: jest.Mock;
@@ -138,6 +140,7 @@ describe('AlertService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AlertService,
+        OuterCirclesService,
         { provide: PrismaService, useValue: prisma },
         { provide: SMS_SENDER, useValue: sms },
         { provide: REALTIME_NOTIFIER, useValue: notifier },
@@ -146,6 +149,7 @@ describe('AlertService', () => {
     }).compile();
 
     service = module.get<AlertService>(AlertService);
+    outerCircles = module.get<OuterCirclesService>(OuterCirclesService);
   });
 
   describe('updateLocation', () => {
@@ -1207,7 +1211,7 @@ describe('AlertService', () => {
       prisma.alertParticipant.findMany.mockResolvedValueOnce([]); // nobody contacted yet
       prisma.user.findUnique.mockResolvedValueOnce({ firstName: 'Alice' });
 
-      const result = await service.requestCircle('alice-id', 'alert-1', {
+      const result = await outerCircles.requestCircle('alice-id', 'alert-1', {
         circleId: 'outer-1',
         questionKind: 'CAN_VISIT',
       });
@@ -1288,7 +1292,7 @@ describe('AlertService', () => {
         prisma.alertParticipant.findMany.mockResolvedValueOnce([]);
         prisma.user.findUnique.mockResolvedValueOnce({ firstName: 'Alice' });
 
-        await service.requestCircle('alice-id', 'alert-1', {
+        await outerCircles.requestCircle('alice-id', 'alert-1', {
           circleId: 'outer-1',
           questionKind: 'CAN_VISIT',
         });
@@ -1319,7 +1323,7 @@ describe('AlertService', () => {
       prisma.alertParticipant.findMany.mockResolvedValueOnce([]);
       prisma.user.findUnique.mockResolvedValueOnce({ firstName: 'Alice' });
 
-      await service.requestCircle('alice-id', 'alert-1', {
+      await outerCircles.requestCircle('alice-id', 'alert-1', {
         circleId: 'outer-1',
         questionKind: 'CAN_VISIT',
       });
@@ -1362,7 +1366,7 @@ describe('AlertService', () => {
       prisma.alertParticipant.findMany.mockResolvedValueOnce([]);
       prisma.user.findUnique.mockResolvedValueOnce({ firstName: 'Alice' });
 
-      await service.requestCircle('alice-id', 'alert-1', {
+      await outerCircles.requestCircle('alice-id', 'alert-1', {
         circleId: 'outer-1',
         questionKind: 'CAN_VISIT',
       });
@@ -1423,7 +1427,7 @@ describe('AlertService', () => {
       ]);
       prisma.user.findUnique.mockResolvedValueOnce({ firstName: 'Alice' });
 
-      await service.requestCircle('alice-id', 'alert-1', {
+      await outerCircles.requestCircle('alice-id', 'alert-1', {
         circleId: 'outer-1',
         questionKind: 'CAN_VISIT',
       });
@@ -1467,7 +1471,7 @@ describe('AlertService', () => {
       ]);
 
       await expect(
-        service.requestCircle('alice-id', 'alert-1', {
+        outerCircles.requestCircle('alice-id', 'alert-1', {
           circleId: 'outer-1',
           questionKind: 'CAN_VISIT',
         }),
@@ -1481,7 +1485,7 @@ describe('AlertService', () => {
       prisma.circle.findFirst.mockResolvedValueOnce(null);
 
       await expect(
-        service.requestCircle('alice-id', 'alert-1', {
+        outerCircles.requestCircle('alice-id', 'alert-1', {
           circleId: 'first-circle',
           questionKind: 'CAN_VISIT',
         }),
@@ -1495,7 +1499,7 @@ describe('AlertService', () => {
       prisma.linkSentinels.findMany.mockResolvedValueOnce([]);
 
       await expect(
-        service.requestCircle('alice-id', 'alert-1', {
+        outerCircles.requestCircle('alice-id', 'alert-1', {
           circleId: 'outer-1',
           questionKind: 'CAN_VISIT',
         }),
@@ -1508,7 +1512,7 @@ describe('AlertService', () => {
       );
 
       await expect(
-        service.requestCircle('alice-id', 'alert-1', {
+        outerCircles.requestCircle('alice-id', 'alert-1', {
           circleId: 'outer-1',
           questionKind: 'CAN_VISIT',
         }),
@@ -1520,7 +1524,7 @@ describe('AlertService', () => {
       prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
 
       await expect(
-        service.requestCircle('stranger-id', 'alert-1', {
+        outerCircles.requestCircle('stranger-id', 'alert-1', {
           circleId: 'outer-1',
           questionKind: 'CAN_VISIT',
         }),
@@ -1547,7 +1551,7 @@ describe('AlertService', () => {
         { userSentinelId: 'bob-id' },
       ]);
 
-      await service.remindStaleCircleBatches();
+      await outerCircles.remindStaleCircleBatches();
 
       expect(notifications.create).toHaveBeenCalledWith({
         userId: 'alice-id',
@@ -1568,7 +1572,7 @@ describe('AlertService', () => {
       prisma.alertParticipant.count.mockResolvedValueOnce(1);
       prisma.notification.count.mockResolvedValueOnce(1); // already reminded
 
-      await service.remindStaleCircleBatches();
+      await outerCircles.remindStaleCircleBatches();
 
       expect(notifications.create).not.toHaveBeenCalled();
     });
@@ -1579,7 +1583,7 @@ describe('AlertService', () => {
       ]);
       prisma.alertParticipant.count.mockResolvedValueOnce(0); // nobody WAITING
 
-      await service.remindStaleCircleBatches();
+      await outerCircles.remindStaleCircleBatches();
 
       expect(notifications.create).not.toHaveBeenCalled();
     });
@@ -1589,7 +1593,7 @@ describe('AlertService', () => {
         staleParticipant({ circleId: 'circle-1' }), // same as firstCircleId
       ]);
 
-      await service.remindStaleCircleBatches();
+      await outerCircles.remindStaleCircleBatches();
 
       expect(prisma.alertParticipant.count).not.toHaveBeenCalled();
       expect(notifications.create).not.toHaveBeenCalled();
@@ -1742,7 +1746,7 @@ describe('AlertService', () => {
       });
 
       await expect(
-        service.respond('sentinel-1', 'alert-1', { reply: 'LATER' }),
+        outerCircles.respond('sentinel-1', 'alert-1', { reply: 'LATER' }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.alertParticipant.update).not.toHaveBeenCalled();
     });
@@ -1764,7 +1768,7 @@ describe('AlertService', () => {
         participants: [],
       });
 
-      await service.respond('sentinel-1', 'alert-1', { reply: 'GOING' });
+      await outerCircles.respond('sentinel-1', 'alert-1', { reply: 'GOING' });
 
       expect(prisma.alertParticipant.update).toHaveBeenCalledWith({
         where: { id: 'participant-1' },
@@ -1794,7 +1798,7 @@ describe('AlertService', () => {
       // through getAlert() — the caller may be an outer-circle Sentinel,
       // who getAlert()'s own "Me or 1st circle only" gate would otherwise
       // reject right after their response was already recorded.
-      const result = await service.respond('sentinel-1', 'alert-1', {
+      const result = await outerCircles.respond('sentinel-1', 'alert-1', {
         reply: 'GOING',
       });
 
@@ -1848,7 +1852,7 @@ describe('AlertService', () => {
       });
       prisma.alertParticipant.update.mockResolvedValueOnce({ id: 'p' });
 
-      await service.respond('sentinel-1', 'alert-1', {
+      await outerCircles.respond('sentinel-1', 'alert-1', {
         reply: 'LATER',
         questionId: 'question-1',
       });
@@ -1868,7 +1872,7 @@ describe('AlertService', () => {
       });
 
       await expect(
-        service.respond('sentinel-1', 'alert-1', {
+        outerCircles.respond('sentinel-1', 'alert-1', {
           reply: 'TODAY',
           questionId: 'question-1',
         }),
@@ -1885,7 +1889,7 @@ describe('AlertService', () => {
       });
 
       await expect(
-        service.respond('sentinel-1', 'alert-1', { reply: 'YES' }),
+        outerCircles.respond('sentinel-1', 'alert-1', { reply: 'YES' }),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -1893,7 +1897,7 @@ describe('AlertService', () => {
       prisma.alertParticipant.findFirst.mockResolvedValueOnce(null);
 
       await expect(
-        service.respond('sentinel-1', 'alert-1', { reply: 'GOING' }),
+        outerCircles.respond('sentinel-1', 'alert-1', { reply: 'GOING' }),
       ).rejects.toThrow(ForbiddenException);
       expect(prisma.alertParticipant.update).not.toHaveBeenCalled();
     });
@@ -2125,7 +2129,7 @@ describe('AlertService', () => {
       prisma.alertParticipant.findMany.mockResolvedValueOnce([]);
 
       await expect(
-        service.askQuestion('alice-id', 'alert-1', {
+        outerCircles.askQuestion('alice-id', 'alert-1', {
           questionKind: 'SEEMED_OK',
           participantIds: ['participant-1'],
         }),
@@ -2141,7 +2145,7 @@ describe('AlertService', () => {
       });
 
       await expect(
-        service.askQuestion('alice-id', 'alert-1', {
+        outerCircles.askQuestion('alice-id', 'alert-1', {
           questionKind: 'SEEMED_OK',
           participantIds: ['participant-1'],
         }),
@@ -2172,7 +2176,7 @@ describe('AlertService', () => {
         .spyOn(service, 'getAlert')
         .mockResolvedValueOnce({} as never);
 
-      await service.askQuestion('alice-id', 'alert-1', {
+      await outerCircles.askQuestion('alice-id', 'alert-1', {
         questionKind: 'WHERE_SEEN',
         participantIds: ['participant-1'],
       });
@@ -2215,7 +2219,7 @@ describe('AlertService', () => {
         participants: [{ userSentinels: { userSentinelId: 'sentinel-1' } }],
       }); // notifyAlertParticipants — SMS and in-app replies push alike
 
-      const result = await service.answerQuestion(
+      const result = await outerCircles.answerQuestion(
         question('CAN_VISIT') as never,
         '+41793333333',
         '2',
@@ -2251,7 +2255,7 @@ describe('AlertService', () => {
       });
       prisma.alert.findUnique.mockResolvedValueOnce(null);
 
-      await service.answerQuestion(
+      await outerCircles.answerQuestion(
         question('WHERE_SEEN') as never,
         '+41793333333',
         'a la gare',
@@ -2264,7 +2268,7 @@ describe('AlertService', () => {
     });
 
     it('asks again when the reply is not understood, recording nothing', async () => {
-      const result = await service.answerQuestion(
+      const result = await outerCircles.answerQuestion(
         question('CAN_VISIT') as never,
         '+41793333333',
         'hein',
@@ -2295,7 +2299,8 @@ describe('AlertService', () => {
         question('q1', 'alert-1'),
       ]);
 
-      const questions = await service.listOpenQuestionsByPhone('+41793333333');
+      const questions =
+        await outerCircles.listOpenQuestionsByPhone('+41793333333');
 
       expect(questions.map((q) => q.id)).toEqual(['q3', 'q2']);
       expect(prisma.alertQuestion.findMany).toHaveBeenCalledWith(
@@ -2662,7 +2667,7 @@ describe('AlertService', () => {
       prisma.linkSentinels.findMany.mockResolvedValueOnce([]); // everyone paused
 
       await expect(
-        service.requestCircle('alice-id', 'alert-1', {
+        outerCircles.requestCircle('alice-id', 'alert-1', {
           circleId: 'outer-1',
           questionKind: 'CAN_VISIT',
         }),
@@ -2686,7 +2691,7 @@ describe('AlertService', () => {
       prisma.alertParticipant.findMany.mockResolvedValueOnce([]); // the one asked is paused
 
       await expect(
-        service.askQuestion('alice-id', 'alert-1', {
+        outerCircles.askQuestion('alice-id', 'alert-1', {
           participantIds: ['p-1'],
           questionKind: 'CAN_VISIT',
         }),

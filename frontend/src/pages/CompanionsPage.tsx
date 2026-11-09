@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { ApiError } from '../api/client';
 import {
   acceptMembership,
   declineMembership,
@@ -19,33 +18,22 @@ import { usePlan } from '../plan';
 import { useAuth } from '../auth/AuthContext';
 import { companionColor, companionGold } from '../theme';
 import { genderContext } from '../gender';
+import { Loading } from '../components/Loading';
+import { useLoad } from '../useLoad';
 
 export function CompanionsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [companions, setCompanions] = useState<Companion[]>([]);
   const { plan } = usePlan();
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { linkId } = useParams();
+  const { data, loading, error, reload } = useLoad(async () => {
+    const [companions, invitations] = await Promise.all([listCompanions(), listMyInvitations()]);
+    return { companions, invitations };
+  });
+  const companions = data?.companions ?? [];
+  const invitations = data?.invitations ?? [];
 
-  const reload = async () => {
-    setError(null);
-    try {
-      const [c, i] = await Promise.all([listCompanions(), listMyInvitations()]);
-      setCompanions(c);
-      setInvitations(i);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
-
-  useEffect(() => {
-    void reload().finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
+  if (loading) return <Loading />;
 
   // Anything waiting on me goes first: a pending circle-move proposal or a
   // death report to confirm. Invitations received sit above the list anyway.
@@ -73,7 +61,7 @@ export function CompanionsPage() {
         <h1>
           {t('companions.title')} <PausePill which="forOthers" />
         </h1>
-        <p style={{ color: 'var(--text-muted)' }}>{t('companions.intro')}</p>
+        <p className="muted">{t('companions.intro')}</p>
         <PauseNotice which="forOthers" />
         {error && <p className="form-error">{error}</p>}
         <div className="header-actions">
