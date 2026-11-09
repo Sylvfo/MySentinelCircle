@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
 import request from 'supertest';
 import { AlertType, CircleType } from '@prisma/client';
 import { AppModule } from './../src/app.module';
+import { PrismaService } from './../src/prisma/prisma.service';
 import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from './../src/email/email-sender.interface';
 import { SMS_SENDER } from './../src/sms/sms-sender.interface';
@@ -42,6 +42,7 @@ interface MessageBody {
 
 describe('Messaging (e2e)', () => {
   let app: NestExpressApplication;
+  let prisma: PrismaService;
   let sentOtps: { phone: string; code: string }[];
   let sentSms: { phone: string; body: string }[];
 
@@ -74,12 +75,10 @@ describe('Messaging (e2e)', () => {
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
     );
-    // Mirrors main.ts's bootstrap() — e2e specs build their own app instance
-    // and don't call bootstrap(), so this needs repeating here for the
-    // image-message route's GET /uploads/messages/:filename to be servable
-    // in the test environment the same way it is in the real app.
-    app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
+    // No static /uploads folder, as in main.ts: message images are only
+    // served through GET /messaging/messages/:id/image.
     await app.init();
+    prisma = moduleFixture.get(PrismaService);
   });
 
   afterEach(async () => {
@@ -205,7 +204,7 @@ describe('Messaging (e2e)', () => {
         .expect(403);
     });
 
-    it('rejects sending into a closed conversation, but still allows reading its history', async () => {
+    it('keeps an alert chat writable 7 days after the alert, then read-only with its history', async () => {
       const { companion, sentinel, alert, conversationId } =
         await buildAlertWithConversation();
       await request(app.getHttpServer())
@@ -214,22 +213,40 @@ describe('Messaging (e2e)', () => {
         .send({ body: 'Avant la cloture' })
         .expect(201);
 
+      // Stopped with a closing word: posted in the chat.
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/close`)
         .set('Authorization', auth(companion.accessToken))
+        .send({ finalWord: 'Tout va bien, merci à toutes et tous.' })
         .expect(201);
 
+      // Still open during the 7 days after the alert.
       await request(app.getHttpServer())
         .post(`/messaging/conversations/${conversationId}/messages`)
         .set('Authorization', auth(sentinel.accessToken))
-        .send({ body: 'Apres la cloture' })
+        .send({ body: 'Super, merci' })
+        .expect(201);
+
+      // Those 7 days have passed.
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { closedAt: new Date(Date.now() - 1000) },
+      });
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .send({ body: 'Trop tard' })
         .expect(409);
 
       const listRes = await request(app.getHttpServer())
         .get(`/messaging/conversations/${conversationId}/messages`)
         .set('Authorization', auth(sentinel.accessToken))
         .expect(200);
-      expect(listRes.body as MessageBody[]).toHaveLength(1);
+      expect((listRes.body as MessageBody[]).map((m) => m.body)).toEqual([
+        'Avant la cloture',
+        'Tout va bien, merci à toutes et tous.',
+        'Super, merci',
+      ]);
     });
   });
 

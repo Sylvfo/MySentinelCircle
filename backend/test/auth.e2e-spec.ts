@@ -155,7 +155,13 @@ describe('Auth (e2e)', () => {
 
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({ firstName: 'Ada', userName: testUsername(), email, password })
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email,
+        password,
+        acceptTerms: true,
+      })
       .expect(201);
     const { accessToken } = signupRes.body as AuthResponseBody;
     expect(sentOtps).toHaveLength(0);
@@ -189,11 +195,24 @@ describe('Auth (e2e)', () => {
         userName: testUsername(),
         email: testEmail(),
         password: 'a'.repeat(129),
+        acceptTerms: true,
       })
       .expect(400);
     await request(app.getHttpServer())
       .post('/auth/login/email')
       .send({ email: testEmail(), password: 'a'.repeat(129) })
+      .expect(400);
+  });
+
+  it('refuses a signup without the terms of use accepted', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/signup/email')
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email: testEmail(),
+        password: 'password123',
+      })
       .expect(400);
   });
 
@@ -204,7 +223,7 @@ describe('Auth (e2e)', () => {
 
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({ firstName: 'Ada', userName, email, password })
+      .send({ firstName: 'Ada', userName, email, password, acceptTerms: true })
       .expect(201);
     const signupBody = signupRes.body as AuthResponseBody;
     expect(signupBody.accessToken).toBeDefined();
@@ -234,7 +253,13 @@ describe('Auth (e2e)', () => {
 
     await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({ firstName: 'Ada', userName: testUsername(), email, password })
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email,
+        password,
+        acceptTerms: true,
+      })
       .expect(201);
 
     await request(app.getHttpServer())

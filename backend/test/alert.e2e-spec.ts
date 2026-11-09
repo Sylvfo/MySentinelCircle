@@ -572,6 +572,12 @@ describe('Alert (e2e)', () => {
         .post(`/alert/${(first.body as AlertBody).id}/close`)
         .set('Authorization', auth(companion.accessToken))
         .expect(201);
+      // The free trial is one alert: a running subscription for the second
+      // (payment is simulated, so set it straight in the database).
+      await prisma.user.update({
+        where: { id: companion.userId },
+        data: { paidUntil: new Date(Date.now() + 365 * 86_400_000) },
+      });
 
       const second = await request(app.getHttpServer())
         .post('/alert/raise')
