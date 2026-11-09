@@ -230,6 +230,8 @@ export class AccountDeletionService {
         where: { actorUserId: userId },
         data: { actorLabel: DELETED_ACCOUNT_LABEL },
       }),
+      // Where and when they signed in: nothing to keep once they're gone.
+      this.prisma.loginEvent.deleteMany({ where: { userId } }),
       this.prisma.user.update({
         where: { id: userId },
         data: {

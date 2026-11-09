@@ -111,6 +111,10 @@ Then:
     5. When the fonts are hosted by us (line below), remove
        fonts.googleapis.com and fonts.gstatic.com from the policy.
 [ ] helmet in the backend
+[ ] Uptime check: an outside service (Infomaniak monitoring, UptimeRobot…)
+    calling https://<our site>/health every minute, with an email alert.
+    The route answers 200 when the backend and the database work.
+[ ] ADMIN_EMAILS set in the production backend/.env (who sees /admin)
 [ ] MariaDB port 3306 not exposed to the outside
 [ ] Real TLS certificate (the dev one is self-signed)
 [ ] Encrypted, tested database backups (and backups of backend/uploads/)

@@ -76,6 +76,7 @@ const fr: Record<LegalDoc, LegalText> = {
         items: [
           'Les positions GPS sont effacées 30 jours après la fin de l’alerte.',
           'Les notifications sont effacées après 6 mois.',
+          'Pour la sécurité de votre compte, vos connexions sont enregistrées (date, méthode, navigateur, adresse IP raccourcie). Vous les voyez dans vos Paramètres ; elles sont effacées après 90 jours.',
           'Le numéro d’une personne invitée qui n’a jamais accepté ni créé de compte est effacé après 6 mois, ou tout de suite si elle répond NON ou STOP.',
           'Votre compte est gardé tant que vous l’utilisez. Si vous le supprimez, voir ci-dessous.',
         ],
@@ -242,6 +243,7 @@ const en: Record<LegalDoc, LegalText> = {
         items: [
           'GPS positions are erased 30 days after the alert ends.',
           'Notifications are erased after 6 months.',
+          'For your account’s security, your sign-ins are recorded (date, method, browser, shortened IP address). You can see them in your Settings; they are erased after 90 days.',
           'The number of an invited person who never accepted nor created an account is erased after 6 months, or right away if they reply NO or STOP.',
           'Your account is kept as long as you use it. If you delete it, see below.',
         ],

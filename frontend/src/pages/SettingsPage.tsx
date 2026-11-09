@@ -23,6 +23,7 @@ import {
   ChangePasswordForm,
 } from '../components/AccountPanels';
 import { DeathNoticePanel } from '../components/DeathNoticePanel';
+import { LoginHistory } from '../components/LoginHistory';
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -157,6 +158,7 @@ export function SettingsPage() {
               <label>{t('settings.createdAt')}</label>
               <p>{new Date(me.createdAt).toLocaleString()}</p>
             </div>
+            <LoginHistory />
           </>,
         )}
 

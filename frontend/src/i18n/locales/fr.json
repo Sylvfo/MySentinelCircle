@@ -40,7 +40,8 @@
     "messages": "Messages",
     "settings": "Paramètres",
     "logout": "Déconnexion",
-    "info": "Info"
+    "info": "Info",
+    "admin": "Admin"
   },
   "auth": {
     "loginTitle": "Connexion",
@@ -893,7 +894,7 @@
       },
       "account": {
         "title": "Mon compte et ma sécurité",
-        "hint": "Téléphone, email, mot de passe"
+        "hint": "Téléphone, email, mot de passe, connexions"
       },
       "subscription": {
         "title": "Abonnement",
@@ -927,7 +928,23 @@
       }
     },
     "alertChatWithFirstCircle": "Pendant une alerte, mes Sentinelles des autres cercles peuvent écrire à mon 1er cercle",
-    "alertChatWithFirstCircleHint": "Si c'est décoché, aucune ne peut, quel que soit le réglage de chaque cercle. Si c'est coché, chaque cercle décide (sur la page du cercle)."
+    "alertChatWithFirstCircleHint": "Si c'est décoché, aucune ne peut, quel que soit le réglage de chaque cercle. Si c'est coché, chaque cercle décide (sur la page du cercle).",
+    "logins": {
+      "title": "Mes dernières connexions",
+      "hint": "Une connexion que tu n'as pas faite ? Change ton mot de passe, puis déconnecte tous tes appareils.",
+      "none": "Aucune connexion enregistrée pour l'instant.",
+      "success": "Réussie",
+      "failed": "Échouée",
+      "method": {
+        "EMAIL_PASSWORD": "E-mail et mot de passe",
+        "PHONE_PASSWORD": "Téléphone et mot de passe",
+        "GOOGLE": "Google",
+        "SMS_CODE": "Code par SMS"
+      },
+      "unknownDevice": "Appareil inconnu",
+      "signOutEverywhere": "Me déconnecter de tous mes appareils",
+      "signOutConfirm": "Tous tes appareils seront déconnectés, celui-ci aussi. Il faudra te reconnecter partout."
+    }
   },
   "welcome": {
     "title": "Bienvenue",
@@ -1327,5 +1344,51 @@
     "waiting_other": "{{count}} alertes attendent ta réponse",
     "running_one": "Une alerte est en cours",
     "running_other": "{{count}} alertes sont en cours"
+  },
+  "admin": {
+    "title": "Administration",
+    "refresh": "Actualiser",
+    "generatedAt": "Chiffres du {{date}}",
+    "accounts": {
+      "title": "Comptes",
+      "total": "Comptes",
+      "new7d": "Nouveaux (7 jours)",
+      "new30d": "Nouveaux (30 jours)",
+      "incomplete": "Sans téléphone pour l'instant",
+      "smsOnly": "Sentinelles par SMS, sans compte",
+      "deleted": "Supprimés",
+      "perWeek": "Nouveaux comptes par semaine"
+    },
+    "activity": {
+      "title": "Personnes actives",
+      "today": "Aujourd'hui",
+      "week": "7 derniers jours",
+      "month": "30 derniers jours"
+    },
+    "usage": {
+      "title": "Utilisation",
+      "alertsRunning": "Alertes en cours",
+      "alerts30d": "Alertes (30 jours)",
+      "alertsTotal": "Alertes au total",
+      "messages30d": "Messages (30 jours)",
+      "groups": "Groupes"
+    },
+    "security": {
+      "title": "Sécurité (24 dernières heures)",
+      "logins24h": "Connexions réussies",
+      "failures24h": "Connexions échouées",
+      "locked": "Comptes bloqués",
+      "targeted": "Comptes visés (3 échecs ou plus)",
+      "networksHint": "Réseaux avec 5 échecs ou plus :",
+      "noNetwork": "Aucun réseau suspect.",
+      "failures_one": "{{count}} échec",
+      "failures_other": "{{count}} échecs"
+    },
+    "server": {
+      "title": "Serveur",
+      "uptime": "En ligne depuis",
+      "uptimeValue": "{{days}} j {{hours}} h",
+      "version": "Version"
+    }
   }
 }

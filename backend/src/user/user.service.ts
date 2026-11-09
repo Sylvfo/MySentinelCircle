@@ -42,6 +42,7 @@ import { StepUpCodeRequestDto } from './dto/step-up-code-request.dto';
 import { DevSetHasPaidDto } from './dto/dev-set-has-paid.dto';
 import { UpdateDeathNoticeDto } from './dto/update-death-notice.dto';
 import { SetDeathNoticeRecipientsDto } from './dto/set-death-notice-recipients.dto';
+import { isAdminEmail } from '../admin/admin-emails';
 
 const STEP_UP_TTL_MINUTES = 10;
 const PENDING_EMAIL_TTL_MINUTES = 60;
@@ -114,7 +115,12 @@ export class UserService {
       where: { id: userId },
       select: PROFILE_SELECT,
     });
-    return user && toProfileDto(user);
+    return (
+      user && {
+        ...toProfileDto(user),
+        isAdmin: isAdminEmail(this.config, user.email),
+      }
+    );
   }
 
   // What my plan includes right now, for the Plans page and the upgrade

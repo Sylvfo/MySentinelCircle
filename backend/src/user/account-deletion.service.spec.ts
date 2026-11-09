@@ -35,6 +35,7 @@ describe('AccountDeletionService', () => {
       updateMany: jest.Mock;
     };
     notification: { updateMany: jest.Mock };
+    loginEvent: { deleteMany: jest.Mock };
     $transaction: jest.Mock;
   };
   let users: { assertStepUpFresh: jest.Mock };
@@ -83,6 +84,7 @@ describe('AccountDeletionService', () => {
         updateMany: jest.fn(),
       },
       notification: { updateMany: jest.fn() },
+      loginEvent: { deleteMany: jest.fn() },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     users = { assertStepUpFresh: jest.fn() };

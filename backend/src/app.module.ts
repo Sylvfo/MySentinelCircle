@@ -18,6 +18,8 @@ import { OrganizationModule } from './organization/organization.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { SupportModule } from './support/support.module';
 import { PrivacyModule } from './privacy/privacy.module';
+import { AdminModule } from './admin/admin.module';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -40,8 +42,9 @@ import { PrivacyModule } from './privacy/privacy.module';
     OrganizationModule,
     MessagingModule,
     PrivacyModule,
+    AdminModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

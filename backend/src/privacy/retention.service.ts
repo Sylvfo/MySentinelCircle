@@ -16,6 +16,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const POSITION_RETENTION_DAYS = 30; // after the alert is resolved
 export const NOTIFICATION_RETENTION_DAYS = 182; // ~6 months
 export const UNCLAIMED_STUB_RETENTION_DAYS = 182; // ~6 months
+export const LOGIN_EVENT_RETENTION_DAYS = 90;
 
 // A number known only because someone typed it in: no account behind it.
 const STUB_WITHOUT_ACCOUNT = {
@@ -51,9 +52,21 @@ export class RetentionService {
     const positions = await this.purgePositions(now);
     const notifications = await this.purgeNotifications(now);
     const stubs = await this.purgeUnclaimedStubs(now);
+    const logins = await this.purgeLoginEvents(now);
     this.logger.log(
-      `Retention purge: ${positions} alert(s) without position, ${notifications} notification(s), ${stubs} unclaimed number(s)`,
+      `Retention purge: ${positions} alert(s) without position, ${notifications} notification(s), ${stubs} unclaimed number(s), ${logins} sign-in(s)`,
     );
+  }
+
+  // The sign-in journal is for spotting an intruder, not an archive.
+  async purgeLoginEvents(now: Date): Promise<number> {
+    const before = new Date(
+      now.getTime() - LOGIN_EVENT_RETENTION_DAYS * DAY_MS,
+    );
+    const { count } = await this.prisma.loginEvent.deleteMany({
+      where: { createdAt: { lt: before } },
+    });
+    return count;
   }
 
   // GPS positions only help while the person is being looked for.

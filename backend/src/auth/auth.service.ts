@@ -17,7 +17,7 @@ import {
   NO_ONE_TIME_CODE,
   OTP_TTL_MINUTES,
 } from '../common/one-time-code';
-import { Prisma, User, UserType } from '@prisma/client';
+import { Prisma, User, UserType, LoginMethod } from '@prisma/client';
 import { CURRENT_TERMS_VERSION } from '../privacy/terms';
 import { PrismaService } from '../prisma/prisma.service';
 import { DEFAULT_CIRCLES } from '../sentinel/default-circles';
@@ -34,6 +34,7 @@ import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
+import { LoginLogService, type LoginContext } from './login-log.service';
 
 const OTP_RESEND_COOLDOWN_MS = 60_000;
 const PASSWORD_RESET_TTL_MINUTES = 60;
@@ -53,11 +54,12 @@ export class AuthService {
     private readonly config: ConfigService,
     @Inject(OTP_SENDER) private readonly otpSender: OtpSender,
     @Inject(EMAIL_SENDER) private readonly emailSender: EmailSender,
+    private readonly loginLog: LoginLogService,
   ) {
     this.googleClient = new OAuth2Client(this.config.get('GOOGLE_CLIENT_ID'));
   }
 
-  async signupEmail(dto: SignupEmailDto) {
+  async signupEmail(dto: SignupEmailDto, ctx: LoginContext = {}) {
     const emailTaken = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -82,10 +84,11 @@ export class AuthService {
         myCircles: { create: DEFAULT_CIRCLES },
       },
     });
+    await this.loginLog.record(user.id, LoginMethod.EMAIL_PASSWORD, true, ctx);
     return { accessToken: this.issueToken(user.id) };
   }
 
-  async signupGoogle(dto: SignupGoogleDto) {
+  async signupGoogle(dto: SignupGoogleDto, ctx: LoginContext = {}) {
     const { googleId, email } = await this.verifyGoogleIdToken(dto.idToken);
 
     const [googleTaken, emailTaken, usernameTaken] = await Promise.all([
@@ -116,6 +119,7 @@ export class AuthService {
         myCircles: { create: DEFAULT_CIRCLES },
       },
     });
+    await this.loginLog.record(user.id, LoginMethod.GOOGLE, true, ctx);
     return { accessToken: this.issueToken(user.id) };
   }
 
@@ -139,27 +143,38 @@ export class AuthService {
     return { message: 'Google account linked' };
   }
 
-  async loginEmail(dto: LoginEmailDto) {
+  async loginEmail(dto: LoginEmailDto, ctx: LoginContext = {}) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    return this.loginWithPassword(user, dto.password);
+    return this.loginWithPassword(
+      user,
+      dto.password,
+      LoginMethod.EMAIL_PASSWORD,
+      ctx,
+    );
   }
 
-  async loginPhone(dto: LoginPhoneDto) {
+  async loginPhone(dto: LoginPhoneDto, ctx: LoginContext = {}) {
     const user = await this.prisma.user.findUnique({
       where: { phone: dto.phone },
     });
-    return this.loginWithPassword(user, dto.password);
+    return this.loginWithPassword(
+      user,
+      dto.password,
+      LoginMethod.PHONE_PASSWORD,
+      ctx,
+    );
   }
 
-  async loginGoogle(dto: LoginGoogleDto) {
+  async loginGoogle(dto: LoginGoogleDto, ctx: LoginContext = {}) {
     const { googleId } = await this.verifyGoogleIdToken(dto.idToken);
     const user = await this.prisma.user.findUnique({ where: { googleId } });
     if (!user)
       throw new NotFoundException('No account linked to this Google identity');
 
     this.assertPhoneVerified(user);
+    await this.loginLog.record(user.id, LoginMethod.GOOGLE, true, ctx);
     return { accessToken: this.issueToken(user.id) };
   }
 
@@ -175,7 +190,7 @@ export class AuthService {
     return { userId: user.id };
   }
 
-  async verifyOtp(dto: VerifyOtpDto) {
+  async verifyOtp(dto: VerifyOtpDto, ctx: LoginContext = {}) {
     const user = await this.prisma.user.findUnique({
       where: { id: dto.userId },
     });
@@ -184,7 +199,12 @@ export class AuthService {
     if (!user?.phone || user.pendingPhone) {
       throw new UnauthorizedException(noPending);
     }
-    await checkOneTimeCode(this.prisma, user, dto.code, noPending);
+    try {
+      await checkOneTimeCode(this.prisma, user, dto.code, noPending);
+    } catch (err) {
+      await this.loginLog.record(user.id, LoginMethod.SMS_CODE, false, ctx);
+      throw err;
+    }
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -198,7 +218,22 @@ export class AuthService {
         loginLockedUntil: null,
       },
     });
+    await this.loginLog.record(user.id, LoginMethod.SMS_CODE, true, ctx);
     return { accessToken: this.issueToken(user.id) };
+  }
+
+  // "Sign me out everywhere": every login token issued until now stops
+  // working (JwtStrategy compares its date), this device's included.
+  async logoutEverywhere(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { sessionsValidAfter: new Date() },
+    });
+    return { message: 'Signed out everywhere' };
+  }
+
+  listMyLogins(userId: string) {
+    return this.loginLog.listMine(userId);
   }
 
   // Works for any account with an email, password or not: this is how a
@@ -251,6 +286,8 @@ export class AuthService {
         passwordHash,
         passwordResetTokenHash: null,
         passwordResetExpiresAt: null,
+        // Whoever knew the old password is signed out too.
+        sessionsValidAfter: new Date(),
       },
     });
     return { message: 'Password updated' };
@@ -259,7 +296,12 @@ export class AuthService {
   // Same answer for an unknown account, a wrong password and a lock, so a
   // login attempt never reveals who has an account. A lock only stops
   // passwords: the SMS code stays available and lifts it.
-  private async loginWithPassword(user: User | null, password: string) {
+  private async loginWithPassword(
+    user: User | null,
+    password: string,
+    method: LoginMethod,
+    ctx: LoginContext,
+  ) {
     const valid = await bcrypt.compare(
       password,
       user?.passwordHash ?? DUMMY_PASSWORD_HASH,
@@ -267,10 +309,13 @@ export class AuthService {
     const locked = (user?.loginLockedUntil ?? new Date(0)) > new Date();
     if (!user?.passwordHash || locked || !valid) {
       if (user?.passwordHash && !locked) await this.recordLoginFailure(user);
+      // Shown to the account's owner: someone tried their password.
+      if (user) await this.loginLog.record(user.id, method, false, ctx);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     this.assertPhoneVerified(user);
+    await this.loginLog.record(user.id, method, true, ctx);
     if (user.loginAttempts > 0 || user.loginLockedUntil) {
       await this.prisma.user.update({
         where: { id: user.id },

@@ -40,7 +40,8 @@
     "messages": "Messages",
     "settings": "Settings",
     "logout": "Log out",
-    "info": "Info"
+    "info": "Info",
+    "admin": "Admin"
   },
   "auth": {
     "loginTitle": "Log in",
@@ -893,7 +894,7 @@
       },
       "account": {
         "title": "My account and security",
-        "hint": "Phone, email, password"
+        "hint": "Phone, email, password, sign-ins"
       },
       "subscription": {
         "title": "Subscription",
@@ -927,7 +928,23 @@
       }
     },
     "alertChatWithFirstCircle": "During an alert, my Sentinels of other circles can write to my 1st circle",
-    "alertChatWithFirstCircleHint": "If unchecked, none of them can, whatever each circle says. If checked, each circle decides (on the circle's page)."
+    "alertChatWithFirstCircleHint": "If unchecked, none of them can, whatever each circle says. If checked, each circle decides (on the circle's page).",
+    "logins": {
+      "title": "My last sign-ins",
+      "hint": "A sign-in you didn't make? Change your password, then sign out of all your devices.",
+      "none": "No sign-in recorded yet.",
+      "success": "Successful",
+      "failed": "Failed",
+      "method": {
+        "EMAIL_PASSWORD": "Email and password",
+        "PHONE_PASSWORD": "Phone and password",
+        "GOOGLE": "Google",
+        "SMS_CODE": "Code by SMS"
+      },
+      "unknownDevice": "Unknown device",
+      "signOutEverywhere": "Sign me out of all my devices",
+      "signOutConfirm": "All your devices will be signed out, this one too. You'll have to sign in again everywhere."
+    }
   },
   "welcome": {
     "title": "Welcome",
@@ -1331,5 +1348,51 @@
     "waiting_other": "{{count}} alerts are waiting for your answer",
     "running_one": "An alert is running",
     "running_other": "{{count}} alerts are running"
+  },
+  "admin": {
+    "title": "Admin",
+    "refresh": "Refresh",
+    "generatedAt": "Figures as of {{date}}",
+    "accounts": {
+      "title": "Accounts",
+      "total": "Accounts",
+      "new7d": "New (7 days)",
+      "new30d": "New (30 days)",
+      "incomplete": "No phone yet",
+      "smsOnly": "SMS Sentinels, no account",
+      "deleted": "Deleted",
+      "perWeek": "New accounts per week"
+    },
+    "activity": {
+      "title": "Active people",
+      "today": "Today",
+      "week": "Last 7 days",
+      "month": "Last 30 days"
+    },
+    "usage": {
+      "title": "Usage",
+      "alertsRunning": "Alerts running",
+      "alerts30d": "Alerts (30 days)",
+      "alertsTotal": "Alerts in total",
+      "messages30d": "Messages (30 days)",
+      "groups": "Groups"
+    },
+    "security": {
+      "title": "Security (last 24 hours)",
+      "logins24h": "Successful sign-ins",
+      "failures24h": "Failed sign-ins",
+      "locked": "Locked accounts",
+      "targeted": "Targeted accounts (3 failures or more)",
+      "networksHint": "Networks with 5 failures or more:",
+      "noNetwork": "No suspicious network.",
+      "failures_one": "{{count}} failure",
+      "failures_other": "{{count}} failures"
+    },
+    "server": {
+      "title": "Server",
+      "uptime": "Online for",
+      "uptimeValue": "{{days}} d {{hours}} h",
+      "version": "Version"
+    }
   }
 }

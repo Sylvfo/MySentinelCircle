@@ -2455,3 +2455,26 @@ details.role-banner[open] > ol{margin-top:0.5rem;}
 
 /* A button that looks like a link ("Keep my password", "Later"). */
 .app-content button.link-button, button.link-button { background: none; border: none; color: var(--accent); cursor: pointer; }
+
+/* My last sign-ins (Settings › My account and security). */
+.login-history { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
+.login-history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.login-history-list li { display: flex; flex-direction: column; padding: 0.45rem 0; border-bottom: 1px solid var(--border); }
+.login-history-list li.failed .login-history-when strong { color: var(--danger); }
+.login-history > button { align-self: flex-start; margin-top: 0.4rem; }
+
+/* Admin page: counts in a grid of small cards. */
+.admin-page { display: flex; flex-direction: column; gap: 0.6rem; }
+.admin-section { margin-top: 0.8rem; }
+.admin-section h2 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+.admin-section.alarm h2 { color: var(--danger); }
+.admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.6rem; }
+.admin-stat { display: flex; flex-direction: column; padding: 0.7rem 0.9rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
+.admin-stat-value { font-family: var(--font-brand); font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
+.admin-stat-label { font-size: 0.85rem; color: var(--text-muted); }
+.admin-weeks, .admin-networks { padding: 0.7rem 0.9rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
+.admin-networks ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
+.admin-bars { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 0.4rem; height: 130px; align-items: end; }
+.admin-bar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 0.15rem; }
+.admin-bar-fill { width: 70%; min-height: 2px; border-radius: 4px 4px 0 0; background: var(--accent); }
+.admin-bar-count, .admin-bar-label { font-size: 0.75rem; color: var(--text-muted); }

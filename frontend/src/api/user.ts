@@ -25,6 +25,8 @@ export interface Me {
   avatarPath?: string | null;
   hasPassword: boolean;
   hasGoogle: boolean;
+  // Listed in ADMIN_EMAILS on the server: sees the admin page.
+  isAdmin?: boolean;
   hasPaid: boolean;
   // False until the current terms + privacy policy are accepted (TermsGate).
   termsUpToDate: boolean;
