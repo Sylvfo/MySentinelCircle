@@ -66,16 +66,46 @@ ACCOUNTS & BILLING
   - Always free: being a Sentinel (any role), responding to alerts,
     messaging, configuring your own 1st circle (no safety net at all
     without it, so no reason to ever charge for it).
-  - Free trial, lifetime (not reset annually): 3 self-raised alerts as
+  - Free trial, lifetime (not reset annually): 1 alert (3 before
+    2026-11-06, lowered by Sylvie: an alert costs SMS) as
     Companion, free forever — payment required beyond that. Lets someone
     experience a real alert escalating before committing money, important
     for trust in a safety app.
-  - Paid: being an ongoing Companion beyond the 3-alert trial; the
+  - Paid: being an ongoing Companion beyond the 1-alert trial; the
     `AlertType.TRAVEL` type (added to the schema, not yet migrated) as a
     specialized/premium alert type; **founding** a Group Circle (see
     GROUP CIRCLES below) — joining someone *else's* group circle stays
     free (you're the Sentinel-equivalent there), founding one requires
     paid Companion status (you're the Companion-equivalent for that group).
+  - Private users' plans (2026-11-06, organisations come later):
+    - Free: everything "Always free" above + the 1-alert trial.
+      After the trial, a new alert about the person is REFUSED until they
+      subscribe (Sylvie's call, kept deliberately).
+    - Subscription (yearly, price TBD), each person for themself:
+      `User.paidUntil` (replaced `hasPaid`), active while in the future;
+      renewing adds a year from the current end. Includes unlimited
+      alerts with SMS included (fair use), founding group circles, the
+      death notice, travel mode (not built yet), no ads.
+    - Offering: anyone can offer a year to someone they're linked with
+      (`POST /user/me/subscription-year { forUserId }`). No family plan
+      (Sylvie's call, 2026-11-06).
+    - Raising an alert about someone past their free alert and without a
+      subscription: the raiser chooses to offer them a year (dearer) or to
+      pay for this single alert (`payForThisAlert`, recorded as
+      `Alert.paidById`). Same choice for oneself.
+    - Payment is simulated (only with ALLOW_DEV_ROUTES) until a real
+      provider exists — see deployment_plan.txt.
+    - Death notice alone: a one-time purchase
+      (`User.deathNoticePurchasedAt`) for someone staying free; also
+      included in the subscription. Only PREPARING it is gated
+      (`PATCH /user/death-notice[...]`); sending a prepared one after the
+      death is never blocked.
+    - Ads: only in-house (our own promotion, hand-picked partners), no ad
+      network, only on free accounts, never during an alert, in messages
+      or around a death notice. Not built yet.
+    - Rules live in `backend/src/user/plan.util.ts`; `GET /user/me/plan`
+      tells the frontend what's included (Plans page `/plans`, upgrade
+      prompts).
   - `User.hasPaid` already exists in the schema for this but is enforced
     nowhere in code yet — that's deliberately separate future work, to be
     done once a real payment provider is wired in (see below).
@@ -171,6 +201,11 @@ CIRCLES & PERMISSIONS
   reserve instead of being force-removed). A Sentinel link can NEVER land in
   the reserve circle at creation (invite or request) — it's reachable only
   by a deliberate move afterward (manual pause, or a circle deletion cascade).
+  The Sentinel can also put themself there ("not available for now",
+  POST /sentinel/memberships/:id/reserve): immediate, "Me" is notified, the
+  link stays; a Lead gives up their slot, refused for "Me"'s only Lead and
+  while they take part in an alert about "Me" in progress; not for a group
+  link. Only "Me" moves them back out.
   No Lead slot can exist there (Lead is 1st-circle-only, same rule as any
   other outer circle). Once the alert module exists, the reserve circle must
   be excluded from any circle-escalation/broadcast logic — it never receives
@@ -368,6 +403,13 @@ CORE FEATURES (MVP)
      corroborating data), but stop collecting further "seen" sightings for
      the same day once 3 people have confirmed one. At alert close, every
      Sentinel who participated receives a closing message — no exceptions.
+     Whoever stops the alert (the companion or anyone in the 1st circle)
+     can add a few closing words, picked from ready-made ones (all fine /
+     found, will give news / false alarm / sad news) or written freely:
+     they become the status, are posted in the alert's chats and go out in
+     the end-of-alert SMS. There is no separate "person found → what next"
+     step (removed 2026-11-06, Sylvie's call): the alert simply ends.
+     The alert's chats stay writable 7 days after it ends, then read-only.
 
 4. Messagerie Me <-> Sentinels
    - Outside of any active alert, "Me" can always reach any of their
@@ -539,11 +581,16 @@ GROUP CIRCLES
   owned by a single companion like every other circle — a mutual mesh:
   joining makes the new member Sentinel for every existing member, and
   every existing member Sentinel for them too.
-- Invite-only, and only by someone the inviter already has an accepted
-  Sentinel/Companion link with — a trust chain, not a cold invite to a
-  stranger. The very first member (the founder) has no such requirement.
-- A member must hold a real account (not SMS-only) — the mesh needs
-  everyone to act as both companion and Sentinel, which an SMS-only
+- Invite-only (no asking to join, for now). Any member can invite, two
+  ways: pick one of their contacts (someone they already have an accepted
+  link with), or enter anyone's phone number + first name. A number with
+  no account gets a stand-in User (as for a circle invitation) and an SMS
+  asking them to create their account with that number; the invitation
+  then waits for them in the app. An account holder gets the notification
+  + an SMS. The inviter gets the same answer either way, so a number can't
+  be tested to find out who uses the app.
+- A member must hold a real account (not SMS-only) to *accept* — the mesh
+  needs everyone to act as both companion and Sentinel, which an SMS-only
   contact can't do.
 - Model: no separate "group" table — `CircleType.GROUP` + a nullable
   self-relation (`Circle.groupRootId`). The founder's own circle has
@@ -559,6 +606,41 @@ GROUP CIRCLES
   cascades the same way to every member.
 - Billing: founding a group requires paid Companion status; joining
   someone else's group stays free either way — see ACCOUNTS & BILLING.
+
+GENDER (how texts speak about someone)
+--------------------------------------
+- Optional `User.gender` (FEMALE / MALE / NEUTRAL), set only by the person
+  themself (Settings > Profile, or at signup). Never set by an inviter; a
+  person known only by SMS stays unset.
+- Linked people get it wherever they get the first name (circles,
+  companions, alerts, conversations, invitations) to word texts about that
+  person: i18n variants `_female` / `_male` / `_neutral`, base text when
+  unset. SMS questions too (`alert-replies.ts` byGender).
+- Rule (Sylvie, 2026-11-06): pronouns le/la, il/elle default to "la" /
+  "elle" when unset; MALE -> "le" / "il"; NEUTRAL -> rephrase with the first
+  name. Plain agreements (retrouve.e, Seul.e) stay inclusive when unset.
+- Texts addressed to me agree with MY gender through the `{{_e}}` i18n
+  variable ("e" / "" / ".e", set from the profile in AuthContext).
+
+PAUSE
+------------------
+- Two independent switches in Settings, both can be on at once. Stored as
+  two booleans on `User` (`pausedForMe`, `pausedForOthers`), not as a
+  `UserStatus` value: `status` stays for the account lifecycle (active,
+  deleted, deceased), and a death notice still works on a paused account.
+- Pause for me: nobody else can raise an alert about me. I can still raise
+  one about myself.
+- Pause for others: I can't be asked to take part in any alert — I'm left
+  out of the 1st circle's fan-out, out of outer-circle batches and later
+  questions, and my SMS replies to alert questions are ignored. Turning it
+  on takes me out of every alert in progress at once (participation
+  CLOSED, same as leaving the alert). A Lead on an alert in progress can't
+  turn it on until they've handed the lead over and left that alert —
+  same rule as account deletion.
+- If every Lead of a 1st circle is paused for others, no alert can be
+  raised for that companion.
+- Paused people are shown with a dashed avatar and a "||" badge wherever
+  people appear.
 
 TECH STACK (confirmed)
 ------------------------

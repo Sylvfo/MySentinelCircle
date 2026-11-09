@@ -75,3 +75,38 @@ describe('stopChoiceSms', () => {
     );
   });
 });
+
+describe('alertQuestionSms — wording by gender', () => {
+  it('says "la" when the gender is not set', () => {
+    expect(alertQuestionSms('Marie Dupont', 'CAN_VISIT')).toContain(
+      'Pouvez-vous aller la voir ?',
+    );
+  });
+
+  it('says "le" for a man', () => {
+    expect(
+      alertQuestionSms('Paul Dupont', 'CAN_VISIT', {
+        firstName: 'Paul',
+        gender: 'MALE',
+      }),
+    ).toContain('Pouvez-vous aller le voir ?');
+  });
+
+  it('uses the first name for neutral', () => {
+    expect(
+      alertQuestionSms('Alex Dupont', 'WHERE_SEEN', {
+        firstName: 'Alex',
+        gender: 'NEUTRAL',
+      }),
+    ).toContain('Ou avez-vous vu Alex pour la derniere fois ?');
+  });
+
+  it('keeps the default for a question without variants', () => {
+    expect(
+      alertQuestionSms('Paul Dupont', 'LAST_NEWS', {
+        firstName: 'Paul',
+        gender: 'MALE',
+      }),
+    ).toContain('Ses dernieres nouvelles ?');
+  });
+});

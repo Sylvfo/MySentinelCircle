@@ -1,9 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import {
   changePassword,
   deleteAccount,
+  devSetDeathNoticePurchased,
   devSetHasPaid,
   fetchMe,
   getMyDeathNotice,
@@ -11,6 +13,8 @@ import {
   requestEmailChange,
   setDeathNoticeRecipients,
   updateMyDeathNotice,
+  removeAvatar,
+  updatePause,
   updateProfile,
   uploadAvatar,
   verifyAddPhone,
@@ -21,16 +25,26 @@ import { Modal } from '../components/Modal';
 import { StepUpPanel } from '../components/StepUp';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { useAuth } from '../auth/AuthContext';
+import { SentinelIcon } from '../components/SentinelIcon';
+import { LegalLinks } from './legal/LegalPage';
+import { PaidPill, UpgradeNotice } from '../components/Upgrade';
+import { IncludedStar } from '../components/SubscribedStar';
+import { usePlan } from '../plan';
+import { useAvatarUrl } from '../avatars';
+import { GenderSelect } from '../components/GenderSelect';
+import type { Gender } from '../gender';
 
 export function SettingsPage() {
   const { t } = useTranslation();
-  const { logout } = useAuth();
+  const { logout, refreshUser } = useAuth();
+  const { plan, reload: reloadPlan } = usePlan();
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [open, setOpen] = useState<TileKey | null>(null);
 
   const reload = async () => {
     setError(null);
@@ -48,49 +62,252 @@ export function SettingsPage() {
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</p>;
   if (!me) return <p className="form-error">{error}</p>;
 
+  const toggle = (key: TileKey) => setOpen((cur) => (cur === key ? null : key));
+  const tile = (key: TileKey, children: ReactNode, extraClass = '', badge?: ReactNode) => (
+    <SettingsTile
+      key={key}
+      tileKey={key}
+      open={open === key}
+      onToggle={() => toggle(key)}
+      className={extraClass}
+      badge={badge}
+    >
+      {children}
+    </SettingsTile>
+  );
+
   return (
-    <div>
+    <div className="settings-page">
       <h1>{t('settings.title')}</h1>
       {error && <p className="form-error">{error}</p>}
 
-      <AvatarPanel me={me} onChange={reload} onError={setError} />
-      <ProfileInfoPanel me={me} onChange={reload} onError={setError} />
-
-      <section className="panel">
-        <h2>{t('common.language')}</h2>
-        <LanguageSwitcher />
-      </section>
-
-      {(me.hasPassword || me.email) && (
-        <section className="panel">
-          <h2>{t('settings.security')}</h2>
-          <div className="row">
-            {me.hasPassword && (
-              <button type="button" onClick={() => setShowPasswordModal(true)}>
-                {t('settings.changePassword')}
-              </button>
+      <div className="about-tiles">
+        {tile(
+          'profile',
+          <>
+            <AvatarPanel me={me} onChange={reload} onError={setError} />
+            <EditableTextField
+              label={t('auth.firstName')}
+              value={me.firstName}
+              onSave={(v) => updateProfile({ firstName: v })}
+              onSaved={reload}
+              onError={setError}
+              required
+            />
+            <EditableTextField
+              label={t('auth.lastName')}
+              value={me.lastName ?? ''}
+              onSave={(v) => updateProfile({ lastName: v })}
+              onSaved={reload}
+              onError={setError}
+            />
+            <GenderField
+              value={me.gender}
+              onSave={(v) => updateProfile({ gender: v })}
+              onSaved={() => {
+                void reload();
+                void refreshUser();
+              }}
+              onError={setError}
+            />
+            {me.userName ? (
+              <div>
+                <label>{t('auth.username')}</label>
+                <p>{me.userName}</p>
+              </div>
+            ) : (
+              <EditableTextField
+                label={t('auth.username')}
+                value=""
+                onSave={(v) => updateProfile({ userName: v })}
+                onSaved={reload}
+                onError={setError}
+                hint={t('auth.usernameHint')}
+                minLength={3}
+                maxLength={30}
+                required
+              />
             )}
-            {me.email && (
-              <button type="button" onClick={() => setShowEmailModal(true)}>
-                {t('settings.changeEmail.title')}
-              </button>
+            <EditableTextField
+              label={t('settings.publicStatus')}
+              value={me.publicStatus ?? ''}
+              onSave={(v) => updateProfile({ publicStatus: v })}
+              onSaved={reload}
+              onError={setError}
+            />
+            <p className="form-hint settings-field-hint">{t('settings.publicStatusHint')}</p>
+          </>,
+        )}
+
+        {tile(
+          'account',
+          <>
+            {me.phone ? (
+              <div>
+                <label>{t('settings.phone')}</label>
+                <p>{me.phone}</p>
+                <button type="button" onClick={() => setShowPhoneModal(true)}>
+                  {t('settings.changePhone')}
+                </button>
+              </div>
+            ) : (
+              <AddPhonePanel onChange={reload} onError={setError} />
             )}
-          </div>
-        </section>
-      )}
+            {(me.hasPassword || me.email) && (
+              <div className="row wrap">
+                {me.hasPassword && (
+                  <button type="button" onClick={() => setShowPasswordModal(true)}>
+                    {t('settings.changePassword')}
+                  </button>
+                )}
+                {me.email && (
+                  <button type="button" onClick={() => setShowEmailModal(true)}>
+                    {t('settings.changeEmail.title')}
+                  </button>
+                )}
+              </div>
+            )}
+            <EditableToggle
+              label={t('settings.isMajor')}
+              value={me.isMajor}
+              onSave={(v) => updateProfile({ isMajor: v })}
+              onSaved={reload}
+              onError={setError}
+            />
+            <div>
+              <label>{t('settings.status')}</label>
+              <p>{me.status}</p>
+            </div>
+            <div>
+              <label>{t('settings.createdAt')}</label>
+              <p>{new Date(me.createdAt).toLocaleString()}</p>
+            </div>
+          </>,
+        )}
+
+        {tile(
+          'subscription',
+          <>
+            <div>
+              <label>{t('settings.userType')}</label>
+              <p>{t(`settings.subscription.userTypes.${me.userType}`, { defaultValue: me.userType })}</p>
+            </div>
+            <div>
+              <label>{t('settings.subscription.plan')}</label>
+              <p>
+                <strong>{t(me.hasPaid ? 'settings.subscription.paid' : 'settings.subscription.free')}</strong>
+              </p>
+            </div>
+            {plan && plan.freeAlertsLeft !== null && (
+              <p className="form-hint settings-field-hint">
+                {t('plans.alertsLeft', { count: plan.freeAlertsLeft, limit: plan.freeAlertLimit })}
+              </p>
+            )}
+            {plan?.deathNoticePurchased && !plan.hasPaid && (
+              <p className="form-hint settings-field-hint">{t('plans.deathNotice.owned')}</p>
+            )}
+            <p className="form-hint settings-field-hint">{t('settings.subscription.whatPaid')}</p>
+            <Link to="/plans" className="button-link">
+              {t('plans.seePlans')}
+            </Link>
+            {import.meta.env.DEV && (
+              <div className="settings-dev">
+                <h3>{t('settings.dev.title')}</h3>
+                <p className="form-hint">{t('settings.dev.hasPaidHint')}</p>
+                <EditableToggle
+                  label={t('settings.dev.hasPaid')}
+                  value={me.hasPaid}
+                  onSave={(v) => devSetHasPaid(v)}
+                  onSaved={() => {
+                    void reload();
+                    reloadPlan();
+                  }}
+                  onError={setError}
+                />
+                <EditableToggle
+                  label={t('settings.dev.deathNoticePurchased')}
+                  value={plan?.deathNoticePurchased ?? false}
+                  onSave={(v) => devSetDeathNoticePurchased(v)}
+                  onSaved={reloadPlan}
+                  onError={setError}
+                />
+              </div>
+            )}
+          </>,
+        )}
+
+        {tile(
+          'preferences',
+          <>
+            <div>
+              <label>{t('common.language')}</label>
+              <LanguageSwitcher />
+            </div>
+            {/* General switch, wins over each circle's own rule (circle page). */}
+            <EditableToggle
+              label={t('settings.alertChatWithFirstCircle')}
+              value={me.alertChatWithFirstCircle}
+              onSave={(v) => updateProfile({ alertChatWithFirstCircle: v })}
+              onSaved={() => {
+                void reload();
+                void refreshUser();
+              }}
+              onError={setError}
+            />
+            <p className="form-hint">{t('settings.alertChatWithFirstCircleHint')}</p>
+            {/* Two independent pauses (plan.txt, PAUSE). */}
+            <EditableToggle
+              label={t('pause.settings.forMe')}
+              value={me.pausedForMe}
+              onSave={(v) => updatePause({ pausedForMe: v })}
+              onSaved={() => {
+                void reload();
+                void refreshUser();
+              }}
+              onError={setError}
+            />
+            <p className="form-hint">{t('pause.settings.forMeHint')}</p>
+            <EditableToggle
+              label={t('pause.settings.forOthers')}
+              value={me.pausedForOthers}
+              onSave={(v) => updatePause({ pausedForOthers: v })}
+              onSaved={() => {
+                void reload();
+                void refreshUser();
+              }}
+              onError={(m) => setError(m.startsWith('You are a Lead') ? t('pause.settings.leadBlocked') : m)}
+            />
+            <p className="form-hint">{t('pause.settings.forOthersHint')}</p>
+          </>,
+        )}
+      </div>
+
+      {/* Set apart: a different matter from everyday settings. */}
+      <div className="about-tiles settings-apart">
+        {tile(
+          'deathNotice',
+          <DeathNoticePanel onError={setError} />,
+          'settings-quiet',
+          // Free: the lock pill. Subscribed: the gold star (it's included).
+          plan && !plan.deathNotice ? (
+            <PaidPill feature="deathNotice" chip />
+          ) : plan?.hasPaid ? (
+            <IncludedStar />
+          ) : undefined,
+        )}
+        {tile('delete', <DeleteAccountPanel me={me} onDeleted={logout} onError={setError} />, 'settings-danger')}
+      </div>
 
       {showPasswordModal && (
         <Modal title={t('settings.changePassword')} onClose={() => setShowPasswordModal(false)}>
           <ChangePasswordForm onDone={() => setShowPasswordModal(false)} onError={setError} />
         </Modal>
       )}
-
       {showEmailModal && (
         <Modal title={t('settings.changeEmail.title')} onClose={() => setShowEmailModal(false)}>
           <ChangeEmailFlow me={me} onError={setError} />
         </Modal>
       )}
-
       {showPhoneModal && (
         <Modal title={t('settings.changePhone')} onClose={() => setShowPhoneModal(false)}>
           <ChangePhoneFlow
@@ -104,126 +321,111 @@ export function SettingsPage() {
         </Modal>
       )}
 
-      <section className="panel">
-        <h2>{t('settings.editable')}</h2>
-        <EditableTextField
-          label={t('auth.lastName')}
-          value={me.lastName ?? ''}
-          onSave={(v) => updateProfile({ lastName: v })}
-          onSaved={reload}
-          onError={setError}
-        />
-        <EditableToggle
-          label={t('settings.isMajor')}
-          value={me.isMajor}
-          onSave={(v) => updateProfile({ isMajor: v })}
-          onSaved={reload}
-          onError={setError}
-        />
-        <EditableTextField
-          label={t('settings.publicStatus')}
-          value={me.publicStatus ?? ''}
-          onSave={(v) => updateProfile({ publicStatus: v })}
-          onSaved={reload}
-          onError={setError}
-        />
-        <EditableToggle
-          label={t('settings.allowMessagingByDefault')}
-          value={me.allowMessagingByDefault}
-          onSave={(v) => updateProfile({ allowMessagingByDefault: v })}
-          onSaved={reload}
-          onError={setError}
-        />
-        {me.phone ? (
-          <div>
-            <label>{t('settings.phone')}</label>
-            <p>{me.phone}</p>
-            <button type="button" onClick={() => setShowPhoneModal(true)}>
-              {t('settings.changePhone')}
-            </button>
-          </div>
-        ) : (
-          <AddPhonePanel onChange={reload} onError={setError} />
-        )}
-      </section>
-
-      <DeathNoticePanel onError={setError} />
-
-      {import.meta.env.DEV && (
-        <section className="panel">
-          <h2>{t('settings.dev.title')}</h2>
-          <p className="form-hint">{t('settings.dev.hasPaidHint')}</p>
-          <EditableToggle
-            label={t('settings.dev.hasPaid')}
-            value={me.hasPaid}
-            onSave={(v) => devSetHasPaid(v)}
-            onSaved={reload}
-            onError={setError}
-          />
-        </section>
-      )}
-
-      <DeleteAccountPanel me={me} onDeleted={logout} onError={setError} />
-
-      <section className="panel">
+      <div className="settings-logout">
         <button type="button" className="ghost" onClick={logout}>
           {t('nav.logout')}
         </button>
-      </section>
+      </div>
+      <LegalLinks />
     </div>
   );
 }
 
-function ProfileInfoPanel({ me, onChange, onError }: { me: Me; onChange: () => void; onError: (m: string) => void }) {
+// Settings, grouped like the Info page: tiles that unfold one at a time.
+type TileKey = 'profile' | 'account' | 'subscription' | 'preferences' | 'deathNotice' | 'delete';
+
+const TILE_ICONS: Record<TileKey, ReactNode> = {
+  profile: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21 C4 16.5 7.5 14 12 14 C16.5 14 20 16.5 20 21" />
+    </>
+  ),
+  account: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11 V7.5 a4 4 0 0 1 8 0 V11" />
+    </>
+  ),
+  subscription: (
+    <>
+      <rect x="2.5" y="5.5" width="19" height="13" rx="2" />
+      <line x1="2.5" y1="10" x2="21.5" y2="10" />
+      <line x1="6" y1="15" x2="10" y2="15" />
+    </>
+  ),
+  preferences: (
+    <>
+      <line x1="4" y1="7" x2="20" y2="7" />
+      <line x1="4" y1="17" x2="20" y2="17" />
+      <circle cx="9" cy="7" r="2.2" />
+      <circle cx="15" cy="17" r="2.2" />
+    </>
+  ),
+  deathNotice: <path d="M12 21 C7 17 3.5 13.5 3.5 9.5 A4.5 4.5 0 0 1 12 7 A4.5 4.5 0 0 1 20.5 9.5 C20.5 13.5 17 17 12 21 Z" />,
+  delete: (
+    <>
+      <path d="M4 7 H20" />
+      <path d="M9 7 V4.5 H15 V7" />
+      <path d="M6 7 L7 20 H17 L18 7" />
+    </>
+  ),
+};
+
+function SettingsTile({
+  tileKey,
+  open,
+  onToggle,
+  className,
+  badge,
+  children,
+}: {
+  tileKey: TileKey;
+  open: boolean;
+  onToggle: () => void;
+  className?: string;
+  // Shown after the title, e.g. the lock on a paid feature.
+  badge?: ReactNode;
+  children: ReactNode;
+}) {
   const { t } = useTranslation();
-
   return (
-    <section className="panel">
-      <h2>{t('settings.profile')}</h2>
-      <EditableTextField
-        label={t('auth.firstName')}
-        value={me.firstName}
-        onSave={(v) => updateProfile({ firstName: v })}
-        onSaved={onChange}
-        onError={onError}
-        required
-      />
-
-      {me.userName ? (
-        <div>
-          <label>{t('auth.username')}</label>
-          <p>{me.userName}</p>
+    <section className={`about-tile settings-tile ${className ?? ''}${open ? ' open' : ''}`}>
+      <button
+        type="button"
+        className="about-tile-head"
+        aria-expanded={open}
+        aria-controls={`settings-${tileKey}`}
+        onClick={onToggle}
+      >
+        <svg
+          className="about-tile-icon"
+          viewBox="0 0 24 24"
+          width="24"
+          height="24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          {TILE_ICONS[tileKey]}
+        </svg>
+        <span className="about-tile-title">
+          {t(`settings.tiles.${tileKey}.title`)}
+          {badge}
+          <small>{t(`settings.tiles.${tileKey}.hint`)}</small>
+        </span>
+        <svg className="about-tile-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9" fill="none" stroke="currentColor" strokeWidth="2" />
+        </svg>
+      </button>
+      {open && (
+        <div className="about-tile-body settings-tile-body" id={`settings-${tileKey}`}>
+          {children}
         </div>
-      ) : (
-        <EditableTextField
-          label={t('auth.username')}
-          value=""
-          onSave={(v) => updateProfile({ userName: v })}
-          onSaved={onChange}
-          onError={onError}
-          hint={t('auth.usernameHint')}
-          minLength={3}
-          maxLength={30}
-          required
-        />
       )}
-
-      <div>
-        <label>{t('settings.status')}</label>
-        <p>{me.status}</p>
-      </div>
-      <div>
-        <label>{t('settings.userType')}</label>
-        <p>{me.userType}</p>
-      </div>
-      <div>
-        <label>{t('settings.createdAt')}</label>
-        <p>{new Date(me.createdAt).toLocaleString()}</p>
-      </div>
-      <div>
-        <label>{t('settings.updatedAt')}</label>
-        <p>{new Date(me.updatedAt).toLocaleString()}</p>
-      </div>
     </section>
   );
 }
@@ -286,6 +488,51 @@ function EditableTextField({
   );
 }
 
+// How texts speak about me ("can you go and see her?"). Only I set it.
+function GenderField({
+  value: initialValue,
+  onSave,
+  onSaved,
+  onError,
+}: {
+  value: Gender | null;
+  onSave: (value: Gender | null) => Promise<unknown>;
+  onSaved: () => void;
+  onError: (m: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [value, setValue] = useState<string>(initialValue ?? '');
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await onSave(value === '' ? null : (value as Gender));
+      onSaved();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <label>
+        {t('gender.label')}
+        <div className="row">
+          <GenderSelect value={value} onChange={setValue} />
+          <button type="submit" disabled={submitting || value === (initialValue ?? '')}>
+            {t('common.save')}
+          </button>
+        </div>
+      </label>
+      <p className="form-hint">{t('gender.hint')}</p>
+    </form>
+  );
+}
+
 function EditableToggle({
   label,
   value: initialValue,
@@ -329,39 +576,67 @@ function EditableToggle({
   );
 }
 
+// My profile photo — private: only the people linked to me can see it (the
+// file is fetched through GET /user/:id/avatar, see avatars.ts).
 function AvatarPanel({ me, onChange, onError }: { me: Me; onChange: () => void; onError: (m: string) => void }) {
   const { t } = useTranslation();
+  const { refreshUser } = useAuth();
   const [submitting, setSubmitting] = useState(false);
-  const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoUrl = useAvatarUrl(me.id, me.avatarPath);
 
-  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const run = async (action: () => Promise<unknown>) => {
     setSubmitting(true);
     try {
-      await uploadAvatar(file);
+      await action();
       onChange();
+      void refreshUser();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
     } finally {
       setSubmitting(false);
-      e.target.value = '';
     }
   };
 
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) void run(() => uploadAvatar(file));
+  };
+
   return (
-    <section className="panel">
+    <section className={`panel avatar-panel${me.pausedForMe || me.pausedForOthers ? ' is-paused' : ''}`}>
       <h2>{t('settings.avatar')}</h2>
-      {me.avatarPath && (
-        <img
-          src={`${apiUrl}/uploads/avatars/${me.avatarPath}`}
-          alt=""
-          style={{ width: 96, height: 96, borderRadius: '50%', objectFit: 'cover', marginBottom: '0.5rem' }}
-        />
-      )}
-      <div className="row">
-        <input type="file" accept="image/*" disabled={submitting} onChange={onFileChange} />
+      <div className="avatar-panel-body">
+        {photoUrl ? (
+          <img src={photoUrl} alt="" className="avatar-panel-photo" />
+        ) : (
+          <span className="avatar-panel-photo empty" aria-hidden="true">
+            <SentinelIcon size={56} />
+          </span>
+        )}
+        <div className="avatar-panel-actions">
+          <p className="form-hint">{t('settings.avatarHint')}</p>
+          <div className="row">
+            <button type="button" disabled={submitting} onClick={() => fileInputRef.current?.click()}>
+              {me.avatarPath ? t('settings.avatarChange') : t('settings.avatarAdd')}
+            </button>
+            {me.avatarPath && (
+              <button type="button" className="ghost" disabled={submitting} onClick={() => run(removeAvatar)}>
+                {t('settings.avatarRemove')}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hidden
+        disabled={submitting}
+        onChange={onFileChange}
+      />
     </section>
   );
 }
@@ -371,6 +646,7 @@ function AvatarPanel({ me, onChange, onError }: { me: Me; onChange: () => void; 
 // among them is notified, each with an optional personal message.
 function DeathNoticePanel({ onError }: { onError: (m: string) => void }) {
   const { t } = useTranslation();
+  const { plan } = usePlan();
   const [notice, setNotice] = useState<DeathNotice | null>(null);
   const [message, setMessage] = useState('');
   const [selected, setSelected] = useState<Record<string, { notify: boolean; personalMessage: string }>>({});
@@ -436,6 +712,17 @@ function DeathNoticePanel({ onError }: { onError: (m: string) => void }) {
       setSavingRecipients(false);
     }
   };
+
+  // Preparing it is paid: subscription or one-time purchase.
+  if (plan && !plan.deathNotice) {
+    return (
+      <section className="panel">
+        <h2>{t('settings.deathNotice.title')}</h2>
+        <p style={{ color: 'var(--text-muted)' }}>{t('settings.deathNotice.intro')}</p>
+        <UpgradeNotice reason="deathNotice" />
+      </section>
+    );
+  }
 
   return (
     <section className="panel">
@@ -630,6 +917,12 @@ function ChangePhoneFlow({
   return <AddPhonePanel onChange={onChange} onError={onError} />;
 }
 
+// Backend refusals (account-deletion.service.ts), shown translated instead of raw.
+const DELETE_ERRORS: Record<string, string> = {
+  'An alert about you is in progress: your account can be deleted once it is over': 'settings.delete.ownAlert',
+  'You are a Lead on an alert in progress: leave it before deleting your account': 'settings.delete.leadOnAlert',
+};
+
 function DeleteAccountPanel({
   me,
   onDeleted,
@@ -652,7 +945,8 @@ function DeleteAccountPanel({
       await deleteAccount();
       onDeleted();
     } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
+      const message = err instanceof ApiError ? err.message : String(err);
+      onError(DELETE_ERRORS[message] ? t(DELETE_ERRORS[message]) : message);
       setSubmitting(false);
     }
   };

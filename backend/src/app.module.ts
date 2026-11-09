@@ -16,6 +16,8 @@ import { SentinelModule } from './sentinel/sentinel.module';
 import { AlertModule } from './alert/alert.module';
 import { OrganizationModule } from './organization/organization.module';
 import { MessagingModule } from './messaging/messaging.module';
+import { SupportModule } from './support/support.module';
+import { PrivacyModule } from './privacy/privacy.module';
 
 @Module({
   imports: [
@@ -30,12 +32,14 @@ import { MessagingModule } from './messaging/messaging.module';
     EmailModule,
     RealtimeModule,
     NotificationModule,
+    SupportModule,
     AuthModule,
     UserModule,
     SentinelModule,
     AlertModule,
     OrganizationModule,
     MessagingModule,
+    PrivacyModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

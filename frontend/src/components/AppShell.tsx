@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { NotificationBell } from './NotificationBell';
 import { BottomNav } from './BottomNav';
+import { useUnreadCounts, useUnreadCountsRefresher } from '../unreadCounts';
+import { UserMenu } from './UserMenu';
+import { AlertSignal } from './AlertSignal';
 import logo from '../assets/logo.png';
 
 // No separate "Dashboard" link — the logo itself always goes there (see
@@ -14,29 +17,42 @@ const NAV_ITEMS = [
   { to: '/history', key: 'nav.history' },
   { to: '/messages', key: 'nav.messages' },
   { to: '/settings', key: 'nav.settings' },
+  { to: '/info', key: 'nav.info' },
 ];
 
 export function AppShell() {
   const { user } = useAuth();
   const { t } = useTranslation();
-
+  // One refresher for every unread badge (bell, Messages tabs).
+  useUnreadCountsRefresher();
+  const { messages: unreadMessages, support: unreadSupport } = useUnreadCounts();
   return (
     <div className="app-shell">
       <nav className="app-nav">
         <Link to="/dashboard" className="brand">
           <img src={logo} alt="" />
-          <span>MySentinelCircle</span>
+          <span className="brand-text">
+            <span>MySentinelCircle</span>
+            <span className="brand-slogan">{t('nav.slogan')}</span>
+          </span>
         </Link>
         {user && (
           <div className="user-row">
+            <AlertSignal />
             <NotificationBell />
-            <div className="user-name">{user.firstName}</div>
+            <UserMenu />
           </div>
         )}
         <div className="nav-links">
           {NAV_ITEMS.map((item) => (
             <NavLink key={item.to} to={item.to} className={({ isActive }) => (isActive ? 'active' : '')}>
               {t(item.key)}
+              {item.to === '/messages' && unreadMessages > 0 && (
+                <span className="notification-count inline messages">{unreadMessages}</span>
+              )}
+              {item.to === '/info' && unreadSupport > 0 && (
+                <span className="notification-count inline">{unreadSupport}</span>
+              )}
             </NavLink>
           ))}
         </div>

@@ -46,7 +46,7 @@ interface AlertParticipantBody {
   circleName: string;
   response: string | null;
   canSendPhoneAtAlert: boolean | null;
-  canMessageOwnCircleAtAlert: boolean | null;
+  alertChatWithFirstCircleAtAlert: boolean | null;
   userSentinelsId: string;
   requestedBy: { id: string; firstName: string } | null;
   userSentinels: {
@@ -450,15 +450,9 @@ describe('Alert (e2e)', () => {
         .expect(409);
     });
 
-    it('excludes a 1st-circle Sentinel with canMessageOwnCircle: false from the group chat, while still notifying and tracking them', async () => {
+    it('seats every 1st-circle Sentinel in the 1st circle room', async () => {
       const companion = await signupAccount('Ada');
       const { sentinels } = await buildFirstCircle(companion.accessToken, 2);
-      await request(app.getHttpServer())
-        .patch(`/sentinel/memberships/${sentinels[1].linkId}`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ canMessageOwnCircle: false })
-        .expect(200);
-      sentSms.length = 0;
 
       const res = await request(app.getHttpServer())
         .post('/alert/raise')
@@ -469,31 +463,19 @@ describe('Alert (e2e)', () => {
           reason: 'x',
         })
         .expect(201);
-      const alert = res.body as AlertBody;
-
-      // Still notified by SMS and tracked as a participant either way.
-      expect(sentSms).toHaveLength(2);
-      expect(sentSms.map((s) => s.phone).sort(byString)).toEqual(
-        sentinels.map((s) => s.phone).sort(byString),
-      );
       const detailRes = await request(app.getHttpServer())
-        .get(`/alert/${alert.id}`)
+        .get(`/alert/${(res.body as AlertBody).id}`)
         .set('Authorization', auth(companion.accessToken))
         .expect(200);
-      const detail = detailRes.body as AlertDetailBody;
-      expect(detail.participants).toHaveLength(2);
-      const conversationId = detail.conversations[0].id;
+      const conversationId = (detailRes.body as AlertDetailBody)
+        .conversations[0].id;
 
-      // The excluded Sentinel has no seat in the chat...
-      await request(app.getHttpServer())
-        .get(`/messaging/conversations/${conversationId}/messages`)
-        .set('Authorization', auth(sentinels[1].accessToken))
-        .expect(403);
-      // ...the other one does.
-      await request(app.getHttpServer())
-        .get(`/messaging/conversations/${conversationId}/messages`)
-        .set('Authorization', auth(sentinels[0].accessToken))
-        .expect(200);
+      for (const sentinel of sentinels) {
+        await request(app.getHttpServer())
+          .get(`/messaging/conversations/${conversationId}/messages`)
+          .set('Authorization', auth(sentinel.accessToken))
+          .expect(200);
+      }
     });
   });
 
@@ -590,6 +572,12 @@ describe('Alert (e2e)', () => {
         .post(`/alert/${(first.body as AlertBody).id}/close`)
         .set('Authorization', auth(companion.accessToken))
         .expect(201);
+      // The free trial is one alert: a running subscription for the second
+      // (payment is simulated, so set it straight in the database).
+      await prisma.user.update({
+        where: { id: companion.userId },
+        data: { paidUntil: new Date(Date.now() + 365 * 86_400_000) },
+      });
 
       const second = await request(app.getHttpServer())
         .post('/alert/raise')
@@ -976,14 +964,8 @@ describe('Alert (e2e)', () => {
       const { circle: outerCircle, sentinels: outerSentinels } =
         await buildOuterCircle(companion.accessToken, 'Voisins', 1);
 
-      // Authorize this outer-circle link for the 1st-circle chat — the
-      // default is NONE, so without this the request below would 403.
-      await request(app.getHttpServer())
-        .patch(`/sentinel/memberships/${outerSentinels[0].linkId}`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ firstCircleMessagingMode: 'INDIVIDUAL' })
-        .expect(200);
-
+      // Allowed by default: the companion's general switch and the
+      // circle's own setting both start on.
       const raiseRes = await request(app.getHttpServer())
         .post('/alert/raise')
         .set('Authorization', auth(companion.accessToken))
@@ -1066,11 +1048,23 @@ describe('Alert (e2e)', () => {
       expect(closedIsolated.closedAt).not.toBeNull();
     });
 
-    it('rejects an outer-circle Sentinel whose link is not authorized for it (firstCircleMessagingMode NONE, the default)', async () => {
+    it.each([
+      ['their circle is not allowed', 'circle'],
+      ['the companion switched it off for every circle', 'user'],
+    ])('rejects an outer-circle Sentinel when %s', async (_label, where) => {
       const companion = await signupAccount('Ada');
       await buildFirstCircle(companion.accessToken, 1);
       const { circle: outerCircle, sentinels: outerSentinels } =
         await buildOuterCircle(companion.accessToken, 'Amis', 1);
+      await request(app.getHttpServer())
+        .patch(
+          where === 'circle'
+            ? `/sentinel/circles/${outerCircle.id}`
+            : '/user/me',
+        )
+        .set('Authorization', auth(companion.accessToken))
+        .send({ alertChatWithFirstCircle: false })
+        .expect(200);
 
       const raiseRes = await request(app.getHttpServer())
         .post('/alert/raise')
@@ -1305,7 +1299,7 @@ describe('Alert (e2e)', () => {
   });
 
   describe('GET /alert/:id — attribution and message history', () => {
-    it('shows who requested each circle, and lets the companion read the 1st-circle chat without being a participant of it', async () => {
+    it('shows who requested each circle, and lets the companion read the 1st-circle chat they’re seated in', async () => {
       const companion = await signupAccount('Lea');
       const { sentinels } = await buildFirstCircle(companion.accessToken, 1);
       const { circle: outerCircle } = await buildOuterCircle(
@@ -1359,14 +1353,14 @@ describe('Alert (e2e)', () => {
         .send({ body: 'On est sur place.' })
         .expect(201);
 
-      // The companion isn't a participant of that conversation (by design)
-      // and still gets 403 calling messaging directly...
+      // The companion is seated in the 1st circle room (they write there
+      // too), so messaging lets them read it directly...
       await request(app.getHttpServer())
         .get(`/messaging/conversations/${conversationId}/messages`)
         .set('Authorization', auth(companion.accessToken))
-        .expect(403);
+        .expect(200);
 
-      // ...but reads the full message history as part of the alert detail.
+      // ...and the alert detail carries the same history.
       detailRes = await request(app.getHttpServer())
         .get(`/alert/${alert.id}`)
         .set('Authorization', auth(companion.accessToken))

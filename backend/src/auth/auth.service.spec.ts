@@ -211,6 +211,7 @@ describe('AuthService', () => {
           firstName: 'Ada',
           userName: 'ada123',
           idToken: 'fake-token',
+          acceptTerms: true,
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
@@ -232,6 +233,7 @@ describe('AuthService', () => {
           firstName: 'Ada',
           userName: 'ada123',
           idToken: 'fake-token',
+          acceptTerms: true,
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
@@ -249,6 +251,7 @@ describe('AuthService', () => {
         firstName: 'Ada',
         userName: 'ada123',
         idToken: 'fake-token',
+        acceptTerms: true,
       });
 
       expect(prisma.user.create).toHaveBeenCalledWith(
@@ -278,6 +281,7 @@ describe('AuthService', () => {
           userName: 'ada123',
           email: 'ada@example.com',
           password: 'password123',
+          acceptTerms: true,
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
@@ -296,6 +300,7 @@ describe('AuthService', () => {
           userName: 'ada123',
           email: 'ada@example.com',
           password: 'password123',
+          acceptTerms: true,
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
@@ -311,6 +316,7 @@ describe('AuthService', () => {
         userName: 'ada123',
         email: 'ada@example.com',
         password: 'password123',
+        acceptTerms: true,
       });
 
       expect(prisma.user.create).toHaveBeenCalledWith(

@@ -55,7 +55,13 @@ export function SentinelHomePage() {
       {participations.map((participation) => (
         <section key={participation.id}>
           <h2>{t('alerts.detail.about', { name: participation.alert.userCompanion.firstName })}</h2>
-          <AlertReplyPanel alertId={participation.alert.id} questions={participation.questions} onChange={reload} />
+          <AlertReplyPanel
+            alertId={participation.alert.id}
+            name={participation.alert.userCompanion.firstName}
+            gender={participation.alert.userCompanion.gender}
+            questions={participation.questions}
+            onChange={reload}
+          />
         </section>
       ))}
 

@@ -48,18 +48,70 @@ export class NotificationService {
     return notification;
   }
 
-  listMine(userId: string) {
-    return this.prisma.notification.findMany({
-      where: { userId },
+  // Unread only — a notification disappears once read (clicked, or its
+  // conversation opened); there's no history of old ones. New messages are
+  // left out: they're surfaced on the Messages tab, not in the bell.
+  // actorGender: how the text speaks about whoever triggered it ("Léa est
+  // passée dans votre réserve"); null = inclusive wording.
+  async listMine(userId: string) {
+    const rows = await this.prisma.notification.findMany({
+      where: {
+        userId,
+        readAt: null,
+        type: { not: NotificationType.NEW_MESSAGE },
+      },
+      include: { actor: { select: { gender: true } } },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+    return rows.map(({ actor, ...n }) => ({
+      ...n,
+      actorGender: actor?.gender ?? null,
+    }));
   }
 
-  getUnreadCount(userId: string) {
-    return this.prisma.notification.count({
-      where: { userId, readAt: null },
-    });
+  // Split the same way: `count` feeds the bell (everything but messages),
+  // `messages` feeds the Messages tab's badge, and `support` — replies in
+  // the caller's feedback thread (supportConversationId, see
+  // SupportService) — the About tab's, since that thread isn't in Messages.
+  // Messages count **conversations** with something unread, not messages:
+  // 3 messages from one person = 1, 2 people writing = 2.
+  async getUnreadCounts(userId: string, supportConversationId: string | null) {
+    const [count, unreadConversations] = await Promise.all([
+      this.prisma.notification.count({
+        where: {
+          userId,
+          readAt: null,
+          type: { not: NotificationType.NEW_MESSAGE },
+        },
+      }),
+      this.prisma.notification.findMany({
+        where: { userId, readAt: null, type: NotificationType.NEW_MESSAGE },
+        distinct: ['targetId'],
+        select: { targetId: true },
+      }),
+    ]);
+    const support = unreadConversations.filter(
+      (n) =>
+        supportConversationId !== null && n.targetId === supportConversationId,
+    ).length;
+    // Only conversations the Messages page lists: an alert's chat lives on
+    // the Running Alert page and can't be opened once the alert is over, so
+    // its unread rows would otherwise keep the badge lit forever.
+    const targetIds = unreadConversations
+      .map((n) => n.targetId)
+      .filter((id): id is string => id !== null);
+    const direct =
+      targetIds.length === 0
+        ? 0
+        : await this.prisma.conversation.count({
+            where: { id: { in: targetIds }, alertId: null },
+          });
+    return {
+      count,
+      messages: Math.max(0, direct - support),
+      support,
+    };
   }
 
   markRead(userId: string, id: string) {

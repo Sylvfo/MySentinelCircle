@@ -1,9 +1,19 @@
 import { NotificationType } from '@prisma/client';
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { UnauthorizedException } from '@nestjs/common';
-import { CircleType, LinkStatus, UserStatus } from '@prisma/client';
-import { AccountDeletionService } from './account-deletion.service';
+import {
+  AlertParticipantStatus,
+  CircleType,
+  LinkStatus,
+  MessageType,
+  UserStatus,
+} from '@prisma/client';
+import {
+  AccountDeletionService,
+  LEAD_ON_ALERT_IN_PROGRESS,
+  OWN_ALERT_IN_PROGRESS,
+} from './account-deletion.service';
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SentinelService } from '../sentinel/sentinel.service';
@@ -15,7 +25,8 @@ describe('AccountDeletionService', () => {
   let service: AccountDeletionService;
   let prisma: {
     user: { findUnique: jest.Mock; update: jest.Mock };
-    alert: { findFirst: jest.Mock };
+    alert: { findFirst: jest.Mock; findMany: jest.Mock; update: jest.Mock };
+    message: { findMany: jest.Mock; updateMany: jest.Mock };
     alertParticipant: { findFirst: jest.Mock };
     circle: { findMany: jest.Mock; updateMany: jest.Mock };
     linkSentinels: {
@@ -52,7 +63,15 @@ describe('AccountDeletionService', () => {
         findUnique: jest.fn().mockResolvedValue(account),
         update: jest.fn(),
       },
-      alert: { findFirst: jest.fn().mockResolvedValue(null) },
+      alert: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn(),
+      },
+      message: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn(),
+      },
       alertParticipant: { findFirst: jest.fn().mockResolvedValue(null) },
       circle: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -113,7 +132,7 @@ describe('AccountDeletionService', () => {
     prisma.alert.findFirst.mockResolvedValue({ id: 'alert' });
 
     await expect(service.deleteAccount('me')).rejects.toThrow(
-      ConflictException,
+      OWN_ALERT_IN_PROGRESS,
     );
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -122,11 +141,13 @@ describe('AccountDeletionService', () => {
     prisma.alertParticipant.findFirst.mockResolvedValue({ id: 'participant' });
 
     await expect(service.deleteAccount('me')).rejects.toThrow(
-      ConflictException,
+      LEAD_ON_ALERT_IN_PROGRESS,
     );
     expect(prisma.alertParticipant.findFirst).toHaveBeenCalledWith({
       where: expect.objectContaining({
         isLead: true,
+        // A Lead who already left the alert no longer blocks deletion.
+        status: { not: AlertParticipantStatus.CLOSED },
         userSentinels: { userSentinelId: 'me' },
       }),
     });
@@ -153,8 +174,53 @@ describe('AccountDeletionService', () => {
       otpCodeHash: null,
       passwordResetTokenHash: null,
       deathAnnouncementMessage: null,
+      gender: null,
     });
     expect(realtime.disconnectUser).toHaveBeenCalledWith('me');
+  });
+
+  it('replaces shared positions in their alerts, keeping the rest of the text', async () => {
+    prisma.alert.findMany.mockResolvedValue([
+      {
+        id: 'a1',
+        messageAlert:
+          'Je rentre tard\n\nPosition partagée (± 20 m) : https://www.google.com/maps/search/?api=1&query=46.5,6.6',
+      },
+      { id: 'a2', messageAlert: 'Pas de position ici' },
+    ]);
+
+    await service.deleteAccount('me');
+
+    expect(prisma.alert.findMany).toHaveBeenCalledWith({
+      where: { userCompanionId: 'me' },
+      select: { id: true, messageAlert: true },
+    });
+    expect(prisma.alert.update).toHaveBeenCalledTimes(1);
+    expect(prisma.alert.update).toHaveBeenCalledWith({
+      where: { id: 'a1' },
+      data: { messageAlert: 'Je rentre tard\n\nPosition supprimée' },
+    });
+  });
+
+  it('blanks their position messages and photos, and their death messages', async () => {
+    await service.deleteAccount('me');
+
+    expect(prisma.message.updateMany).toHaveBeenCalledWith({
+      where: {
+        senderId: 'me',
+        type: MessageType.TEXT,
+        body: { startsWith: '📍 Position' },
+      },
+      data: { body: '📍 Position supprimée' },
+    });
+    expect(prisma.message.updateMany).toHaveBeenCalledWith({
+      where: { senderId: 'me', type: MessageType.IMAGE },
+      data: { type: MessageType.TEXT, body: '📷 Photo supprimée' },
+    });
+    expect(prisma.linkSentinels.updateMany).toHaveBeenCalledWith({
+      where: { userCompanionId: 'me' },
+      data: { deathPersonalMessage: null, notifyOnDeath: false },
+    });
   });
 
   it('removes active links and leaves blocked ones alone', async () => {

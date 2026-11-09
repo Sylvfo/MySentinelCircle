@@ -27,7 +27,10 @@ export function Modal({
       ref={ref}
       className="modal-dialog"
       aria-label={title}
-      onClose={onClose}
+      // No onClose: the effect's own cleanup calls dialog.close(), which
+      // would fire it — under StrictMode's dev mount/unmount/remount that
+      // closed every modal right after opening. Escape (onCancel), a click
+      // outside and the ✕ button are the user's ways out.
       onCancel={onClose}
       onClick={(e) => {
         // Only the dialog's own box (its padding/backdrop area), not the

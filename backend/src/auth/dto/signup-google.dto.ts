@@ -1,5 +1,8 @@
+import { Gender } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  Equals,
+  IsEnum,
   IsOptional,
   IsString,
   Matches,
@@ -36,4 +39,16 @@ export class SignupGoogleDto {
   @ApiProperty()
   @IsString()
   idToken: string;
+
+  // Optional: how texts speak about me. Left empty = inclusive wording.
+  @ApiProperty({ required: false, enum: Gender })
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender;
+
+  // The terms of use + privacy policy checkbox (nLPD / GDPR): refused
+  // unless explicitly true.
+  @ApiProperty({ enum: [true] })
+  @Equals(true)
+  acceptTerms: boolean;
 }

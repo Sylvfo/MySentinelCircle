@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
 import request from 'supertest';
 import { AlertType, CircleType } from '@prisma/client';
 import { AppModule } from './../src/app.module';
+import { PrismaService } from './../src/prisma/prisma.service';
 import { OTP_SENDER } from './../src/auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from './../src/email/email-sender.interface';
 import { SMS_SENDER } from './../src/sms/sms-sender.interface';
@@ -42,6 +42,7 @@ interface MessageBody {
 
 describe('Messaging (e2e)', () => {
   let app: NestExpressApplication;
+  let prisma: PrismaService;
   let sentOtps: { phone: string; code: string }[];
   let sentSms: { phone: string; body: string }[];
 
@@ -74,12 +75,10 @@ describe('Messaging (e2e)', () => {
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
     );
-    // Mirrors main.ts's bootstrap() — e2e specs build their own app instance
-    // and don't call bootstrap(), so this needs repeating here for the
-    // image-message route's GET /uploads/messages/:filename to be servable
-    // in the test environment the same way it is in the real app.
-    app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
+    // No static /uploads folder, as in main.ts: message images are only
+    // served through GET /messaging/messages/:id/image.
     await app.init();
+    prisma = moduleFixture.get(PrismaService);
   });
 
   afterEach(async () => {
@@ -180,18 +179,18 @@ describe('Messaging (e2e)', () => {
       expect(messages[0].body).toBe('Je suis en route');
     });
 
-    it('rejects the companion — not a participant of the 1st-circle chat by design', async () => {
+    it('lets the companion write and read in the 1st circle room — they are seated there', async () => {
       const { companion, conversationId } = await buildAlertWithConversation();
 
       await request(app.getHttpServer())
         .post(`/messaging/conversations/${conversationId}/messages`)
         .set('Authorization', auth(companion.accessToken))
-        .send({ body: 'Allo ?' })
-        .expect(403);
+        .send({ body: 'Je vais bien' })
+        .expect(201);
       await request(app.getHttpServer())
         .get(`/messaging/conversations/${conversationId}/messages`)
         .set('Authorization', auth(companion.accessToken))
-        .expect(403);
+        .expect(200);
     });
 
     it('rejects a stranger with no link to the companion at all', async () => {
@@ -205,7 +204,7 @@ describe('Messaging (e2e)', () => {
         .expect(403);
     });
 
-    it('rejects sending into a closed conversation, but still allows reading its history', async () => {
+    it('keeps an alert chat writable 7 days after the alert, then read-only with its history', async () => {
       const { companion, sentinel, alert, conversationId } =
         await buildAlertWithConversation();
       await request(app.getHttpServer())
@@ -214,33 +213,56 @@ describe('Messaging (e2e)', () => {
         .send({ body: 'Avant la cloture' })
         .expect(201);
 
+      // Stopped with a closing word: posted in the chat.
       await request(app.getHttpServer())
         .post(`/alert/${alert.id}/close`)
         .set('Authorization', auth(companion.accessToken))
+        .send({ finalWord: 'Tout va bien, merci à toutes et tous.' })
         .expect(201);
 
+      // Still open during the 7 days after the alert.
       await request(app.getHttpServer())
         .post(`/messaging/conversations/${conversationId}/messages`)
         .set('Authorization', auth(sentinel.accessToken))
-        .send({ body: 'Apres la cloture' })
+        .send({ body: 'Super, merci' })
+        .expect(201);
+
+      // Those 7 days have passed.
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { closedAt: new Date(Date.now() - 1000) },
+      });
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .send({ body: 'Trop tard' })
         .expect(409);
 
       const listRes = await request(app.getHttpServer())
         .get(`/messaging/conversations/${conversationId}/messages`)
         .set('Authorization', auth(sentinel.accessToken))
         .expect(200);
-      expect(listRes.body as MessageBody[]).toHaveLength(1);
+      expect((listRes.body as MessageBody[]).map((m) => m.body)).toEqual([
+        'Avant la cloture',
+        'Tout va bien, merci à toutes et tous.',
+        'Super, merci',
+      ]);
     });
   });
 
+  // Smallest bytes that start like a real JPEG (the upload checks them).
+  const JPEG_BYTES = Buffer.from([
+    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+  ]);
+
   describe('POST /messaging/conversations/:id/messages/image', () => {
-    it('uploads an image, creates an IMAGE message, and serves the file back under /uploads/messages/', async () => {
+    it('uploads an image, creates an IMAGE message, and serves it back to participants only', async () => {
       const { sentinel, conversationId } = await buildAlertWithConversation();
 
       const uploadRes = await request(app.getHttpServer())
         .post(`/messaging/conversations/${conversationId}/messages/image`)
         .set('Authorization', auth(sentinel.accessToken))
-        .attach('image', Buffer.from('fake-jpeg-bytes'), 'photo.jpg')
+        .attach('image', JPEG_BYTES, 'photo.jpg')
         .expect(201);
       const message = uploadRes.body as MessageBody;
       expect(message.type).toBe('IMAGE');
@@ -253,10 +275,40 @@ describe('Messaging (e2e)', () => {
         .expect(200);
       expect(listRes.body as MessageBody[]).toHaveLength(1);
 
+      // Served only to participants, never as a public file.
       await request(app.getHttpServer())
-        .get(`/uploads/messages/${message.body}`)
+        .get(`/messaging/messages/${message.id}/image`)
+        .set('Authorization', auth(sentinel.accessToken))
         .expect(200)
         .expect('Content-Type', /image\/jpeg/);
+      await request(app.getHttpServer())
+        .get(`/messaging/messages/${message.id}/image`)
+        .expect(401);
+      const stranger = await signupAccount('Eve');
+      await request(app.getHttpServer())
+        .get(`/messaging/messages/${message.id}/image`)
+        .set('Authorization', auth(stranger.accessToken))
+        .expect(404);
+      await request(app.getHttpServer())
+        .get(`/uploads/messages/${message.body}`)
+        .expect(404);
+    });
+
+    it('rejects a fake image — a .jpg name and type that are really a web page', async () => {
+      const { sentinel, conversationId } = await buildAlertWithConversation();
+
+      await request(app.getHttpServer())
+        .post(`/messaging/conversations/${conversationId}/messages/image`)
+        .set('Authorization', auth(sentinel.accessToken))
+        .attach(
+          'image',
+          Buffer.from('<html><script>alert(1)</script></html>'),
+          {
+            filename: 'photo.jpg',
+            contentType: 'image/jpeg',
+          },
+        )
+        .expect(400);
     });
 
     it('rejects a non-image file', async () => {
@@ -269,13 +321,14 @@ describe('Messaging (e2e)', () => {
         .expect(400);
     });
 
-    it('rejects the companion — not a participant of the 1st-circle chat by design', async () => {
-      const { companion, conversationId } = await buildAlertWithConversation();
+    it('rejects a stranger with no seat in the conversation', async () => {
+      const { conversationId } = await buildAlertWithConversation();
+      const stranger = await signupAccount('Eve');
 
       await request(app.getHttpServer())
         .post(`/messaging/conversations/${conversationId}/messages/image`)
-        .set('Authorization', auth(companion.accessToken))
-        .attach('image', Buffer.from('fake-jpeg-bytes'), 'photo.jpg')
+        .set('Authorization', auth(stranger.accessToken))
+        .attach('image', JPEG_BYTES, 'photo.jpg')
         .expect(403);
     });
   });
@@ -340,116 +393,6 @@ describe('Messaging (e2e)', () => {
       const listRes = await request(app.getHttpServer())
         .get(`/messaging/conversations/${conv.id}/messages`)
         .set('Authorization', auth(companion.accessToken))
-        .expect(200);
-      expect(listRes.body as MessageBody[]).toHaveLength(1);
-    });
-
-    it('is always open for a 1st-circle Sentinel, even with allowMessagingByDefault off', async () => {
-      const companion = await signupAccount('Ada');
-      const sentinel = await signupAccount('Lead');
-      const circlesRes = await request(app.getHttpServer())
-        .get('/sentinel/circles')
-        .set('Authorization', auth(companion.accessToken))
-        .expect(200);
-      const firstCircle = (circlesRes.body as CircleBody[]).find(
-        (c) => c.circleType === CircleType.FIRST,
-      )!;
-      const inviteRes = await request(app.getHttpServer())
-        .post(`/sentinel/circles/${firstCircle.id}/invite`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ phone: sentinel.phone, name: 'Lead' })
-        .expect(201);
-      await request(app.getHttpServer())
-        .post(`/sentinel/memberships/${(inviteRes.body as LinkBody).id}/accept`)
-        .set('Authorization', auth(sentinel.accessToken))
-        .send({})
-        .expect(201);
-
-      await request(app.getHttpServer())
-        .patch('/user/me')
-        .set('Authorization', auth(companion.accessToken))
-        .send({ allowMessagingByDefault: false })
-        .expect(200);
-
-      await request(app.getHttpServer())
-        .get(`/messaging/direct/${sentinel.userId}`)
-        .set('Authorization', auth(companion.accessToken))
-        .expect(200);
-    });
-
-    it('a circle-level restriction blocks it, and a per-individual override beats the circle', async () => {
-      const { companion, sentinel, circle, linkId } =
-        await buildOuterCircleLink();
-
-      await request(app.getHttpServer())
-        .patch(`/sentinel/circles/${circle.id}`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ canMessageMe: false })
-        .expect(200);
-
-      await request(app.getHttpServer())
-        .get(`/messaging/direct/${sentinel.userId}`)
-        .set('Authorization', auth(companion.accessToken))
-        .expect(403);
-
-      // Per-individual override beats the circle's restriction.
-      await request(app.getHttpServer())
-        .patch(`/sentinel/memberships/${linkId}`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ canMessageMe: true })
-        .expect(200);
-
-      await request(app.getHttpServer())
-        .get(`/messaging/direct/${sentinel.userId}`)
-        .set('Authorization', auth(companion.accessToken))
-        .expect(200);
-    });
-
-    it('rejects canMessageMe on the 1st circle — always reachable, no override', async () => {
-      const companion = await signupAccount('Ada');
-      const circlesRes = await request(app.getHttpServer())
-        .get('/sentinel/circles')
-        .set('Authorization', auth(companion.accessToken))
-        .expect(200);
-      const firstCircle = (circlesRes.body as CircleBody[]).find(
-        (c) => c.circleType === CircleType.FIRST,
-      )!;
-
-      await request(app.getHttpServer())
-        .patch(`/sentinel/circles/${firstCircle.id}`)
-        .set('Authorization', auth(companion.accessToken))
-        .send({ canMessageMe: false })
-        .expect(400);
-    });
-
-    it('turning messaging off after a conversation exists blocks further sends, but reading its history still works', async () => {
-      const { companion, sentinel } = await buildOuterCircleLink();
-      const convRes = await request(app.getHttpServer())
-        .get(`/messaging/direct/${sentinel.userId}`)
-        .set('Authorization', auth(companion.accessToken))
-        .expect(200);
-      const conversationId = (convRes.body as ConversationBody).id;
-      await request(app.getHttpServer())
-        .post(`/messaging/conversations/${conversationId}/messages`)
-        .set('Authorization', auth(sentinel.accessToken))
-        .send({ body: 'Avant blocage' })
-        .expect(201);
-
-      await request(app.getHttpServer())
-        .patch('/user/me')
-        .set('Authorization', auth(companion.accessToken))
-        .send({ allowMessagingByDefault: false })
-        .expect(200);
-
-      await request(app.getHttpServer())
-        .post(`/messaging/conversations/${conversationId}/messages`)
-        .set('Authorization', auth(sentinel.accessToken))
-        .send({ body: 'Apres blocage' })
-        .expect(403);
-
-      const listRes = await request(app.getHttpServer())
-        .get(`/messaging/conversations/${conversationId}/messages`)
-        .set('Authorization', auth(sentinel.accessToken))
         .expect(200);
       expect(listRes.body as MessageBody[]).toHaveLength(1);
     });

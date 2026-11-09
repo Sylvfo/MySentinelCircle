@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -14,6 +15,17 @@ import { join } from 'path';
 import { CircleType, LinkStatus, UserType, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DEFAULT_CIRCLES } from '../sentinel/default-circles';
+import { DELETED_ACCOUNT_LABEL } from './user-status.util';
+import {
+  DEATH_NOTICE_NEEDS_PURCHASE,
+  FREE_ALERT_TRIAL_LIMIT,
+  PAYMENT_NOT_AVAILABLE,
+  addOneYear,
+  hasDeathNotice,
+  isSubscribed,
+  paymentSimulated,
+} from './plan.util';
+import { CURRENT_TERMS_VERSION } from '../privacy/terms';
 import { OTP_SENDER } from '../auth/otp/otp-sender.interface';
 import type { OtpSender } from '../auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from '../email/email-sender.interface';
@@ -45,25 +57,39 @@ const PROFILE_SELECT = {
   userType: true,
   isMajor: true,
   publicStatus: true,
-  allowMessagingByDefault: true,
+  alertChatWithFirstCircle: true,
+  pausedForMe: true,
+  pausedForOthers: true,
   createdAt: true,
   updatedAt: true,
   avatarPath: true,
   passwordHash: true,
   googleId: true,
-  hasPaid: true,
+  paidUntil: true,
+  termsVersion: true,
+  gender: true,
 } as const;
 
 // Never return the raw hash/id — just whether they exist, so the frontend
 // knows which credentials/step-up methods apply to this account.
 function toProfileDto<
-  T extends { passwordHash: string | null; googleId: string | null },
+  T extends {
+    passwordHash: string | null;
+    googleId: string | null;
+    termsVersion?: string | null;
+    paidUntil?: Date | null;
+  },
 >(user: T) {
   const { passwordHash, googleId, ...rest } = user;
   return {
     ...rest,
     hasPassword: passwordHash !== null,
     hasGoogle: googleId !== null,
+    // Subscription active right now (paidUntil in the future).
+    hasPaid: isSubscribed({ paidUntil: user.paidUntil ?? null }),
+    // False until the current terms + privacy policy are accepted: the app
+    // asks for it before anything else (POST /user/me/accept-terms).
+    termsUpToDate: user.termsVersion === CURRENT_TERMS_VERSION,
   };
 }
 
@@ -86,6 +112,35 @@ export class UserService {
       select: PROFILE_SELECT,
     });
     return user && toProfileDto(user);
+  }
+
+  // What my plan includes right now, for the Plans page and the upgrade
+  // prompts. The rules themselves are enforced where each action happens.
+  async getPlan(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { paidUntil: true, deathNoticePurchasedAt: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    const subscribed = isSubscribed(user);
+    const alertsUsed = subscribed
+      ? 0
+      : await this.prisma.alert.count({ where: { userCompanionId: userId } });
+    return {
+      hasPaid: subscribed,
+      // Kept after it ends, to say "your subscription ended on …".
+      paidUntil: user.paidUntil,
+      freeAlertLimit: FREE_ALERT_TRIAL_LIMIT,
+      // null = unlimited (subscribed).
+      freeAlertsLeft: subscribed
+        ? null
+        : Math.max(0, FREE_ALERT_TRIAL_LIMIT - alertsUsed),
+      deathNotice: hasDeathNotice(user),
+      deathNoticePurchased: user.deathNoticePurchasedAt !== null,
+      groups: subscribed,
+      // Whether the "pay" buttons work yet (simulated in dev).
+      paymentAvailable: paymentSimulated(),
+    };
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
@@ -113,6 +168,18 @@ export class UserService {
 
   // Turns a phone-verified ONLY_SMS row into a real account, keeping its id
   // so the LinkSentinels of an already-invited Sentinel still resolve.
+  // Records that the person accepted the current terms + privacy policy.
+  async acceptTerms(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        termsAcceptedAt: new Date(),
+        termsVersion: CURRENT_TERMS_VERSION,
+      },
+    });
+    return this.getProfile(userId);
+  }
+
   async completeProfile(userId: string, dto: CompleteProfileDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (user?.userType !== UserType.ONLY_SMS || !user.phoneVerifiedAt) {
@@ -229,8 +296,10 @@ export class UserService {
         }),
         this.prisma.user.update({
           where: { id: existing.id },
+          // The name was typed by whoever invited this number: it goes too.
           data: {
             phone: null,
+            firstName: DELETED_ACCOUNT_LABEL,
             status: UserStatus.DELETED,
             deletedAt: new Date(),
           },
@@ -500,6 +569,61 @@ export class UserService {
     return toProfileDto(updated);
   }
 
+  async removeAvatar(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarPath: true },
+    });
+    if (user?.avatarPath) {
+      await unlink(join(AVATAR_DIR, user.avatarPath)).catch(() => {});
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarPath: null },
+      select: PROFILE_SELECT,
+    });
+    return toProfileDto(updated);
+  }
+
+  // A profile photo is private: only its owner, the people linked to them
+  // (an ACCEPTED LinkSentinels in either direction), and their co-members of
+  // a 1st circle (both ACCEPTED in the same companion's FIRST circle — they
+  // handle alerts together) can see it. Everyone else gets the same 404 as
+  // "no photo", so its existence isn't revealed.
+  async getAvatarFile(callerId: string, targetId: string): Promise<string> {
+    if (callerId !== targetId) {
+      const link = await this.prisma.linkSentinels.findFirst({
+        where: {
+          status: LinkStatus.ACCEPTED,
+          OR: [
+            { userSentinelId: callerId, circle: { userCompanionId: targetId } },
+            { userSentinelId: targetId, circle: { userCompanionId: callerId } },
+            {
+              userSentinelId: targetId,
+              circle: {
+                circleType: CircleType.FIRST,
+                userSentinels: {
+                  some: {
+                    userSentinelId: callerId,
+                    status: LinkStatus.ACCEPTED,
+                  },
+                },
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!link) throw new NotFoundException('No photo');
+    }
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetId },
+      select: { avatarPath: true },
+    });
+    if (!target?.avatarPath) throw new NotFoundException('No photo');
+    return join(AVATAR_DIR, target.avatarPath);
+  }
+
   // TEMPORARY dev/test affordance — stands in for a real payment provider
   // (see plan.txt ACCOUNTS & BILLING). Remove once one is wired in. Closed
   // unless ALLOW_DEV_ROUTES is explicitly "true".
@@ -509,7 +633,7 @@ export class UserService {
     }
     const updated = await this.prisma.user.update({
       where: { id: userId },
-      data: { hasPaid: dto.hasPaid },
+      data: { paidUntil: dto.hasPaid ? addOneYear(null) : null },
       select: PROFILE_SELECT,
     });
     return toProfileDto(updated);
@@ -520,6 +644,71 @@ export class UserService {
   // — no separate table (see CLAUDE.md/plan.txt on this feature's design).
   // Report/confirm/reject live in SentinelService instead: eligibility there
   // is entirely about Sentinel/circle membership, not self-management.
+
+  // One more year of subscription, for myself or offered to someone I'm
+  // linked with (either direction, accepted link). Simulated payment until
+  // a real provider exists; later, its webhook will call the same thing.
+  async addSubscriptionYear(callerId: string, forUserId: string) {
+    if (!paymentSimulated()) {
+      throw new ForbiddenException(PAYMENT_NOT_AVAILABLE);
+    }
+    if (forUserId !== callerId) {
+      const link = await this.prisma.linkSentinels.findFirst({
+        where: {
+          status: LinkStatus.ACCEPTED,
+          OR: [
+            { userSentinelId: callerId, userCompanionId: forUserId },
+            { userSentinelId: forUserId, userCompanionId: callerId },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!link) {
+        throw new ForbiddenException(
+          'You can only offer a subscription to someone you are linked with',
+        );
+      }
+    }
+    const target = await this.prisma.user.findUnique({
+      where: { id: forUserId },
+      select: { paidUntil: true, status: true },
+    });
+    if (!target || target.status !== UserStatus.ACTIVE) {
+      throw new NotFoundException('User not found');
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: forUserId },
+      data: { paidUntil: addOneYear(target.paidUntil) },
+      select: { paidUntil: true },
+    });
+    return { userId: forUserId, paidUntil: updated.paidUntil };
+  }
+
+  // Preparing the death notice is paid (subscription or one-time
+  // purchase). Sending one already prepared is never blocked: it happens
+  // after the death, whatever the plan has become.
+  private async assertHasDeathNotice(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { paidUntil: true, deathNoticePurchasedAt: true },
+    });
+    if (!user || !hasDeathNotice(user)) {
+      throw new ForbiddenException(DEATH_NOTICE_NEEDS_PURCHASE);
+    }
+  }
+
+  // TEMPORARY dev/test affordance, like devSetHasPaid: stands in for the
+  // one-time purchase until a payment provider exists.
+  async devSetDeathNoticePurchased(userId: string, purchased: boolean) {
+    if (this.config.get('ALLOW_DEV_ROUTES') !== 'true') {
+      throw new ForbiddenException('Dev routes are disabled');
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { deathNoticePurchasedAt: purchased ? new Date() : null },
+    });
+    return this.getPlan(userId);
+  }
 
   async getMyDeathNotice(userId: string) {
     const [user, links] = await Promise.all([
@@ -548,6 +737,7 @@ export class UserService {
   }
 
   async updateMyDeathNotice(userId: string, dto: UpdateDeathNoticeDto) {
+    await this.assertHasDeathNotice(userId);
     await this.prisma.user.update({
       where: { id: userId },
       data: { deathAnnouncementMessage: dto.announcementMessage },
@@ -562,6 +752,7 @@ export class UserService {
     userId: string,
     dto: SetDeathNoticeRecipientsDto,
   ) {
+    await this.assertHasDeathNotice(userId);
     const linkIds = dto.recipients.map((r) => r.linkId);
     if (linkIds.length > 0) {
       const owned = await this.prisma.linkSentinels.count({

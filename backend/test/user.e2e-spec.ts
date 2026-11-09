@@ -63,7 +63,13 @@ describe('User (e2e)', () => {
     const password = 'password123';
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({ firstName: 'Ada', userName: testUsername(), email, password })
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email,
+        password,
+        acceptTerms: true,
+      })
       .expect(201);
     const signupBody = signupRes.body as UserResponseBody;
     return { accessToken: signupBody.accessToken as string, email };
@@ -78,7 +84,13 @@ describe('User (e2e)', () => {
     const phone = testPhone();
     const signupRes = await request(app.getHttpServer())
       .post('/auth/signup/email')
-      .send({ firstName: 'Ada', userName: testUsername(), email, password })
+      .send({
+        firstName: 'Ada',
+        userName: testUsername(),
+        email,
+        password,
+        acceptTerms: true,
+      })
       .expect(201);
     const signupBody = signupRes.body as UserResponseBody;
     const accessToken = signupBody.accessToken as string;

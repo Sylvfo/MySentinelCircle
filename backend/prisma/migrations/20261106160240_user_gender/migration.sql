@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `User` ADD COLUMN `gender` ENUM('FEMALE', 'MALE', 'NEUTRAL') NULL;

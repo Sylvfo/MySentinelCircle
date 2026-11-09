@@ -1,3 +1,4 @@
+import type { Gender } from '../gender';
 import { apiDelete, apiGet, apiPatch, apiPost } from './client';
 
 export type SentinelType = 'ONLY_SMS' | 'SENTINEL' | 'LEAD' | 'FIRSTCIRCLE' | 'UNCOMPLETE';
@@ -5,12 +6,24 @@ export type LinkStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'REMOVED' | 'BLOC
 export type LinkInitiator = 'COMPANION' | 'SENTINEL';
 export type LeadSlot = 'LEAD_1' | 'LEAD_2' | 'LEAD_3';
 export type CircleType = 'BASIC' | 'FIRST' | 'ORGANISATION' | 'RESERVED' | 'GROUP';
-export type MessagingMode = 'NONE' | 'INDIVIDUAL' | 'GROUP';
 
 export interface SentinelRef {
   id: string;
   firstName: string;
+  // Only listCircles() returns it (the Sentinel panel on a circle's page).
+  lastName?: string | null;
   phone: string;
+  // Profile photo's file name (listCircles() only) — a cache key for
+  // avatars.ts, the photo itself needs GET /user/:id/avatar.
+  avatarPath?: string | null;
+  // Their status line, e.g. "On holiday until the 12th" (listCircles() only).
+  publicStatus?: string | null;
+  // On pause for others: can't be asked to take part in alerts (listCircles() only).
+  pausedForOthers?: boolean;
+  // Running yearly subscription (listCircles() only; never the end date).
+  subscribed?: boolean;
+  // How texts speak about them (listCircles() only); null = inclusive.
+  gender?: Gender | null;
 }
 
 export interface Membership {
@@ -27,18 +40,6 @@ export interface Membership {
   // Manual outer-circle call rank for batched alert escalation (lower =
   // called first); null = random order. Meaningless for the 1st circle.
   callOrder: number | null;
-  // Alert-time: can this Sentinel join their own (1st) circle's live group
-  // chat during an alert. Separate from canMessageMe below.
-  canMessageOwnCircle: boolean;
-  // Alert-time, outer-circle Sentinels only: can this Sentinel open a chat
-  // with the 1st circle once solicited on an alert (frozen into that
-  // alert's AlertParticipant.firstCircleMessagingModeAtAlert at contact
-  // time — changing this afterward doesn't affect an alert already in
-  // progress).
-  firstCircleMessagingMode: MessagingMode;
-  // The permanent Me<->Sentinel channel — null = inherit the circle's
-  // (then the companion's) setting.
-  canMessageMe: boolean | null;
 }
 
 export interface Circle {
@@ -47,9 +48,13 @@ export interface Circle {
   circleType: CircleType;
   createdAt: string;
   userSentinels: Membership[];
-  // null = inherit the companion's default; always allowed on the 1st
-  // circle, no override possible there.
-  canMessageMe: boolean | null;
+  // Group circles only: the founder's circle (the group's root) has null,
+  // every other member's circle points at it.
+  groupRootId?: string | null;
+  // During an alert, may this circle's Sentinels chat with the 1st circle?
+  // Only counts when the companion's general switch (Me.
+  // alertChatWithFirstCircle) is on; meaningless for the 1st circle itself.
+  alertChatWithFirstCircle: boolean;
 }
 
 export interface PersonRef {
@@ -72,7 +77,7 @@ export interface Invitation {
   sentinelType: SentinelType;
   requestedAsLead: boolean;
   createdAt: string;
-  circle: { id: string; label: string; userCompanion: PersonRef & { firstName: string } };
+  circle: { id: string; label: string; userCompanion: PersonRef & { firstName: string; gender?: Gender | null } };
 }
 
 // Pending report awaiting a second confirmation — canConfirmOrReject is
@@ -94,9 +99,34 @@ export interface Companion {
   linkId: string;
   sentinelType: SentinelType;
   leadSlot: LeadSlot | null;
-  circle: { id: string; label: string; isPrimary: boolean };
+  circle: { id: string; label: string; isPrimary: boolean; isReserve: boolean; isGroup: boolean };
   proposedCircle: { id: string; label: string } | null;
-  companion: PersonRef;
+  companion: PersonRef & {
+    firstName: string;
+    lastName: string | null;
+    userName: string | null;
+    avatarPath: string | null;
+    publicStatus: string | null;
+    // Nobody but them may raise an alert about them right now.
+    pausedForMe: boolean;
+    // Yearly subscription running: an alert can always be raised for them.
+    subscribed: boolean;
+    // No subscription and their free alert is used (offer them a year).
+    freeAlertUsed: boolean;
+    // How texts speak about them; null = inclusive wording.
+    gender: Gender | null;
+  };
+  // The other accepted members of their 1st circle — empty unless I'm in it.
+  firstCircleMembers: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    publicStatus: string | null;
+    pausedForOthers: boolean;
+    subscribed: boolean;
+    gender: Gender | null;
+    isLead: boolean;
+  }[];
   deathNotice: CompanionDeathNotice;
 }
 
@@ -115,7 +145,7 @@ export const getSecurityScore = () => apiGet<SecurityScore>('/sentinel/security-
 
 export const createCircle = (label: string) => apiPost<Circle>('/sentinel/circles', { label });
 
-export const updateCircle = (id: string, data: { label?: string; canMessageMe?: boolean }) =>
+export const updateCircle = (id: string, data: { label?: string; alertChatWithFirstCircle?: boolean }) =>
   apiPatch<Circle>(`/sentinel/circles/${id}`, data);
 
 export const deleteCircle = (id: string) => apiDelete<{ deleted: true }>(`/sentinel/circles/${id}`);
@@ -138,10 +168,9 @@ export const updateMembership = (
     sentinelType?: SentinelType;
     requestedAsLead?: boolean;
     circleId?: string;
-    canMessageOwnCircle?: boolean;
-    firstCircleMessagingMode?: MessagingMode;
-    canMessageMe?: boolean;
     callOrder?: number;
+    // Lead order in the 1st circle (Lead 1 = responsible when an alert starts).
+    leadSlot?: LeadSlot;
   },
 ) => apiPatch<Membership>(`/sentinel/memberships/${id}`, data);
 
@@ -155,6 +184,10 @@ export const acceptMembership = (id: string, circleId?: string) =>
 
 export const declineMembership = (id: string) =>
   apiPost<Membership>(`/sentinel/memberships/${id}/decline`, {});
+
+// "Not available for now": I go to their reserve, the link stays.
+export const moveSelfToReserve = (id: string) =>
+  apiPost<Membership>(`/sentinel/memberships/${id}/reserve`, {});
 
 export const leaveMembership = (id: string) =>
   apiPost<Membership>(`/sentinel/memberships/${id}/leave`, {});
@@ -231,8 +264,12 @@ export const listMyGroups = () => apiGet<Group[]>('/sentinel/groups');
 export const listMyGroupInvitations = () =>
   apiGet<GroupInvitation[]>('/sentinel/groups/invitations');
 
-export const inviteToGroup = (rootId: string, targetUserId: string) =>
-  apiPost<{ id: string; status: LinkStatus }>(`/sentinel/groups/${rootId}/invite`, { targetUserId });
+// Either someone I'm connected to (targetUserId), or anyone by phone + first
+// name — with no account, they get an SMS to create one with that number.
+export const inviteToGroup = (
+  rootId: string,
+  target: { targetUserId: string } | { phone: string; name: string },
+) => apiPost<{ id: string; status: LinkStatus }>(`/sentinel/groups/${rootId}/invite`, target);
 
 export const acceptGroupInvitation = (id: string) =>
   apiPost<Circle>(`/sentinel/groups/invitations/${id}/accept`, {});
@@ -245,3 +282,11 @@ export const leaveGroup = (rootId: string) =>
 
 export const deleteGroup = (rootId: string) =>
   apiDelete<{ deleted: true }>(`/sentinel/groups/${rootId}`);
+
+// From someone's page: end every link with them (both directions), or block
+// them for good (both directions, never re-invitable).
+export const endRelationship = (userId: string) =>
+  apiPost<{ ended: number }>(`/sentinel/people/${userId}/end`, {});
+
+export const blockRelationship = (userId: string) =>
+  apiPost<{ ended: number }>(`/sentinel/people/${userId}/block`, {});

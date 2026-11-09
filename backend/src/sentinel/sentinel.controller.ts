@@ -185,6 +185,16 @@ export class SentinelController {
     return this.sentinel.leaveMembershipAsSentinel(user.userId, id);
   }
 
+  // A Sentinel puts themself in the companion's reserve ("not available for
+  // now") without ending the link.
+  @Post('memberships/:id/reserve')
+  moveSelfToReserve(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.sentinel.moveSelfToReserve(user.userId, id);
+  }
+
   // A Sentinel answers a proposed move into the 1st circle (also doable by SMS).
   @Post('memberships/:id/circle-move/accept')
   acceptCircleMove(
@@ -226,6 +236,26 @@ export class SentinelController {
   @Post('memberships/:id/block')
   block(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
     return this.sentinel.blockMembership(user.userId, id);
+  }
+
+  // ---- A whole relationship, both directions (person page) -----------------
+
+  // Ends every link with this person, whichever way it goes.
+  @Post('people/:userId/end')
+  endRelationship(
+    @CurrentUser() user: { userId: string },
+    @Param('userId') otherUserId: string,
+  ) {
+    return this.sentinel.endRelationship(user.userId, otherUserId, false);
+  }
+
+  // Same, but permanent: neither can ever invite the other again.
+  @Post('people/:userId/block')
+  blockRelationship(
+    @CurrentUser() user: { userId: string },
+    @Param('userId') otherUserId: string,
+  ) {
+    return this.sentinel.endRelationship(user.userId, otherUserId, true);
   }
 
   // ---- Companions (people I watch over) -------------------------------------

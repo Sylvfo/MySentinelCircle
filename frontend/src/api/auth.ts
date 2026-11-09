@@ -1,4 +1,5 @@
 import { apiPost } from './client';
+import type { Gender } from '../gender';
 
 export const signupEmail = (
   firstName: string,
@@ -6,7 +7,18 @@ export const signupEmail = (
   userName: string,
   email: string,
   password: string,
-) => apiPost<{ accessToken: string }>('/auth/signup/email', { firstName, lastName, userName, email, password });
+  gender?: Gender,
+) =>
+  // Only ever called once the terms checkbox is ticked (SignupPage).
+  apiPost<{ accessToken: string }>('/auth/signup/email', {
+    firstName,
+    lastName,
+    userName,
+    email,
+    password,
+    gender,
+    acceptTerms: true,
+  });
 
 export const loginEmail = (email: string, password: string) =>
   apiPost<{ accessToken: string }>('/auth/login/email', { email, password });
@@ -16,7 +28,16 @@ export const signupGoogle = (
   lastName: string | undefined,
   userName: string,
   idToken: string,
-) => apiPost<{ accessToken: string }>('/auth/signup/google', { firstName, lastName, userName, idToken });
+  gender?: Gender,
+) =>
+  apiPost<{ accessToken: string }>('/auth/signup/google', {
+    firstName,
+    lastName,
+    userName,
+    idToken,
+    gender,
+    acceptTerms: true,
+  });
 
 export const loginPhone = (phone: string, password: string) =>
   apiPost<{ accessToken: string }>('/auth/login/phone', { phone, password });

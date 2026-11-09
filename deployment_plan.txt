@@ -1,0 +1,105 @@
+DEPLOYMENT PLAN
+Updated: 2026-11-06
+
+What still has to be filled in or done before real users. Tick each line
+when it's done.
+
+=========================================================================
+1. LEGAL TEXTS — fill in the blanks
+=========================================================================
+
+The texts live in one file, French and English side by side:
+
+  frontend/src/pages/legal/legalTexts.ts
+
+They are shown in the app at these pages (no login needed):
+  /privacy        privacy policy
+  /terms          terms of use
+  /legal-notice   legal notice
+
+Every blank is marked [À COMPLÉTER ...] (French) or [TO COMPLETE ...]
+(English). Search the file for "COMPL" to find them all. Fill each one in
+BOTH languages.
+
+[ ] Publisher name or organisation
+      privacy policy "Qui est responsable / Who is responsible"
+      legal notice "Éditeur / Publisher"
+[ ] Postal address (Switzerland), in the same two places
+[ ] SMS provider and its country
+      privacy policy "Qui peut voir vos données / Who can see your data"
+[ ] Host (e.g. Infomaniak), with its address
+      privacy policy "Who can see your data"
+      legal notice "Hébergement / Hosting"
+[ ] Minimum age to create an account (e.g. 16, or younger with a
+    parent's consent)
+      privacy policy "Âge minimum / Minimum age"
+[ ] City for the place of jurisdiction
+      terms "Droit applicable / Governing law"
+[ ] Paid plan: price, duration, renewal, cancellation
+      terms "Offre payante / Paid plan"
+      Only once the paid plan exists.
+
+Already filled in: the contact email mysentinelscircles@gmail.com
+(CONTACT_EMAIL, at the top of the same file).
+
+Then:
+[ ] Have the texts read by a lawyer (or checked against the FDPIC /
+    PFPDT guides: www.edoeb.admin.ch).
+[ ] Each time the content changes materially, bump the version in BOTH
+    places so everyone is asked to accept again:
+      backend/src/privacy/terms.ts            CURRENT_TERMS_VERSION
+      frontend/src/pages/legal/legalTexts.ts  LEGAL_VERSION
+[ ] Check that the texts still match what the app really does. In
+    particular:
+      - the retention periods: backend/src/privacy/retention.service.ts
+      - what account deletion erases: backend/src/user/account-deletion.service.ts
+
+=========================================================================
+2. REAL PROVIDERS (dev stubs today)
+=========================================================================
+
+[ ] SMS provider (OTP, invitations, alerts), preferably Swiss or EU, with
+    a data processing agreement (DPA) signed
+[ ] Email provider, with a DPA
+[ ] Signature check on the inbound SMS webhook (POST /sentinel/sms/inbound)
+[ ] NODE_ENV=production on the server, so the logs mask phone numbers,
+    emails and OTP codes (backend/src/common/log-redact.ts)
+[ ] NOSMSNOW_URL not set in production
+
+[ ] Payment provider (e.g. Stripe Checkout + signed webhook) for:
+      - the yearly subscription and offering a year to someone
+        (UserService.addSubscriptionYear, today simulated)
+      - paying for a single alert (AlertService.assertCanAffordAlert,
+        payForThisAlert, today simulated)
+      - the one-time death notice purchase (devSetDeathNoticePurchased)
+    Then remove the simulation (plan.util.ts paymentSimulated) and the
+    dev toggles in Settings.
+[ ] Set the prices (plans page, frontend/src/i18n/locales/*.json,
+    plans.paid.price / plans.deathNotice.price, and the terms of use
+    "Offre payante / Paid plan").
+
+=========================================================================
+3. SECURITY
+=========================================================================
+
+[ ] nginx: HSTS and Content-Security-Policy headers
+[ ] helmet in the backend
+[ ] MariaDB port 3306 not exposed to the outside
+[ ] Real TLS certificate (the dev one is self-signed)
+[ ] Encrypted, tested database backups (and backups of backend/uploads/)
+[ ] Shorter login lifetime than 30 days, plus logout and revocation
+    (backend/src/auth/auth.module.ts)
+[ ] Fonts hosted by us instead of Google Fonts (frontend/src/index.css,
+    line 1)
+
+=========================================================================
+4. DATA PROTECTION PAPERWORK
+=========================================================================
+
+[ ] Records of processing activities
+[ ] Data protection impact assessment (DPIA): location + emergencies is
+    probably high risk
+[ ] Data breach procedure: who notifies the FDPIC / the EU authority, and
+    how fast
+[ ] Right of access: until GET /user/me/export exists, answer requests
+    by email within 30 days

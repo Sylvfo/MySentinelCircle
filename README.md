@@ -85,6 +85,37 @@ Your data stays in the Docker volumes, and `make db-down` stops only MariaDB.
 
 `docker compose down -v` also **permanently deletes** those volumes: the dev and test databases and the uploaded files. After that, `make setup` rebuilds the tables and demo accounts, but nothing else comes back.
 
+## Demo
+
+### Quick demo from a fresh clone
+
+Needs only Docker with Compose v2, GNU Make, OpenSSL and curl (no Node.js on your machine):
+
+```
+git clone https://github.com/Sylvfo/MySentinelCircle.git
+cd MySentinelCircle
+make demo
+```
+
+`make demo` creates the env files and certificates, starts everything in Docker, waits until the app answers, loads the demo accounts with their profile photos, then prints the address and the logins below. It can be re-run safely. Open https://localhost:4444 and accept the self-signed certificate.
+
+It uses ports 4444, 8081 and 3306: stop anything already listening there (a local MySQL, for example) first. SMS codes (OTP) are printed by `docker compose logs -f backend`. Stop with `make docker-down`.
+
+About half of the accounts get an illustrated profile photo (`backend/prisma/demo-avatars/`), so you can see both cases.
+
+### Demo accounts
+
+Four demo accounts, created by `make demo` or `make db-seed`. Log in with the email or the phone number. The password is `TestPass1234!` for all of them.
+
+| Name | Email | Phone | Note |
+|---|---|---|---|
+| Léa Dubois | lea.dubois@testmsc.ch | +41791112233 | 45 links, Lead Sentinel: Gabriel, founder of the « Chorale » group circle (14 members) |
+| Gabriel Rochat | gabriel.rochat@testmsc.ch | +41761445566 | 15 links, Lead Sentinel: Léa |
+| Chloé Morel | chloe.morel@testmsc.ch | +41791556677 | 14 links, Lead Sentinel: Mathis |
+| Mathis Perrin | mathis.perrin@testmsc.ch | +41781667788 | 33 links, **no Lead Sentinel** (cannot raise an alert), member of « Chorale » |
+
+The seed has 8 pending invitations in total, and each one involves one of these four accounts. These are fake dev accounts: they exist only in your local database.
+
 ## Documentation
 
 - Database schema: [backend/prisma/DB_schema.md](backend/prisma/DB_schema.md)

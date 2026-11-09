@@ -1,8 +1,14 @@
+import {
+  DEATH_NOTICE_NEEDS_PURCHASE,
+  PAYMENT_NOT_AVAILABLE,
+} from './plan.util';
+import { CURRENT_TERMS_VERSION } from '../privacy/terms';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import {
   ConflictException,
   ForbiddenException,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { UserType, UserStatus } from '@prisma/client';
@@ -12,17 +18,24 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OTP_SENDER } from '../auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from '../email/email-sender.interface';
 
+const PAID = {
+  paidUntil: new Date('2999-01-01'),
+  deathNoticePurchasedAt: null,
+};
+
 describe('UserService', () => {
   let service: UserService;
   let prisma: {
     user: { findUnique: jest.Mock; update: jest.Mock };
     linkSentinels: {
+      findFirst: jest.Mock;
       findMany: jest.Mock;
       count: jest.Mock;
       update: jest.Mock;
       updateMany: jest.Mock;
     };
     circle: { count: jest.Mock };
+    alert: { count: jest.Mock };
     $transaction: jest.Mock;
   };
   let otpSender: { send: jest.Mock };
@@ -34,12 +47,14 @@ describe('UserService', () => {
     prisma = {
       user: { findUnique: jest.fn(), update: jest.fn() },
       linkSentinels: {
+        findFirst: jest.fn(),
         findMany: jest.fn(),
         count: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn(),
       },
       circle: { count: jest.fn().mockResolvedValue(0) },
+      alert: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     otpSender = { send: jest.fn() };
@@ -56,6 +71,29 @@ describe('UserService', () => {
     }).compile();
 
     service = module.get<UserService>(UserService);
+  });
+
+  describe('acceptTerms', () => {
+    it('records the current version and its date', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'my-id',
+        firstName: 'Ada',
+        passwordHash: null,
+        googleId: null,
+        termsVersion: CURRENT_TERMS_VERSION,
+      });
+
+      const result = await service.acceptTerms('my-id');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'my-id' },
+        data: {
+          termsAcceptedAt: expect.any(Date),
+          termsVersion: CURRENT_TERMS_VERSION,
+        },
+      });
+      expect(result).toMatchObject({ termsUpToDate: true });
+    });
   });
 
   describe('updateProfile', () => {
@@ -115,6 +153,8 @@ describe('UserService', () => {
         userName: 'ada123',
         hasPassword: false,
         hasGoogle: false,
+        hasPaid: false,
+        termsUpToDate: false,
       });
     });
 
@@ -140,6 +180,8 @@ describe('UserService', () => {
         firstName: 'Ada',
         hasPassword: false,
         hasGoogle: false,
+        hasPaid: false,
+        termsUpToDate: false,
       });
     });
   });
@@ -457,6 +499,7 @@ describe('UserService', () => {
         where: { id: 'stub-id' },
         data: {
           phone: null,
+          firstName: 'Compte supprimé',
           status: UserStatus.DELETED,
           deletedAt: expect.any(Date),
         },
@@ -524,6 +567,8 @@ describe('UserService', () => {
         userType: UserType.ACCOUNT,
         hasPassword: false,
         hasGoogle: false,
+        hasPaid: false,
+        termsUpToDate: false,
       });
     });
 
@@ -899,13 +944,13 @@ describe('UserService', () => {
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
-    it('updates hasPaid and returns the profile dto', async () => {
+    it('starts a one-year subscription and returns the profile dto', async () => {
       config.get.mockReturnValue('true');
       prisma.user.update.mockResolvedValueOnce({
         id: 'my-id',
         passwordHash: null,
         googleId: null,
-        hasPaid: true,
+        paidUntil: new Date('2999-01-01'),
       });
 
       const result = await service.devSetHasPaid('my-id', { hasPaid: true });
@@ -913,7 +958,7 @@ describe('UserService', () => {
       expect(prisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'my-id' },
-          data: { hasPaid: true },
+          data: { paidUntil: expect.any(Date) },
         }),
       );
       expect(result).toEqual(
@@ -952,8 +997,171 @@ describe('UserService', () => {
     });
   });
 
+  describe('addSubscriptionYear', () => {
+    const devRoutes = process.env.ALLOW_DEV_ROUTES;
+    beforeEach(() => {
+      process.env.ALLOW_DEV_ROUTES = 'true';
+      prisma.user.update.mockImplementation(({ data }) =>
+        Promise.resolve(data),
+      );
+    });
+    afterEach(() => {
+      process.env.ALLOW_DEV_ROUTES = devRoutes;
+    });
+
+    it('is refused while online payment is not available', async () => {
+      process.env.ALLOW_DEV_ROUTES = 'false';
+      await expect(service.addSubscriptionYear('me', 'me')).rejects.toThrow(
+        PAYMENT_NOT_AVAILABLE,
+      );
+    });
+
+    it('starts a year from today when nothing is running', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        paidUntil: null,
+        status: 'ACTIVE',
+      });
+
+      const { paidUntil } = await service.addSubscriptionYear('me', 'me');
+
+      const inAYear = new Date();
+      inAYear.setFullYear(inAYear.getFullYear() + 1);
+      expect(Math.abs(paidUntil!.getTime() - inAYear.getTime())).toBeLessThan(
+        5000,
+      );
+      expect(prisma.linkSentinels.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('adds the year after a subscription still running', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        paidUntil: new Date('2998-03-01T00:00:00Z'),
+        status: 'ACTIVE',
+      });
+
+      const { paidUntil } = await service.addSubscriptionYear('me', 'me');
+      expect(paidUntil).toEqual(new Date('2999-03-01T00:00:00Z'));
+    });
+
+    it('offers a year to someone I am linked with', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
+      prisma.user.findUnique.mockResolvedValueOnce({
+        paidUntil: null,
+        status: 'ACTIVE',
+      });
+
+      await service.addSubscriptionYear('me', 'mum');
+
+      expect(prisma.linkSentinels.findFirst).toHaveBeenCalledWith({
+        where: {
+          status: 'ACCEPTED',
+          OR: [
+            { userSentinelId: 'me', userCompanionId: 'mum' },
+            { userSentinelId: 'mum', userCompanionId: 'me' },
+          ],
+        },
+        select: { id: true },
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'mum' } }),
+      );
+    });
+
+    it('refuses to offer a year to a stranger', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.addSubscriptionYear('me', 'stranger'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPlan', () => {
+    it('counts the free alerts left for a free account', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        paidUntil: null,
+        deathNoticePurchasedAt: null,
+      });
+      prisma.alert.count.mockResolvedValueOnce(0);
+
+      await expect(service.getPlan('my-id')).resolves.toEqual({
+        hasPaid: false,
+        paidUntil: null,
+        freeAlertLimit: 1,
+        freeAlertsLeft: 1,
+        deathNotice: false,
+        deathNoticePurchased: false,
+        groups: false,
+        paymentAvailable: expect.any(Boolean),
+      });
+      expect(prisma.alert.count).toHaveBeenCalledWith({
+        where: { userCompanionId: 'my-id' },
+      });
+    });
+
+    it('never goes below zero free alerts', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        paidUntil: null,
+        deathNoticePurchasedAt: null,
+      });
+      prisma.alert.count.mockResolvedValueOnce(7);
+
+      await expect(service.getPlan('my-id')).resolves.toMatchObject({
+        freeAlertsLeft: 0,
+      });
+    });
+
+    it('gives everything to a subscriber, with unlimited alerts', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(PAID);
+
+      await expect(service.getPlan('my-id')).resolves.toMatchObject({
+        hasPaid: true,
+        freeAlertsLeft: null,
+        deathNotice: true,
+        groups: true,
+      });
+      expect(prisma.alert.count).not.toHaveBeenCalled();
+    });
+
+    it('gives the death notice alone after its one-time purchase', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        paidUntil: null,
+        deathNoticePurchasedAt: new Date(),
+      });
+
+      await expect(service.getPlan('my-id')).resolves.toMatchObject({
+        deathNotice: true,
+        deathNoticePurchased: true,
+        groups: false,
+      });
+    });
+  });
+
   describe('updateMyDeathNotice', () => {
+    it('is refused without a subscription nor the one-time purchase', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        paidUntil: null,
+        deathNoticePurchasedAt: null,
+      });
+
+      await expect(
+        service.updateMyDeathNotice('my-id', { announcementMessage: 'x' }),
+      ).rejects.toThrow(DEATH_NOTICE_NEEDS_PURCHASE);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('is allowed with the one-time purchase alone', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        paidUntil: null,
+        deathNoticePurchasedAt: new Date(),
+      });
+
+      await service.updateMyDeathNotice('my-id', { announcementMessage: 'x' });
+      expect(prisma.user.update).toHaveBeenCalled();
+    });
+
     it('updates the announcement message', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(PAID); // plan check
       prisma.user.update.mockResolvedValueOnce({});
 
       const result = await service.updateMyDeathNotice('my-id', {
@@ -970,6 +1178,7 @@ describe('UserService', () => {
 
   describe('setDeathNoticeRecipients', () => {
     it('rejects a linkId that is not one of the caller’s own Sentinels', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(PAID); // plan check
       prisma.linkSentinels.count.mockResolvedValueOnce(0); // not owned
 
       await expect(
@@ -981,6 +1190,7 @@ describe('UserService', () => {
     });
 
     it('replaces the full recipient set: clears everyone else, sets the submitted ones', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(PAID); // plan check
       prisma.linkSentinels.count.mockResolvedValueOnce(1); // owns link-1
       prisma.linkSentinels.updateMany.mockResolvedValueOnce({ count: 2 });
       prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
@@ -1001,6 +1211,82 @@ describe('UserService', () => {
         where: { id: 'link-1' },
         data: { notifyOnDeath: true, deathPersonalMessage: 'Merci pour tout' },
       });
+    });
+  });
+  describe('getAvatarFile', () => {
+    it('serves my own photo without any link check', async () => {
+      prisma.user.findUnique.mockResolvedValue({ avatarPath: 'abc.jpg' });
+
+      await expect(service.getAvatarFile('me', 'me')).resolves.toMatch(
+        /avatars[\\/]abc\.jpg$/,
+      );
+      expect(prisma.linkSentinels.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('serves the photo of someone linked to me (either direction) or sharing a 1st circle with me', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValue({ id: 'link-1' });
+      prisma.user.findUnique.mockResolvedValue({ avatarPath: 'abc.jpg' });
+
+      await expect(service.getAvatarFile('me', 'lea')).resolves.toMatch(
+        /abc\.jpg$/,
+      );
+      expect(prisma.linkSentinels.findFirst).toHaveBeenCalledWith({
+        where: {
+          status: 'ACCEPTED',
+          OR: [
+            { userSentinelId: 'me', circle: { userCompanionId: 'lea' } },
+            { userSentinelId: 'lea', circle: { userCompanionId: 'me' } },
+            {
+              userSentinelId: 'lea',
+              circle: {
+                circleType: 'FIRST',
+                userSentinels: {
+                  some: { userSentinelId: 'me', status: 'ACCEPTED' },
+                },
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+    });
+
+    it('answers 404 to someone not linked, without reading the photo', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValue(null);
+
+      await expect(service.getAvatarFile('stranger', 'lea')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 when the person has no photo', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValue({ id: 'link-1' });
+      prisma.user.findUnique.mockResolvedValue({ avatarPath: null });
+
+      await expect(service.getAvatarFile('me', 'lea')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('removeAvatar', () => {
+    it('clears avatarPath', async () => {
+      prisma.user.findUnique.mockResolvedValue({ avatarPath: null });
+      prisma.user.update.mockResolvedValue({
+        passwordHash: null,
+        googleId: null,
+        avatarPath: null,
+      });
+
+      await service.removeAvatar('me');
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'me' },
+          data: { avatarPath: null },
+        }),
+      );
     });
   });
 });

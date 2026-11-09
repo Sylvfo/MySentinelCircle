@@ -7,15 +7,17 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
+  AlertParticipantStatus,
   AlertStatus,
   CircleStatus,
   CircleType,
   LinkStatus,
+  MessageType,
   NotificationType,
   UserStatus,
 } from '@prisma/client';
 import { unlink } from 'fs/promises';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
@@ -25,8 +27,23 @@ import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import { lastLeadLeftSms, sentinelLeaveConfirmSms } from '../sms/messages';
 import { AVATAR_DIR, UserService } from './user.service';
+import {
+  POSITION_MESSAGE_PREFIX,
+  REMOVED_PHOTO_TEXT,
+  REMOVED_POSITION_MESSAGE,
+  hasPosition,
+  stripPositions,
+} from '../privacy/redaction';
+import { MESSAGE_IMAGE_DIR } from '../messaging/messaging.controller';
 
-export const DELETED_ACCOUNT_LABEL = 'Compte supprimé';
+import { DELETED_ACCOUNT_LABEL } from './user-status.util';
+export { DELETED_ACCOUNT_LABEL };
+
+// Matched by the frontend's DeleteAccountPanel to show a translated message.
+export const OWN_ALERT_IN_PROGRESS =
+  'An alert about you is in progress: your account can be deleted once it is over';
+export const LEAD_ON_ALERT_IN_PROGRESS =
+  'You are a Lead on an alert in progress: leave it before deleting your account';
 
 const ACTIVE_LINK_STATUSES = [LinkStatus.PENDING, LinkStatus.ACCEPTED];
 
@@ -57,7 +74,11 @@ export class AccountDeletionService {
     await this.leaveGroups(userId);
 
     const notices = await this.collectNotices(userId);
+    const photos = await this.eraseIdentifyingContent(userId);
     await this.anonymize(userId);
+    for (const file of photos) {
+      await unlink(join(MESSAGE_IMAGE_DIR, file)).catch(() => {});
+    }
 
     if (user.avatarPath) {
       await unlink(join(AVATAR_DIR, user.avatarPath)).catch(() => {});
@@ -67,8 +88,10 @@ export class AccountDeletionService {
     return { message: 'Account deleted' };
   }
 
-  // Leaving mid-alert could strand the person it concerns, so both their own
-  // alert and any alert they drive as Lead must close first.
+  // Leaving mid-alert could strand the person it concerns. Their own alert
+  // must be over; a Lead must first leave the alert (AlertService.leaveAlert,
+  // which needs another Lead to take over). Never nudge anyone to close an
+  // alert just to delete an account.
   private async assertNoActiveAlert(userId: string) {
     const activeAlert = await this.prisma.alert.findFirst({
       where: {
@@ -76,17 +99,19 @@ export class AccountDeletionService {
         alertStatus: { not: AlertStatus.RESOLVED },
       },
     });
+    if (activeAlert) {
+      throw new ConflictException(OWN_ALERT_IN_PROGRESS);
+    }
     const activeLead = await this.prisma.alertParticipant.findFirst({
       where: {
         isLead: true,
+        status: { not: AlertParticipantStatus.CLOSED },
         alert: { alertStatus: { not: AlertStatus.RESOLVED } },
         userSentinels: { userSentinelId: userId },
       },
     });
-    if (activeAlert || activeLead) {
-      throw new ConflictException(
-        'An alert is in progress: close it before deleting this account',
-      );
+    if (activeLead) {
+      throw new ConflictException(LEAD_ON_ALERT_IN_PROGRESS);
     }
   }
 
@@ -133,6 +158,54 @@ export class AccountDeletionService {
       if (otherLeads === 0) lastLeadCompanions.add(link.userCompanionId);
     }
     return { asSentinel, asCompanion, lastLeadCompanions };
+  }
+
+  // History stays readable (messages and alerts keep their text, signed
+  // "Compte supprimé"), but what pinpoints the person goes: their shared
+  // GPS positions, their photos, their personal death messages. Returns
+  // the photo files to unlink once the database is updated.
+  private async eraseIdentifyingContent(userId: string): Promise<string[]> {
+    const alerts = await this.prisma.alert.findMany({
+      where: { userCompanionId: userId },
+      select: { id: true, messageAlert: true },
+    });
+    const alertUpdates = alerts
+      .filter((a) => hasPosition(a.messageAlert))
+      .map((a) =>
+        this.prisma.alert.update({
+          where: { id: a.id },
+          data: {
+            messageAlert: stripPositions(a.messageAlert),
+          },
+        }),
+      );
+
+    const photos = await this.prisma.message.findMany({
+      where: { senderId: userId, type: MessageType.IMAGE },
+      select: { body: true },
+    });
+
+    await this.prisma.$transaction([
+      ...alertUpdates,
+      this.prisma.message.updateMany({
+        where: {
+          senderId: userId,
+          type: MessageType.TEXT,
+          body: { startsWith: POSITION_MESSAGE_PREFIX },
+        },
+        data: { body: REMOVED_POSITION_MESSAGE },
+      }),
+      this.prisma.message.updateMany({
+        where: { senderId: userId, type: MessageType.IMAGE },
+        data: { type: MessageType.TEXT, body: REMOVED_PHOTO_TEXT },
+      }),
+      this.prisma.linkSentinels.updateMany({
+        where: { userCompanionId: userId },
+        data: { deathPersonalMessage: null, notifyOnDeath: false },
+      }),
+    ]);
+    // basename: only ever a file inside the messages folder.
+    return photos.map((p) => basename(p.body));
   }
 
   private async anonymize(userId: string) {
@@ -185,6 +258,7 @@ export class AccountDeletionService {
           loginAttempts: 0,
           loginLockedUntil: null,
           deathAnnouncementMessage: null,
+          gender: null,
         },
       }),
     ]);

@@ -4,20 +4,25 @@ import {
   Controller,
   Delete,
   Get,
+  Param,
   Patch,
   Post,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
 import { mkdirSync } from 'fs';
-import type { Express } from 'express';
+import type { Express, Response } from 'express';
+import { finalizeImageUpload } from '../common/image-upload';
+import { randomUUID } from 'crypto';
 import { UserService, AVATAR_DIR } from './user.service';
 import { AccountDeletionService } from './account-deletion.service';
+import { PauseService } from './pause.service';
+import { UpdatePauseDto } from './dto/update-pause.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CompleteProfileDto } from './dto/complete-profile.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
@@ -30,6 +35,8 @@ import { StepUpCodeRequestDto } from './dto/step-up-code-request.dto';
 import { StepUpCodeVerifyDto } from './dto/step-up-code-verify.dto';
 import { ChangeEmailRequestDto } from './dto/change-email-request.dto';
 import { DevSetHasPaidDto } from './dto/dev-set-has-paid.dto';
+import { AddSubscriptionYearDto } from './dto/add-subscription-year.dto';
+import { DevSetDeathNoticePurchaseDto } from './dto/dev-set-death-notice-purchase.dto';
 import { UpdateDeathNoticeDto } from './dto/update-death-notice.dto';
 import { SetDeathNoticeRecipientsDto } from './dto/set-death-notice-recipients.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -45,6 +52,7 @@ export class UserController {
   constructor(
     private readonly userService: UserService,
     private readonly accountDeletion: AccountDeletionService,
+    private readonly pause: PauseService,
   ) {}
 
   @Get('me')
@@ -58,6 +66,47 @@ export class UserController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.userService.updateProfile(user.userId, dto);
+  }
+
+  @Get('me/plan')
+  getPlan(@CurrentUser() user: { userId: string }) {
+    return this.userService.getPlan(user.userId);
+  }
+
+  // Subscribe for a year, or offer a year to someone (simulated payment).
+  @Post('me/subscription-year')
+  addSubscriptionYear(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: AddSubscriptionYearDto,
+  ) {
+    return this.userService.addSubscriptionYear(
+      user.userId,
+      dto.forUserId ?? user.userId,
+    );
+  }
+
+  @Post('me/dev-death-notice-purchase')
+  devSetDeathNoticePurchased(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: DevSetDeathNoticePurchaseDto,
+  ) {
+    return this.userService.devSetDeathNoticePurchased(
+      user.userId,
+      dto.purchased,
+    );
+  }
+
+  @Post('me/accept-terms')
+  acceptTerms(@CurrentUser() user: { userId: string }) {
+    return this.userService.acceptTerms(user.userId);
+  }
+
+  @Patch('me/pause')
+  updatePause(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: UpdatePauseDto,
+  ) {
+    return this.pause.updatePause(user.userId, dto);
   }
 
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
@@ -169,9 +218,11 @@ export class UserController {
     FileInterceptor('avatar', {
       storage: diskStorage({
         destination: AVATAR_DIR,
-        filename: (req, file, cb) => {
-          const user = (req as unknown as { user: { userId: string } }).user;
-          cb(null, `${user.userId}${extname(file.originalname)}`);
+        // Random name: unguessable, and a new photo gets a new name, so
+        // nothing stale is served from a cache after a change.
+        filename: (_req, file, cb) => {
+          // Extension added once the bytes are checked (finalizeImageUpload).
+          cb(null, randomUUID());
         },
       }),
       limits: { fileSize: 5 * 1024 * 1024 },
@@ -187,11 +238,32 @@ export class UserController {
       },
     }),
   )
-  uploadAvatar(
+  async uploadAvatar(
     @CurrentUser() user: { userId: string },
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.userService.setAvatar(user.userId, file.filename);
+    const filename = await finalizeImageUpload(file);
+    return this.userService.setAvatar(user.userId, filename);
+  }
+
+  @Delete('me/avatar')
+  removeAvatar(@CurrentUser() user: { userId: string }) {
+    return this.userService.removeAvatar(user.userId);
+  }
+
+  // Private photo, served only to its owner and the people linked to them
+  // (see UserService.getAvatarFile). No throttle: a list page loads one
+  // small image per person, which would eat the shared per-IP budget.
+  @SkipThrottle()
+  @Get(':id/avatar')
+  async getAvatar(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const file = await this.userService.getAvatarFile(user.userId, id);
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.sendFile(file);
   }
 
   // ---- Death notice (prepared while alive) ----------------------------------

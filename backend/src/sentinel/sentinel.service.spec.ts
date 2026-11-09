@@ -11,7 +11,6 @@ import {
   LeadSlot,
   LinkInitiator,
   LinkStatus,
-  MessagingMode,
   NotificationType,
   SentinelType,
   UserType,
@@ -53,6 +52,8 @@ describe('SentinelService', () => {
       create: jest.Mock;
       update: jest.Mock;
     };
+    alertParticipant: { count: jest.Mock };
+    alert: { groupBy: jest.Mock };
     $transaction: jest.Mock;
   };
   let sms: { send: jest.Mock };
@@ -89,6 +90,8 @@ describe('SentinelService', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      alertParticipant: { count: jest.fn() },
+      alert: { groupBy: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((arg: unknown) =>
         typeof arg === 'function'
           ? (arg as (tx: unknown) => unknown)(prisma)
@@ -111,6 +114,32 @@ describe('SentinelService', () => {
   });
 
   describe('listCircles', () => {
+    it('tells whether each Sentinel is subscribed, without the end date', async () => {
+      prisma.circle.findFirst
+        .mockResolvedValueOnce({ id: 'first-1' })
+        .mockResolvedValueOnce({ id: 'reserve-1' });
+      prisma.circle.findMany.mockResolvedValueOnce([
+        {
+          id: 'first-1',
+          circleType: CircleType.FIRST,
+          userSentinels: [
+            {
+              id: 'l1',
+              linkAsSentinel: { id: 'a', paidUntil: new Date('2999-01-01') },
+            },
+            { id: 'l2', linkAsSentinel: { id: 'b', paidUntil: null } },
+          ],
+        },
+      ]);
+
+      const [first] = await service.listCircles('me');
+
+      expect(first.userSentinels.map((m) => m.linkAsSentinel)).toEqual([
+        { id: 'a', subscribed: true },
+        { id: 'b', subscribed: false },
+      ]);
+    });
+
     it('creates the 1st and reserve circles if missing, sorted FIRST -> BASIC -> RESERVED', async () => {
       prisma.circle.findFirst
         .mockResolvedValueOnce(null) // ensurePrimaryCircle: none yet
@@ -130,6 +159,12 @@ describe('SentinelService', () => {
       const result = await service.listCircles('me');
 
       expect(prisma.circle.create).toHaveBeenCalledTimes(2);
+      // A deleted (CLOSED) circle never shows up again.
+      expect(prisma.circle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userCompanionId: 'me', status: CircleStatus.ACTIVE },
+        }),
+      );
       expect(result.map((c) => c.id)).toEqual([
         'first-1',
         'basic-1',
@@ -515,7 +550,7 @@ describe('SentinelService', () => {
   });
 
   describe('updateCircle', () => {
-    it('updates the label and canMessageMe on a BASIC circle', async () => {
+    it('updates the label and the alert-chat rule on a BASIC circle', async () => {
       prisma.circle.findUnique.mockResolvedValueOnce({
         id: 'work-1',
         userCompanionId: 'me',
@@ -525,16 +560,16 @@ describe('SentinelService', () => {
 
       await service.updateCircle('me', 'work-1', {
         label: 'Travail',
-        canMessageMe: false,
+        alertChatWithFirstCircle: false,
       });
 
       expect(prisma.circle.update).toHaveBeenCalledWith({
         where: { id: 'work-1' },
-        data: { label: 'Travail', canMessageMe: false },
+        data: { label: 'Travail', alertChatWithFirstCircle: false },
       });
     });
 
-    it('rejects setting canMessageMe on the 1st circle — always reachable, no override', async () => {
+    it('rejects the alert-chat rule on the 1st circle — it has its own room', async () => {
       prisma.circle.findUnique.mockResolvedValueOnce({
         id: 'first-1',
         userCompanionId: 'me',
@@ -542,7 +577,9 @@ describe('SentinelService', () => {
       });
 
       await expect(
-        service.updateCircle('me', 'first-1', { canMessageMe: false }),
+        service.updateCircle('me', 'first-1', {
+          alertChatWithFirstCircle: false,
+        }),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.circle.update).not.toHaveBeenCalled();
     });
@@ -610,7 +647,7 @@ describe('SentinelService', () => {
         prisma.user.findUnique.mockResolvedValueOnce({
           id: 'alice',
           userType: UserType.ACCOUNT,
-          hasPaid: true,
+          paidUntil: new Date('2999-01-01'),
         });
         prisma.circle.create.mockResolvedValueOnce({ id: 'root-1' });
 
@@ -629,7 +666,7 @@ describe('SentinelService', () => {
         prisma.user.findUnique.mockResolvedValueOnce({
           id: 'alice',
           userType: UserType.ACCOUNT,
-          hasPaid: false,
+          paidUntil: null,
         });
 
         await expect(
@@ -797,6 +834,205 @@ describe('SentinelService', () => {
       });
     });
 
+    describe('moveSelfToReserve', () => {
+      const link = (circleType: CircleType, overrides = {}) => ({
+        id: 'link-1',
+        userSentinelId: 'sam',
+        userCompanionId: 'hugo',
+        circleId: 'circle-1',
+        status: LinkStatus.ACCEPTED,
+        leadSlot: null,
+        circle: { id: 'circle-1', circleType },
+        linkAsSentinel: { id: 'sam', firstName: 'Sam' },
+        userCompanion: { id: 'hugo', firstName: 'Hugo' },
+        ...overrides,
+      });
+
+      it('moves me into their reserve, drops any Lead slot and tells them', async () => {
+        prisma.linkSentinels.findUnique.mockResolvedValueOnce(
+          link(CircleType.FIRST, { leadSlot: LeadSlot.LEAD_2 }),
+        );
+        prisma.linkSentinels.count
+          .mockResolvedValueOnce(2) // other active members
+          .mockResolvedValueOnce(1); // another Lead left
+        prisma.alertParticipant.count.mockResolvedValueOnce(0);
+        prisma.circle.findFirst.mockResolvedValueOnce({ id: 'reserve-1' });
+
+        await service.moveSelfToReserve('sam', 'link-1');
+
+        expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+          where: { id: 'link-1' },
+          data: {
+            circleId: 'reserve-1',
+            leadSlot: null,
+            requestedAsLead: false,
+            proposedCircleId: null,
+            callOrder: null,
+          },
+        });
+        expect(notifications.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: 'hugo',
+            type: NotificationType.SENTINEL_TO_RESERVE,
+            actorUserId: 'sam',
+          }),
+        );
+      });
+
+      it('refuses the only Lead', async () => {
+        prisma.linkSentinels.findUnique.mockResolvedValueOnce(
+          link(CircleType.FIRST, { leadSlot: LeadSlot.LEAD_1 }),
+        );
+        prisma.linkSentinels.count
+          .mockResolvedValueOnce(2)
+          .mockResolvedValueOnce(0);
+
+        await expect(
+          service.moveSelfToReserve('sam', 'link-1'),
+        ).rejects.toThrow(ConflictException);
+        expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+      });
+
+      it('refuses while I take part in an alert about them', async () => {
+        prisma.linkSentinels.findUnique.mockResolvedValueOnce(
+          link(CircleType.BASIC),
+        );
+        prisma.alertParticipant.count.mockResolvedValueOnce(1);
+
+        await expect(
+          service.moveSelfToReserve('sam', 'link-1'),
+        ).rejects.toThrow(ConflictException);
+        expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['someone else', 'other', link(CircleType.BASIC), ForbiddenException],
+        [
+          'already in reserve',
+          'sam',
+          link(CircleType.RESERVED),
+          ConflictException,
+        ],
+        ['a group link', 'sam', link(CircleType.GROUP), BadRequestException],
+        [
+          'a link that is not active',
+          'sam',
+          link(CircleType.BASIC, { status: LinkStatus.REMOVED }),
+          ConflictException,
+        ],
+      ])('refuses %s', async (_label, caller, row, error) => {
+        prisma.linkSentinels.findUnique.mockResolvedValueOnce(row);
+
+        await expect(
+          service.moveSelfToReserve(caller, 'link-1'),
+        ).rejects.toThrow(error);
+      });
+    });
+
+    describe('inviteToGroup by phone', () => {
+      const alice = {
+        id: 'alice',
+        firstName: 'Alice',
+        phone: '+41790000001',
+        userType: UserType.ACCOUNT,
+      };
+
+      it('invites a number with no account: creates a stand-in and sends the sign-up SMS', async () => {
+        prisma.user.findUnique
+          .mockResolvedValueOnce(alice) // inviter
+          .mockResolvedValueOnce(null); // nobody with this number
+        prisma.user.create.mockResolvedValueOnce({
+          id: 'dan',
+          phone: '+41790000009',
+          userType: UserType.ONLY_SMS,
+        });
+        prisma.circle.findFirst
+          .mockResolvedValueOnce({ id: 'root-1' }) // I'm a member
+          .mockResolvedValueOnce(null); // not already a member
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce(null);
+        prisma.sentinelGroupInvitation.create.mockResolvedValueOnce({
+          id: 'invite-9',
+        });
+        prisma.circle.findUnique.mockResolvedValueOnce({ label: 'Choir' });
+
+        await service.inviteToGroup('alice', 'root-1', {
+          phone: '+41790000009',
+          name: 'Dan',
+        });
+
+        expect(prisma.user.create).toHaveBeenCalledWith({
+          data: {
+            phone: '+41790000009',
+            firstName: 'Dan',
+            userType: UserType.ONLY_SMS,
+          },
+        });
+        // No trust-chain check on this path.
+        expect(prisma.linkSentinels.findFirst).not.toHaveBeenCalled();
+        expect(prisma.sentinelGroupInvitation.create).toHaveBeenCalledWith({
+          data: {
+            groupRootId: 'root-1',
+            invitedUserId: 'dan',
+            invitedById: 'alice',
+          },
+        });
+        expect(sms.send).toHaveBeenCalledWith(
+          '+41790000009',
+          expect.stringContaining('Creez votre compte avec ce numero'),
+        );
+      });
+
+      it('invites a number that already has an account: SMS to log in', async () => {
+        prisma.user.findUnique
+          .mockResolvedValueOnce(alice)
+          .mockResolvedValueOnce({
+            id: 'bob',
+            firstName: 'Bob',
+            phone: '+41790000002',
+            userType: UserType.ACCOUNT,
+          });
+        prisma.circle.findFirst
+          .mockResolvedValueOnce({ id: 'root-1' })
+          .mockResolvedValueOnce(null);
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce(null);
+        prisma.sentinelGroupInvitation.create.mockResolvedValueOnce({
+          id: 'invite-2',
+        });
+        prisma.circle.findUnique.mockResolvedValueOnce({ label: 'Choir' });
+
+        await service.inviteToGroup('alice', 'root-1', {
+          phone: '+41790000002',
+          name: 'Bob',
+        });
+
+        expect(prisma.user.create).not.toHaveBeenCalled();
+        expect(notifications.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: 'bob',
+            type: NotificationType.SENTINEL_GROUP_INVITED,
+          }),
+        );
+        expect(sms.send).toHaveBeenCalledWith(
+          '+41790000002',
+          expect.stringContaining('Connectez-vous pour accepter ou refuser'),
+        );
+      });
+
+      it.each([
+        ['without a first name', { phone: '+41790000009', name: ' ' }],
+        ['with my own number', { phone: '+41790000001', name: 'Me' }],
+        ['with neither a contact nor a number', {}],
+      ])('rejects an invitation %s', async (_label, dto) => {
+        prisma.user.findUnique.mockResolvedValueOnce(alice);
+        prisma.circle.findFirst.mockResolvedValueOnce({ id: 'root-1' });
+
+        await expect(
+          service.inviteToGroup('alice', 'root-1', dto),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.sentinelGroupInvitation.create).not.toHaveBeenCalled();
+      });
+    });
+
     describe('respondToGroupInvitation', () => {
       const pendingInvitation = (overrides: Record<string, unknown> = {}) => ({
         id: 'invite-1',
@@ -805,6 +1041,20 @@ describe('SentinelService', () => {
         status: LinkStatus.PENDING,
         groupRoot: { id: 'root-1', label: 'Choir' },
         ...overrides,
+      });
+
+      it('refuses accepting from an SMS-only login: an account is needed first', async () => {
+        prisma.sentinelGroupInvitation.findUnique.mockResolvedValueOnce(
+          pendingInvitation(),
+        );
+        prisma.user.findUnique.mockResolvedValueOnce({
+          userType: UserType.ONLY_SMS,
+        });
+
+        await expect(
+          service.respondToGroupInvitation('carol', 'invite-1', true),
+        ).rejects.toThrow(ForbiddenException);
+        expect(prisma.sentinelGroupInvitation.update).not.toHaveBeenCalled();
       });
 
       it('creates the full mesh when accepting, with 2 existing members', async () => {
@@ -1256,7 +1506,107 @@ describe('SentinelService', () => {
         }),
       );
       expect(result).toEqual({ id: 'link-1', proposedCircleId: 'first-1' });
-      expect(prisma.linkSentinels.count).not.toHaveBeenCalled(); // no Lead-slot logic touched
+      // Only the 1st circle's room check — no Lead-slot logic touched.
+      expect(prisma.linkSentinels.count).toHaveBeenCalledTimes(1);
+      expect(prisma.linkSentinels.count).toHaveBeenCalledWith({
+        where: {
+          circleId: 'first-1',
+          status: { in: [LinkStatus.PENDING, LinkStatus.ACCEPTED] },
+        },
+      });
+    });
+
+    it('refuses a move into a 1st circle that already has 6 people', async () => {
+      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+        id: 'link-1',
+        status: LinkStatus.ACCEPTED,
+        circleId: 'work-1',
+        leadSlot: null,
+        requestedAsLead: false,
+        sentinelType: SentinelType.SENTINEL,
+        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
+        linkAsSentinel: {
+          userType: UserType.ACCOUNT,
+          phone: '+33611111111',
+          firstName: 'Ada',
+        },
+      });
+      prisma.circle.findUnique.mockResolvedValueOnce({
+        id: 'first-1',
+        userCompanionId: 'me',
+        circleType: CircleType.FIRST,
+        status: CircleStatus.ACTIVE,
+        label: 'Premier cercle',
+      });
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'me',
+        firstName: 'Me',
+      });
+      prisma.linkSentinels.count.mockResolvedValueOnce(6);
+
+      await expect(
+        service.updateMembership('me', 'link-1', { circleId: 'first-1' }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+    });
+
+    describe('Lead order (leadSlot)', () => {
+      const lead2 = {
+        id: 'link-2',
+        status: LinkStatus.ACCEPTED,
+        circleId: 'first-1',
+        leadSlot: LeadSlot.LEAD_2,
+        requestedAsLead: true,
+        sentinelType: SentinelType.SENTINEL,
+        circle: { userCompanionId: 'me', circleType: CircleType.FIRST },
+        linkAsSentinel: { userType: UserType.ACCOUNT },
+      };
+
+      it('swaps with the current holder of the slot', async () => {
+        prisma.linkSentinels.findUnique.mockResolvedValueOnce(lead2);
+        prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' }); // holds LEAD_1
+        prisma.linkSentinels.update.mockImplementation(({ where, data }) =>
+          Promise.resolve({ id: where.id, ...data }),
+        );
+
+        const result = await service.updateMembership('me', 'link-2', {
+          leadSlot: LeadSlot.LEAD_1,
+        });
+
+        expect(prisma.linkSentinels.update.mock.calls.map((c) => c[0])).toEqual(
+          [
+            { where: { id: 'link-2' }, data: { leadSlot: null } },
+            { where: { id: 'link-1' }, data: { leadSlot: LeadSlot.LEAD_2 } },
+            { where: { id: 'link-2' }, data: { leadSlot: LeadSlot.LEAD_1 } },
+          ],
+        );
+        expect(result).toEqual({ id: 'link-2', leadSlot: LeadSlot.LEAD_1 });
+      });
+
+      it('just takes a free slot', async () => {
+        prisma.linkSentinels.findUnique.mockResolvedValueOnce(lead2);
+        prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
+        prisma.linkSentinels.update.mockResolvedValue({});
+
+        await service.updateMembership('me', 'link-2', {
+          leadSlot: LeadSlot.LEAD_3,
+        });
+
+        expect(prisma.linkSentinels.update).toHaveBeenCalledTimes(2);
+      });
+
+      it('refuses a Sentinel who is not a 1st-circle Lead', async () => {
+        prisma.linkSentinels.findUnique.mockResolvedValueOnce({
+          ...lead2,
+          leadSlot: null,
+        });
+
+        await expect(
+          service.updateMembership('me', 'link-2', {
+            leadSlot: LeadSlot.LEAD_1,
+          }),
+        ).rejects.toThrow(BadRequestException);
+      });
     });
 
     it('rejects updating a link that is not ACCEPTED (e.g. a REMOVED one)', async () => {
@@ -1280,87 +1630,6 @@ describe('SentinelService', () => {
       expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
     });
 
-    it('updates messaging settings for an account-holding Sentinel', async () => {
-      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
-        id: 'link-1',
-        status: LinkStatus.ACCEPTED,
-        circleId: 'work-1',
-        leadSlot: null,
-        requestedAsLead: false,
-        sentinelType: SentinelType.SENTINEL,
-        canMessageOwnCircle: true,
-        firstCircleMessagingMode: MessagingMode.NONE,
-        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
-        linkAsSentinel: { userType: UserType.ACCOUNT },
-      });
-      prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
-
-      await service.updateMembership('me', 'link-1', {
-        canMessageOwnCircle: false,
-        firstCircleMessagingMode: MessagingMode.GROUP,
-      });
-
-      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
-        where: { id: 'link-1' },
-        data: {
-          circleId: 'work-1',
-          sentinelType: SentinelType.SENTINEL,
-          requestedAsLead: false,
-          leadSlot: null,
-          canMessageOwnCircle: false,
-          firstCircleMessagingMode: MessagingMode.GROUP,
-        },
-      });
-    });
-
-    it('rejects setting messaging settings on a Sentinel SMS (no account)', async () => {
-      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
-        id: 'link-1',
-        status: LinkStatus.ACCEPTED,
-        circleId: 'work-1',
-        leadSlot: null,
-        requestedAsLead: false,
-        sentinelType: SentinelType.ONLY_SMS,
-        canMessageOwnCircle: true,
-        firstCircleMessagingMode: MessagingMode.NONE,
-        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
-        linkAsSentinel: { userType: UserType.ONLY_SMS },
-      });
-
-      await expect(
-        service.updateMembership('me', 'link-1', {
-          firstCircleMessagingMode: MessagingMode.INDIVIDUAL,
-        } as any),
-      ).rejects.toThrow(BadRequestException);
-      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
-    });
-
-    it('sets the per-individual canMessageMe override for an account-holding Sentinel', async () => {
-      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
-        id: 'link-1',
-        status: LinkStatus.ACCEPTED,
-        circleId: 'work-1',
-        leadSlot: null,
-        requestedAsLead: false,
-        sentinelType: SentinelType.SENTINEL,
-        canMessageOwnCircle: true,
-        firstCircleMessagingMode: MessagingMode.NONE,
-        canMessageMe: null,
-        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
-        linkAsSentinel: { userType: UserType.ACCOUNT },
-      });
-      prisma.linkSentinels.update.mockResolvedValueOnce({ id: 'link-1' });
-
-      await service.updateMembership('me', 'link-1', { canMessageMe: false });
-
-      expect(prisma.linkSentinels.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'link-1' },
-          data: expect.objectContaining({ canMessageMe: false }),
-        }),
-      );
-    });
-
     it('sets the outer-circle call order used to batch alert escalation', async () => {
       prisma.linkSentinels.findUnique.mockResolvedValueOnce({
         id: 'link-1',
@@ -1369,9 +1638,6 @@ describe('SentinelService', () => {
         leadSlot: null,
         requestedAsLead: false,
         sentinelType: SentinelType.SENTINEL,
-        canMessageOwnCircle: true,
-        firstCircleMessagingMode: MessagingMode.NONE,
-        canMessageMe: null,
         callOrder: null,
         circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
         linkAsSentinel: { userType: UserType.ACCOUNT },
@@ -1387,39 +1653,116 @@ describe('SentinelService', () => {
         }),
       );
     });
+  });
 
-    it('rejects setting canMessageMe on a Sentinel SMS (no account)', async () => {
-      prisma.linkSentinels.findUnique.mockResolvedValueOnce({
-        id: 'link-1',
-        status: LinkStatus.ACCEPTED,
-        circleId: 'work-1',
-        leadSlot: null,
-        requestedAsLead: false,
-        sentinelType: SentinelType.ONLY_SMS,
-        canMessageOwnCircle: true,
-        firstCircleMessagingMode: MessagingMode.NONE,
-        circle: { userCompanionId: 'me', circleType: CircleType.BASIC },
-        linkAsSentinel: { userType: UserType.ONLY_SMS },
+  describe('endRelationship', () => {
+    const row = (overrides: Record<string, unknown> = {}) => ({
+      id: 'mine',
+      status: LinkStatus.ACCEPTED,
+      userCompanionId: 'me',
+      userSentinelId: 'theo',
+      circleId: 'circle-basic',
+      leadSlot: null,
+      circle: { circleType: CircleType.BASIC },
+      linkAsSentinel: {
+        id: 'theo',
+        firstName: 'Théo',
+        lastName: null,
+        phone: '+41790000009',
+      },
+      userCompanion: {
+        id: 'me',
+        firstName: 'Me',
+        lastName: null,
+        phone: '+41790000008',
+      },
+      ...overrides,
+    });
+    const theirs = () =>
+      row({
+        id: 'theirs',
+        userCompanionId: 'theo',
+        userSentinelId: 'me',
+        linkAsSentinel: {
+          id: 'me',
+          firstName: 'Me',
+          lastName: null,
+          phone: '+41790000008',
+        },
+        userCompanion: {
+          id: 'theo',
+          firstName: 'Théo',
+          lastName: null,
+          phone: '+41790000009',
+        },
       });
 
+    it('ends both directions: my Sentinel removed, and I leave theirs', async () => {
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([row(), theirs()]);
+
       await expect(
-        service.updateMembership('me', 'link-1', {
-          canMessageMe: false,
-        } as any),
-      ).rejects.toThrow(BadRequestException);
+        service.endRelationship('me', 'theo', false),
+      ).resolves.toEqual({ ended: 2, blocked: false });
+
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+        where: { id: 'mine' },
+        data: { status: LinkStatus.REMOVED },
+      });
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+        where: { id: 'theirs' },
+        data: { status: LinkStatus.REMOVED },
+      });
+      // Leaving their circle tells them, like leaving from the app.
+      expect(notifications.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'theo',
+          type: NotificationType.SENTINEL_LEFT,
+        }),
+      );
+    });
+
+    it('blocks both directions', async () => {
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([row(), theirs()]);
+
+      await service.endRelationship('me', 'theo', true);
+
+      expect(prisma.linkSentinels.update).toHaveBeenCalledTimes(2);
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+        where: { id: 'theirs' },
+        data: { status: LinkStatus.BLOCKED },
+      });
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it('changes nothing when one side is the last Lead of a 1st circle', async () => {
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        row(),
+        {
+          ...theirs(),
+          leadSlot: LeadSlot.LEAD_1,
+          circle: { circleType: CircleType.FIRST },
+        },
+      ]);
+      prisma.linkSentinels.count
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(0);
+
+      await expect(
+        service.endRelationship('me', 'theo', false),
+      ).rejects.toThrow(ConflictException);
       expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+    });
+
+    it('404s when there is no link with this person', async () => {
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([]);
+
+      await expect(
+        service.endRelationship('me', 'stranger', true),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('canSendDirectMessage', () => {
-    const linkRow = (overrides: Record<string, unknown> = {}) => ({
-      id: 'link-1',
-      canMessageMe: null,
-      circle: { circleType: CircleType.BASIC, canMessageMe: null },
-      userCompanion: { allowMessagingByDefault: true },
-      ...overrides,
-    });
-
     it('returns false when there is no accepted link between the two', async () => {
       prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
 
@@ -1428,57 +1771,16 @@ describe('SentinelService', () => {
       expect(result).toBe(false);
     });
 
-    it('is always true for the 1st circle, regardless of any setting', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
-        linkRow({
-          circle: { circleType: CircleType.FIRST, canMessageMe: null },
-          userCompanion: { allowMessagingByDefault: false },
-        }),
-      );
+    it('is always true with an accepted link, whatever the circle', async () => {
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
 
       const result = await service.canSendDirectMessage('me', 'sentinel-1');
 
       expect(result).toBe(true);
-    });
-
-    it('falls back to the companion-wide default when nothing more specific is set', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
-        linkRow({ userCompanion: { allowMessagingByDefault: false } }),
-      );
-
-      const result = await service.canSendDirectMessage('me', 'sentinel-1');
-
-      expect(result).toBe(false);
-    });
-
-    it('the circle setting overrides the companion-wide default', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
-        linkRow({
-          circle: { circleType: CircleType.BASIC, canMessageMe: true },
-          userCompanion: { allowMessagingByDefault: false },
-        }),
-      );
-
-      const result = await service.canSendDirectMessage('me', 'sentinel-1');
-
-      expect(result).toBe(true);
-    });
-
-    it('the per-individual setting overrides the circle setting', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(
-        linkRow({
-          canMessageMe: false,
-          circle: { circleType: CircleType.BASIC, canMessageMe: true },
-        }),
-      );
-
-      const result = await service.canSendDirectMessage('me', 'sentinel-1');
-
-      expect(result).toBe(false);
     });
 
     it('resolves direction-agnostically — the caller can be the Sentinel side', async () => {
-      prisma.linkSentinels.findFirst.mockResolvedValueOnce(linkRow());
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
 
       await service.canSendDirectMessage('sentinel-1', 'me');
 
@@ -2017,6 +2319,17 @@ describe('SentinelService', () => {
           },
         },
       ]);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        {
+          circleId: 'first-1',
+          leadSlot: null,
+          linkAsSentinel: {
+            id: 'sentinel-2',
+            firstName: 'Chloé',
+            lastName: 'Morel',
+          },
+        },
+      ]);
 
       const result = await service.listCompanions('lead-1');
 
@@ -2030,13 +2343,39 @@ describe('SentinelService', () => {
             label: '1er cercle',
             isPrimary: true,
             isReserve: false,
+            isGroup: false,
           },
           proposedCircle: null,
-          companion: { id: 'companion-1', email: null, phone: '+41790000000' },
+          companion: {
+            id: 'companion-1',
+            email: null,
+            phone: '+41790000000',
+            subscribed: false,
+            freeAlertUsed: false,
+          },
+          firstCircleMembers: [
+            {
+              id: 'sentinel-2',
+              firstName: 'Chloé',
+              lastName: 'Morel',
+              subscribed: false,
+              isLead: false,
+            },
+          ],
           deathNotice: { isDeceased: false, pending: null, canReport: true },
         },
       ]);
       expect(prisma.linkSentinels.groupBy).not.toHaveBeenCalled();
+      // The other 1st-circle members are looked up without the caller.
+      expect(prisma.linkSentinels.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          where: {
+            circleId: { in: ['first-1'] },
+            status: LinkStatus.ACCEPTED,
+            userSentinelId: { not: 'lead-1' },
+          },
+        }),
+      );
     });
 
     it('flags canConfirmOrReject via the single-Lead fallback when a report is pending', async () => {
@@ -2068,6 +2407,7 @@ describe('SentinelService', () => {
       prisma.user.findMany.mockResolvedValueOnce([
         { id: 'lead-1', firstName: 'Lea', phone: '+41791111111' },
       ]);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([]);
 
       const result = await service.listCompanions('sentinel-2');
 

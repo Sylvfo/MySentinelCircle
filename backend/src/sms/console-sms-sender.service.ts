@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SmsSender } from './sms-sender.interface';
+import { isProduction, maskPhone } from '../common/log-redact';
 
 // Dev stub — logs the SMS instead of sending it, and best-effort forwards to
 // NoSMSNow (nosmsnow/) if NOSMSNOW_URL is set, so it shows up in that
@@ -13,7 +14,12 @@ export class ConsoleSmsSenderService implements SmsSender {
   constructor(private readonly config: ConfigService) {}
 
   async send(phone: string, body: string): Promise<void> {
-    this.logger.log(`SMS to ${phone}: ${body}`);
+    // No number or content in production logs (personal data).
+    this.logger.log(
+      isProduction()
+        ? `SMS to ${maskPhone(phone)} (${body.length} chars)`
+        : `SMS to ${phone}: ${body}`,
+    );
 
     const nosmsnowUrl = this.config.get<string>('NOSMSNOW_URL');
     if (!nosmsnowUrl) return;

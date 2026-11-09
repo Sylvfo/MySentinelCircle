@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
+import { listAlerts } from '../api/alert';
 import {
   acceptGroupInvitation,
   acceptMembership,
-  createCircle,
-  createGroup,
   declineGroupInvitation,
   declineMembership,
   deleteCircle,
@@ -18,26 +18,32 @@ import {
   listIncomingRequests,
   listMyGroupInvitations,
   listMyGroups,
-  removeMembership,
   updateCircle,
   updateMembership,
   type Circle,
   type Group,
   type GroupInvitation,
   type IncomingRequest,
-  type Membership,
-  type MessagingMode,
 } from '../api/sentinel';
 import { Tile } from '../components/Tile';
+import { Modal } from '../components/Modal';
 import { CircleRing } from '../components/CircleRing';
+import { useAuth } from '../auth/AuthContext';
+import { PauseNotice, PausePill } from '../components/PauseNotice';
 import { SecurityScoreBar } from '../components/SecurityScoreBar';
-import { PRIMARY_AVATAR_COLOR, circlePalette } from '../theme';
+import { PENDING_AVATAR_COLOR, PRIMARY_AVATAR_COLOR, circlePalette } from '../theme';
+import { PaidPill } from '../components/Upgrade';
+import { IncludedStar } from '../components/SubscribedStar';
+import { usePlan } from '../plan';
+import { PersonAvatar } from '../components/PersonAvatar';
 
 // Soft guidance only — nothing stops a circle from growing past this, it
 // just starts showing a "that's a lot" hint on the invite form. Group
 // circles (e.g. a choir) get a higher threshold since they're expected to
 // be bigger than a personal circle.
 const LARGE_CIRCLE_THRESHOLD = 10;
+// Hard cap enforced by the backend: a 1st circle handles an alert together.
+const FIRST_CIRCLE_MAX = 6;
 const LARGE_GROUP_THRESHOLD = 30;
 
 interface GroupContact {
@@ -47,6 +53,8 @@ interface GroupContact {
 
 export function CirclesPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const { plan } = usePlan();
   const [circles, setCircles] = useState<Circle[]>([]);
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -54,20 +62,29 @@ export function CirclesPage() {
   const [groupContacts, setGroupContacts] = useState<GroupContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedCircleId, setExpandedCircleId] = useState<string | null>(null);
+  // /circles/:circleId shows one circle's detail (members, actions) instead
+  // of the overview — the overview itself is only rings to click.
+  const { circleId } = useParams();
+  const navigate = useNavigate();
   const [scoreRefresh, setScoreRefresh] = useState(0);
-  const toggleExpand = (id: string) => setExpandedCircleId((cur) => (cur === id ? null : id));
+  // Sentinels who are themselves the subject of an alert still in progress
+  // (only alerts I take part in, so this reveals nothing new): drawn red.
+  const [inAlertUserIds, setInAlertUserIds] = useState<Set<string>>(new Set());
 
   const reload = async () => {
     setError(null);
     try {
-      const [c, r, g, gi, companions] = await Promise.all([
+      const [c, r, g, gi, companions, alerts] = await Promise.all([
         listCircles(),
         listIncomingRequests(),
         listMyGroups(),
         listMyGroupInvitations(),
         listCompanions(),
+        listAlerts(),
       ]);
+      setInAlertUserIds(
+        new Set(alerts.filter((a) => a.alertStatus !== 'RESOLVED').map((a) => a.userCompanionId)),
+      );
       setCircles(c);
       setScoreRefresh((n) => n + 1);
       setRequests(r);
@@ -104,93 +121,144 @@ export function CirclesPage() {
   // The 1st circle always stays pinned at the top (per plan.txt, there's
   // exactly one); everything else — excluding the system reserve circle,
   // which isn't a "real" circle to visualize — sits below it in a loose,
-  // staggered row. Clicking either opens the same full member list/actions
-  // panel already built (CircleCard), just below the overview.
+  // staggered row. Clicking a ring opens that circle's own detail view.
   const primaryCircle = circles.find((c) => c.circleType === 'FIRST');
   const otherCircles = circles.filter((c) => c.circleType !== 'FIRST' && c.circleType !== 'RESERVED');
-  const expandedCircle = circles.find((c) => c.id === expandedCircleId) ?? null;
-  const expandedColorIndex = expandedCircle
-    ? Math.max(0, otherCircles.findIndex((c) => c.id === expandedCircle.id))
-    : 0;
+  // Sentinels parked in the reserve (e.g. from a deleted circle): still
+  // linked, but in no circle — shown below the rings so they aren't lost.
+  const reserveMembers = circles
+    .filter((c) => c.circleType === 'RESERVED')
+    .flatMap((c) => c.userSentinels.filter((m) => m.status === 'ACCEPTED' || m.status === 'PENDING'));
   const liveMembersOf = (c: Circle) => c.userSentinels.filter((m) => m.status === 'ACCEPTED' || m.status === 'PENDING');
 
-  return (
-    <div className="circles-page-bg">
-      <h1>{t('circles.title')}</h1>
-      <p style={{ color: 'var(--text-muted)' }}>{t('circles.intro')}</p>
-      {error && <p className="form-error">{error}</p>}
+  if (circleId) {
+    const circle = circles.find((c) => c.id === circleId);
+    // Unknown id, or the circle was just deleted from its own detail view.
+    if (!circle) return <Navigate to="/circles" replace />;
+    const colorIndex = Math.max(0, otherCircles.findIndex((c) => c.id === circle.id));
+    return (
+      <div className="page-bleed">
+        <Link to="/circles">{t('circles.backToCircles')}</Link>
+        {error && <p className="form-error">{error}</p>}
+        <CircleCard
+          key={circle.id}
+          circle={circle}
+          circles={circles}
+          colorIndex={colorIndex}
+          inAlertUserIds={inAlertUserIds}
+          group={groups.find((g) => g.rootId === (circle.groupRootId ?? circle.id))}
+          groupContacts={groupContacts}
+          onChange={reload}
+          onError={setError}
+        />
+      </div>
+    );
+  }
 
-      <Tile title={t('securityScore.title')}>
-        <SecurityScoreBar refreshKey={scoreRefresh} />
-      </Tile>
+  return (
+    <div className="page-bleed sticky-header-page">
+      {/* Stays put while only the circles below scroll. */}
+      <div className="sticky-header">
+        <h1>
+          {t('circles.title')} <PausePill which="forMe" />
+        </h1>
+        <p style={{ color: 'var(--text-muted)' }}>{t('circles.intro')}</p>
+        <PauseNotice which="forMe" />
+        {error && <p className="form-error">{error}</p>}
+
+        {/* Compact, no tile: just a caption over the bar and what's missing. */}
+        <div className="security-score-compact">
+          <h2>{t('securityScore.title')}</h2>
+          <SecurityScoreBar refreshKey={scoreRefresh} />
+        </div>
+
+        {/* Right under the score, stacked on the right. */}
+        <div className="header-actions">
+          <Link to="/circles/new" className="button-link">
+            {t('circles.newCircle')}
+          </Link>
+          <span className="header-action-row">
+            <Link to="/circles/new-group" className="button-link">
+              {t('groups.newGroup')}
+              {plan?.hasPaid && <IncludedStar />}
+            </Link>
+            {plan && !plan.groups && <PaidPill feature="groups" />}
+          </span>
+        </div>
+      </div>
 
       <RequestsInbox requests={requests} circles={circles} onChange={reload} />
-      <CreateCircleForm onCreated={reload} onError={setError} />
 
-      {circles.length === 0 ? (
-        <div className="empty-state">{t('circles.empty')}</div>
-      ) : (
-        <>
-          <div className="circles-overview">
-            {primaryCircle && (
-              <div className="circles-primary-row">
-                <CircleRing
-                  label={primaryCircle.label}
-                  members={liveMembersOf(primaryCircle)}
-                  isPrimary
-                  colorIndex={0}
-                  size={220}
-                  expanded={expandedCircleId === primaryCircle.id}
-                  onToggle={() => toggleExpand(primaryCircle.id)}
-                />
-              </div>
-            )}
-            {otherCircles.length > 0 && (
-              <div className="circles-other-row">
-                {otherCircles.map((c, i) => (
-                  <div key={c.id}>
-                    <CircleRing
-                      label={c.label}
-                      members={liveMembersOf(c)}
-                      isPrimary={false}
-                      colorIndex={i}
-                      size={170}
-                      expanded={expandedCircleId === c.id}
-                      onToggle={() => toggleExpand(c.id)}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {expandedCircle && (
-            <CircleCard
-              circle={expandedCircle}
-              circles={circles}
-              colorIndex={expandedColorIndex}
-              onChange={reload}
-              onError={setError}
+      {circles.length === 0 && <div className="empty-state">{t('circles.empty')}</div>}
+      {/* Greyed while I'm on pause for me: nobody watches over me now —
+          still fully usable. */}
+      <div className={`circles-overview${user?.pausedForMe ? ' area-paused' : ''}`}>
+        {/* 1st circle always on top, nudged left. */}
+        <div className="circles-primary-row">
+          {primaryCircle && (
+            <CircleRing
+              label={primaryCircle.label}
+              members={liveMembersOf(primaryCircle)}
+              isPrimary
+              colorIndex={0}
+              size={260}
+              showNames
+              inAlertUserIds={inAlertUserIds}
+              onOpen={() => navigate(`/circles/${primaryCircle.id}`)}
             />
           )}
-        </>
-      )}
-
-      <h2>{t('groups.title')}</h2>
-      <p style={{ color: 'var(--text-muted)' }}>{t('groups.intro')}</p>
-
-      <GroupInvitationsInbox invitations={groupInvitations} onChange={reload} />
-      <CreateGroupForm onCreated={reload} onError={setError} />
-
-      {groups.length === 0 ? (
-        <div className="empty-state">{t('groups.empty')}</div>
-      ) : (
-        <div className="tile-grid">
-          {groups.map((g) => (
-            <GroupCard key={g.rootId} group={g} contacts={groupContacts} onChange={reload} onError={setError} />
-          ))}
         </div>
+        {otherCircles.length > 0 && (
+          <div className="circles-other-row">
+            {otherCircles.map((c, i) => (
+              <div key={c.id}>
+                <CircleRing
+                  label={c.label}
+                  members={liveMembersOf(c)}
+                  isPrimary={false}
+                  alertChatWithFirstCircle={c.alertChatWithFirstCircle}
+                  colorIndex={i}
+                  size={210}
+                  isGroup={c.circleType === 'GROUP'}
+                  showNames={c.circleType !== 'GROUP'}
+                  inAlertUserIds={inAlertUserIds}
+                  onOpen={() => navigate(`/circles/${c.id}`)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {reserveMembers.length > 0 && (
+        <section className="reserve-section">
+          <h2>{t('circles.reserve.title')}</h2>
+          <p className="form-hint">{t('circles.reserve.hint')}</p>
+          <ul className="reserve-list">
+            {reserveMembers.map((m) => (
+              <li key={m.id}>
+                <Link to={`/people/${m.linkAsSentinel.id}?from=sentinel`}>
+                  <PersonAvatar
+                    userId={m.linkAsSentinel.id}
+                    avatarPath={m.linkAsSentinel.avatarPath}
+                    paused={m.linkAsSentinel.pausedForOthers}
+                    subscribed={m.linkAsSentinel.subscribed}
+                    sentinelColor={PENDING_AVATAR_COLOR}
+                    companionColor={null}
+                    size={44}
+                    photoRing={PENDING_AVATAR_COLOR}
+                  />
+                  <span>{m.linkAsSentinel.firstName}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
+
+      {/* Groups open from their own (double) ring above; only pending
+          invitations are listed here. */}
+      <GroupInvitationsInbox invitations={groupInvitations} onChange={reload} />
     </div>
   );
 }
@@ -246,58 +314,39 @@ function RequestsInbox({
   );
 }
 
-function CreateCircleForm({ onCreated, onError }: { onCreated: () => void; onError: (m: string) => void }) {
-  const { t } = useTranslation();
-  const [label, setLabel] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      await createCircle(label.trim());
-      setLabel('');
-      onCreated();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form className="panel inline-form" onSubmit={submit}>
-      <h2>{t('circles.newCircle')}</h2>
-      <div className="row">
-        <input value={label} required placeholder={t('circles.namePlaceholder')} onChange={(e) => setLabel(e.target.value)} />
-        <button type="submit" disabled={submitting || !label.trim()}>
-          {t('circles.create')}
-        </button>
-      </div>
-    </form>
-  );
-}
-
 function CircleCard({
   circle,
   circles,
   colorIndex,
+  inAlertUserIds,
+  group,
+  groupContacts,
   onChange,
   onError,
 }: {
   circle: Circle;
   circles: Circle[];
   colorIndex: number;
+  inAlertUserIds: Set<string>;
+  // Set when this is my side of a group circle: the page then manages the
+  // group (invite, leave/delete) instead of a plain circle.
+  group?: Group;
+  groupContacts: GroupContact[];
   onChange: () => void;
   onError: (m: string) => void;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
+  // Deleting a circle never breaks a link: its Sentinels move to the
+  // reserve circle (backend deleteCircle), confirmed in a real dialog first.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const del = async () => {
-    if (!window.confirm(t('circles.confirmDelete'))) return;
+    setConfirmingDelete(false);
     try {
       await deleteCircle(circle.id);
       onChange();
+      navigate('/circles');
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
     }
@@ -306,262 +355,234 @@ function CircleCard({
   const isPrimary = circle.circleType === 'FIRST';
   // Removed/declined/blocked links stay in the DB (never hard-deleted) but
   // don't belong in the active member list — re-adding someone just means
-  // inviting their phone number again via the form below, which reactivates
+  // inviting their phone number again via the "+" form, which reactivates
   // their existing link (see backend's createOrReactivateLink).
   const liveMembers = circle.userSentinels.filter(
     (m) => m.status === 'ACCEPTED' || m.status === 'PENDING',
   );
 
-  // null resolves to "allowed" (inherits the companion's default) unless
-  // explicitly set to false.
-  const circleCanMessage = circle.canMessageMe !== false;
-  const toggleCircleCanMessage = async () => {
+  // "During an alert, may write to my 1st circle" is one rule for the whole
+  // circle. My general switch (Settings) wins: when it's off, nobody can,
+  // whatever this circle says.
+  const { user } = useAuth();
+  const generalAlertChatOn = user?.alertChatWithFirstCircle ?? true;
+  const toggleAlertChat = async () => {
     try {
-      await updateCircle(circle.id, { canMessageMe: !circleCanMessage });
+      await updateCircle(circle.id, { alertChatWithFirstCircle: !circle.alertChatWithFirstCircle });
       onChange();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
     }
   };
 
+  // What the side panel shows: nothing yet, or the invite form ("+").
+  // Tapping an avatar opens that person's page instead (PersonPage), where
+  // every action on them lives.
+  const [panel, setPanel] = useState<'add' | null>(null);
+
   return (
-    <Tile
-      title={
+    <div className="circle-detail">
+      {confirmingDelete && (
+        <Modal title={t('circles.deleteCircle.title', { circle: circle.label })} onClose={() => setConfirmingDelete(false)}>
+          <p className="delete-circle-warning">⚠️ {t('circles.deleteCircle.warning')}</p>
+          {liveMembers.length > 0 && (
+            <p>{t('circles.deleteCircle.toReserve', { count: liveMembers.length })}</p>
+          )}
+          <div className="row">
+            <button className="danger" onClick={del}>
+              {t('circles.deleteCircle.confirm')}
+            </button>
+            <button className="ghost" onClick={() => setConfirmingDelete(false)}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </Modal>
+      )}
+      <div className="circle-detail-head">
+        {group && <span className="circle-detail-eyebrow">{t('groups.eyebrow')}</span>}
         <h2>
           <span
-            style={{
-              display: 'inline-block',
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              background: isPrimary ? PRIMARY_AVATAR_COLOR : circlePalette(colorIndex).color,
-              marginRight: '0.5rem',
-            }}
+            className="circle-dot"
+            style={{ background: isPrimary ? PRIMARY_AVATAR_COLOR : circlePalette(colorIndex).color }}
           />
-          {circle.label}{' '}
+          {circle.label}
           {isPrimary && <span className="badge status-accepted">{t('circles.firstCircle')}</span>}
+          <PausePill which="forMe" />
         </h2>
-      }
-      actions={
-        !isPrimary && (
-          <>
-            <button className="ghost" onClick={toggleCircleCanMessage}>
-              {circleCanMessage ? t('circles.blockMessaging') : t('circles.allowMessaging')}
-            </button>
-            <button className="ghost" onClick={del}>
-              {t('common.delete')}
-            </button>
-          </>
-        )
-      }
-    >
-      <h3>{t('circles.members')}</h3>
-      {liveMembers.length === 0 ? (
-        <p style={{ color: 'var(--text-muted)' }}>{t('circles.noMembers')}</p>
-      ) : (
-        liveMembers.map((m) => (
-          <MemberRow
-            key={m.id}
-            m={m}
-            circles={circles}
-            isPrimary={isPrimary}
-            onChange={onChange}
-            onError={onError}
-          />
-        ))
-      )}
+        {group ? (
+          <GroupActions group={group} onChange={onChange} onError={onError} />
+        ) : null}
+      </div>
 
-      {liveMembers.length >= LARGE_CIRCLE_THRESHOLD && (
-        <p className="form-hint">{t('circles.largeCircleWarning', { count: liveMembers.length })}</p>
-      )}
-      <InviteForm circleId={circle.id} isPrimary={isPrimary} onChange={onChange} onError={onError} />
-    </Tile>
+      <div className="circle-detail-ring">
+        <CircleRing
+          label={circle.label}
+          members={liveMembers}
+          isPrimary={isPrimary}
+          alertChatWithFirstCircle={circle.alertChatWithFirstCircle}
+          colorIndex={colorIndex}
+          size={300}
+          showNames
+          showPhotos
+          inAlertUserIds={inAlertUserIds}
+          onSelectMember={(m) => navigate(`/people/${m.linkAsSentinel.id}?from=sentinel`)}
+          isGroup={!!group}
+        />
+        {/* Under the ring: delete on the left (not for the 1st circle or a
+            group), add on the right. */}
+        <div className="circle-ring-actions">
+          {!group && !isPrimary ? (
+            <button type="button" className="ghost danger" onClick={() => setConfirmingDelete(true)}>
+              {t('circles.deleteCircle.button')}
+            </button>
+          ) : (
+            <span />
+          )}
+          <button
+            type="button"
+            className="circle-add-btn"
+            disabled={isPrimary && liveMembers.length >= FIRST_CIRCLE_MAX}
+            onClick={() => setPanel('add')}
+          >
+            + {group ? t('groups.addMember') : t('circles.addSentinel')}
+          </button>
+        </div>
+      </div>
+      <div className="circle-detail-side">
+        {panel === 'add' && group ? (
+          <Tile>
+            <GroupInviteForm group={group} contacts={groupContacts} onChange={onChange} onError={onError} />
+            <div className="member-panel-close">
+              <button className="ghost" onClick={() => setPanel(null)}>
+                {t('common.close')}
+              </button>
+            </div>
+          </Tile>
+        ) : panel === 'add' ? (
+          <Tile>
+            <AddFromOtherCircle
+              circle={circle}
+              circles={circles}
+              onChange={() => {
+                onChange();
+                setPanel(null);
+              }}
+              onError={onError}
+            />
+            <InviteForm
+              circleId={circle.id}
+              isPrimary={isPrimary}
+              onChange={() => {
+                onChange();
+                setPanel(null);
+              }}
+              onError={onError}
+            />
+            <div className="member-panel-close">
+              <button className="ghost" onClick={() => setPanel(null)}>
+                {t('common.close')}
+              </button>
+            </div>
+          </Tile>
+        ) : (
+          liveMembers.length === 0 && <p style={{ color: 'var(--text-muted)' }}>{t('circles.noMembers')}</p>
+        )}
+
+        {/* Alert-time chat with my 1st circle, for the whole circle. */}
+        {!isPrimary && !group && (
+          <section className="circle-messaging">
+            <h3>{t('circles.messaging.title')}</h3>
+            <label className="circle-messaging-row">
+              <input
+                type="checkbox"
+                checked={generalAlertChatOn && circle.alertChatWithFirstCircle}
+                disabled={!generalAlertChatOn}
+                onChange={toggleAlertChat}
+              />
+              <span>
+                <strong>{t('circles.messaging.duringAlert')}</strong>
+                <small>{t('circles.messaging.duringAlertHint')}</small>
+                {!generalAlertChatOn && (
+                  <small>
+                    {t('circles.messaging.generalOff')} <Link to="/settings">{t('circles.messaging.openSettings')}</Link>
+                  </small>
+                )}
+              </span>
+            </label>
+          </section>
+        )}
+
+        {isPrimary ? (
+          liveMembers.length >= FIRST_CIRCLE_MAX && (
+            <p className="form-hint">{t('circles.firstCircleFull', { max: FIRST_CIRCLE_MAX })}</p>
+          )
+        ) : (
+          liveMembers.length >= LARGE_CIRCLE_THRESHOLD && (
+            <p className="form-hint">{t('circles.largeCircleWarning', { count: liveMembers.length })}</p>
+          )
+        )}
+      </div>
+    </div>
   );
 }
 
-function MemberRow({
-  m,
+// A Sentinel only ever belongs to one circle of mine (one LinkSentinels per
+// pair), so "adding" someone from another circle means moving them here —
+// the same update as SentinelActions' move (into the 1st circle it goes through
+// their consent first, see awaitingFirstCircleConsent).
+function AddFromOtherCircle({
+  circle,
   circles,
-  isPrimary,
   onChange,
   onError,
 }: {
-  m: Membership;
+  circle: Circle;
   circles: Circle[];
-  isPrimary: boolean;
   onChange: () => void;
-  onError: (msg: string) => void;
+  onError: (m: string) => void;
 }) {
   const { t } = useTranslation();
-  const otherCircles = circles.filter((c) => c.id !== m.circleId);
-  const [moveTo, setMoveTo] = useState(otherCircles[0]?.id ?? '');
+  const candidates = circles
+    .filter((c) => c.id !== circle.id)
+    .flatMap((c) =>
+      c.userSentinels
+        .filter((m) => m.status === 'ACCEPTED' || m.status === 'PENDING')
+        .map((m) => ({ m, circleLabel: c.label })),
+    );
+  const [membershipId, setMembershipId] = useState(candidates[0]?.m.id ?? '');
+  const [submitting, setSubmitting] = useState(false);
 
-  const remove = async () => {
-    if (!window.confirm(t('circles.confirmRemoveMember'))) return;
+  if (candidates.length === 0) return null;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
     try {
-      await removeMembership(m.id);
+      await updateMembership(membershipId, { circleId: circle.id });
       onChange();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
-
-  const move = async () => {
-    if (!moveTo) return;
-    try {
-      await updateMembership(m.id, { circleId: moveTo });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
-
-  const toggleLead = async () => {
-    try {
-      await updateMembership(m.id, { requestedAsLead: !m.leadSlot });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
-
-  // Permanent Me<->Sentinel channel — per-individual override (beats the
-  // circle's own setting). null resolves to "allowed" unless set false.
-  const memberCanMessage = m.canMessageMe !== false;
-  const toggleMemberCanMessage = async () => {
-    try {
-      await updateMembership(m.id, { canMessageMe: !memberCanMessage });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
-
-  // Alert-time only: can this 1st-circle Sentinel join the live group chat
-  // once an alert is raised. Separate from canMessageMe above.
-  const toggleCanMessageOwnCircle = async () => {
-    try {
-      await updateMembership(m.id, { canMessageOwnCircle: !m.canMessageOwnCircle });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
-
-  // Outer-circle Sentinels only: whether this Sentinel can later open an
-  // isolated chat with the 1st circle once solicited on an alert. Set any
-  // time, not alert-specific — whatever value it has when an alert next
-  // contacts this Sentinel is what gets frozen in for that alert.
-  const setFirstCircleMessagingMode = async (mode: MessagingMode) => {
-    try {
-      await updateMembership(m.id, { firstCircleMessagingMode: mode });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
-
-  const proposedCircleLabel = m.proposedCircleId
-    ? circles.find((c) => c.id === m.proposedCircleId)?.label
-    : null;
-
-  // Manual call order for batched alert escalation (max 2 contacted at a
-  // time, see AlertService.requestCircle) — outer circles only, the 1st
-  // circle always notifies everyone at once.
-  const [callOrderInput, setCallOrderInput] = useState(m.callOrder?.toString() ?? '');
-  const saveCallOrder = async () => {
-    const trimmed = callOrderInput.trim();
-    const value = trimmed === '' ? undefined : Number(trimmed);
-    if (value !== undefined && (!Number.isInteger(value) || value < 1)) return;
-    if (value === undefined || value === m.callOrder) return;
-    try {
-      await updateMembership(m.id, { callOrder: value });
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="row member-row">
-      <span>
-        {m.linkAsSentinel.firstName}
-        <span className={`badge status-${m.status.toLowerCase()}`}>{t(`sentinel.status.${m.status}`)}</span>
-        <span className="badge">{t(`sentinel.type.${m.sentinelType}`)}</span>
-        {m.leadSlot && <span className="badge">{t('sentinel.leadSentinel')}</span>}
-        {proposedCircleLabel && (
-          <span className="badge">{t('circles.awaitingFirstCircleConsent')}</span>
-        )}
-      </span>
-      <span className="row-actions">
-        {isPrimary && m.status === 'ACCEPTED' && (
-          <button className="ghost" onClick={toggleLead}>
-            {m.leadSlot ? t('circles.removeLead') : t('circles.makeLead')}
-          </button>
-        )}
-        {m.sentinelType !== 'ONLY_SMS' && m.status === 'ACCEPTED' && (
-          <button className="ghost" onClick={toggleMemberCanMessage}>
-            {memberCanMessage ? t('circles.blockMessaging') : t('circles.allowMessaging')}
-          </button>
-        )}
-        {isPrimary && m.sentinelType !== 'ONLY_SMS' && m.status === 'ACCEPTED' && (
-          <button className="ghost" onClick={toggleCanMessageOwnCircle}>
-            {m.canMessageOwnCircle ? t('circles.excludeFromAlertChat') : t('circles.includeInAlertChat')}
-          </button>
-        )}
-        {/* GROUP exists in the schema but isn't exposed here yet — it
-            currently behaves identically to INDIVIDUAL (same isolated
-            chat), so a 3rd option would just be a misleading duplicate
-            until it actually means something different. */}
-        {!isPrimary && m.sentinelType !== 'ONLY_SMS' && m.status === 'ACCEPTED' && (
-          <label className="row" style={{ gap: '0.3rem' }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              {t('circles.firstCircleMessagingMode.label')}
-            </span>
-            <select
-              value={m.firstCircleMessagingMode === 'NONE' ? 'NONE' : 'INDIVIDUAL'}
-              onChange={(e) => setFirstCircleMessagingMode(e.target.value as MessagingMode)}
-            >
-              <option value="NONE">{t('circles.firstCircleMessagingMode.none')}</option>
-              <option value="INDIVIDUAL">{t('circles.firstCircleMessagingMode.individual')}</option>
-            </select>
-          </label>
-        )}
-        {!isPrimary && m.status === 'ACCEPTED' && (
-          <label className="row" style={{ gap: '0.3rem' }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              {t('circles.callOrder.label')}
-            </span>
-            <input
-              type="number"
-              min={1}
-              style={{ width: '3.5rem' }}
-              placeholder={t('circles.callOrder.random')}
-              value={callOrderInput}
-              onChange={(e) => setCallOrderInput(e.target.value)}
-              onBlur={saveCallOrder}
-            />
-          </label>
-        )}
-        {otherCircles.length > 0 && (
-          <>
-            <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}>
-              {otherCircles.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-            <button className="ghost" onClick={move}>
-              {t('circles.move')}
-            </button>
-          </>
-        )}
-        <button className="ghost" onClick={remove}>
-          {t('circles.removeMember')}
+    <form className="inline-form add-from-circle" onSubmit={submit}>
+      <h3>{t('circles.addFromOtherCircle')}</h3>
+      <div className="row wrap">
+        <select value={membershipId} onChange={(e) => setMembershipId(e.target.value)}>
+          {candidates.map(({ m, circleLabel }) => (
+            <option key={m.id} value={m.id}>
+              {m.linkAsSentinel.firstName} ({circleLabel})
+            </option>
+          ))}
+        </select>
+        <button type="submit" disabled={submitting || !membershipId}>
+          {t('circles.moveHere')}
         </button>
-      </span>
-    </div>
+      </div>
+    </form>
   );
 }
 
@@ -660,73 +681,18 @@ function GroupInvitationsInbox({
   );
 }
 
-function CreateGroupForm({ onCreated, onError }: { onCreated: () => void; onError: (m: string) => void }) {
-  const { t } = useTranslation();
-  const [label, setLabel] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      await createGroup(label.trim());
-      setLabel('');
-      onCreated();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form className="panel inline-form" onSubmit={submit}>
-      <h2>{t('groups.newGroup')}</h2>
-      <div className="row">
-        <input
-          value={label}
-          required
-          placeholder={t('groups.namePlaceholder')}
-          onChange={(e) => setLabel(e.target.value)}
-        />
-        <button type="submit" disabled={submitting || !label.trim()}>
-          {t('groups.create')}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function GroupCard({
+// A group circle's own actions, in its page header: the founder can delete
+// the whole group, everyone else can only leave it.
+function GroupActions({
   group,
-  contacts,
   onChange,
   onError,
 }: {
   group: Group;
-  contacts: GroupContact[];
   onChange: () => void;
   onError: (m: string) => void;
 }) {
   const { t } = useTranslation();
-  const memberIds = new Set(group.members.map((m) => m.id));
-  const eligible = contacts.filter((c) => !memberIds.has(c.userId));
-  const [targetUserId, setTargetUserId] = useState(eligible[0]?.userId ?? '');
-  const [invited, setInvited] = useState<string | null>(null);
-
-  const invite = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!targetUserId) return;
-    setInvited(null);
-    try {
-      const invitedLabel = eligible.find((c) => c.userId === targetUserId)?.label ?? '';
-      await inviteToGroup(group.rootId, targetUserId);
-      setInvited(invitedLabel);
-      onChange();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : String(err));
-    }
-  };
 
   const leave = async () => {
     if (!window.confirm(t('groups.confirmLeave'))) return;
@@ -749,51 +715,106 @@ function GroupCard({
   };
 
   return (
-    <Tile
-      title={group.label}
-      actions={
-        group.isFounder ? (
-          <button className="ghost" onClick={remove}>
-            {t('groups.delete')}
-          </button>
-        ) : (
-          <button className="ghost" onClick={leave}>
-            {t('groups.leave')}
-          </button>
-        )
-      }
-    >
-      {group.members.map((m) => (
-        <div key={m.id} className="row member-row">
-          <span>{m.firstName}</span>
-        </div>
-      ))}
-
-      {group.members.length >= LARGE_GROUP_THRESHOLD && (
-        <p className="form-hint">
-          {t('groups.largeGroupWarning', { count: group.members.length })}
-        </p>
+    <div className="tile-actions">
+      {group.isFounder ? (
+        <button className="ghost" onClick={remove}>
+          {t('groups.delete')}
+        </button>
+      ) : (
+        <button className="ghost" onClick={leave}>
+          {t('groups.leave')}
+        </button>
       )}
-      <form className="row" onSubmit={invite}>
-        {eligible.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>{t('groups.noEligibleContacts')}</p>
-        ) : (
-          <>
-            <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)}>
-              {eligible.map((c) => (
-                <option key={c.userId} value={c.userId}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-            <button type="submit" disabled={!targetUserId}>
-              {t('groups.invite')}
-            </button>
-          </>
-        )}
+    </div>
+  );
+}
+
+// The group circle page's "+": invite someone I'm already connected to.
+function GroupInviteForm({
+  group,
+  contacts,
+  onChange,
+  onError,
+}: {
+  group: Group;
+  contacts: GroupContact[];
+  onChange: () => void;
+  onError: (m: string) => void;
+}) {
+  const { t } = useTranslation();
+  const memberIds = new Set(group.members.map((m) => m.id));
+  const eligible = contacts.filter((c) => !memberIds.has(c.userId));
+  const [targetUserId, setTargetUserId] = useState(eligible[0]?.userId ?? '');
+  // Or anyone, by phone (an account isn't needed to be invited).
+  const [phone, setPhone] = useState('');
+  const [name, setName] = useState('');
+  const [invited, setInvited] = useState<string | null>(null);
+
+  const send = async (target: Parameters<typeof inviteToGroup>[1], label: string) => {
+    setInvited(null);
+    try {
+      await inviteToGroup(group.rootId, target);
+      setInvited(label);
+      onChange();
+      return true;
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : String(err));
+      return false;
+    }
+  };
+
+  const inviteContact = (e: FormEvent) => {
+    e.preventDefault();
+    if (!targetUserId) return;
+    void send({ targetUserId }, eligible.find((c) => c.userId === targetUserId)?.label ?? '');
+  };
+
+  const invitePhone = async (e: FormEvent) => {
+    e.preventDefault();
+    if (await send({ phone: phone.trim(), name: name.trim() }, name.trim())) {
+      setPhone('');
+      setName('');
+    }
+  };
+
+  return (
+    <div className="inline-form">
+      <h3>{t('groups.addMember')}</h3>
+      {group.members.length >= LARGE_GROUP_THRESHOLD && (
+        <p className="form-hint">{t('groups.largeGroupWarning', { count: group.members.length })}</p>
+      )}
+      {/* One of my contacts, in one click... */}
+      {eligible.length > 0 && (
+        <form className="row wrap" onSubmit={inviteContact}>
+          <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)}>
+            {eligible.map((c) => (
+              <option key={c.userId} value={c.userId}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <button type="submit" disabled={!targetUserId}>
+            {t('groups.invite')}
+          </button>
+        </form>
+      )}
+      {/* ...or anyone, with their number. */}
+      <p className="form-hint">{t(eligible.length > 0 ? 'groups.byPhoneOr' : 'groups.byPhone')}</p>
+      <form className="row wrap" onSubmit={invitePhone}>
+        <input
+          type="tel"
+          required
+          placeholder={t('circles.invitePhone')}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
+        <input required placeholder={t('circles.inviteName')} value={name} onChange={(e) => setName(e.target.value)} />
+        <button type="submit" disabled={!phone.trim() || !name.trim()}>
+          {t('groups.invite')}
+        </button>
       </form>
       {invited && <p className="form-hint">{t('groups.invitedSent', { who: invited })}</p>}
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('groups.eligibilityHint')}</p>
-    </Tile>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('groups.phoneHint')}</p>
+    </div>
   );
 }
