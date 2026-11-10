@@ -16,6 +16,7 @@ import {
   NotificationType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RUNNING_ALERT } from '../common/running-alert';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import { NotificationService } from '../notification/notification.service';
@@ -343,7 +344,7 @@ export class OuterCirclesService {
           ],
         },
         userSentinels: { userSentinelId: callerId },
-        alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+        alert: { alertStatus: RUNNING_ALERT },
       },
       include: {
         alert: { select: { firstCircleId: true } },
@@ -392,7 +393,7 @@ export class OuterCirclesService {
           userSentinels: {
             linkAsSentinel: { phone, ...NOT_PAUSED_SENTINEL },
           },
-          alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+          alert: { alertStatus: RUNNING_ALERT },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -476,7 +477,7 @@ export class OuterCirclesService {
       where: {
         status: AlertParticipantStatus.CONTACTED,
         contactedAt: { lt: staleThreshold },
-        alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+        alert: { alertStatus: RUNNING_ALERT },
       },
       select: {
         alertId: true,

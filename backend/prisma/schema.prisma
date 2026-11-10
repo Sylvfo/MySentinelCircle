@@ -122,6 +122,9 @@ enum NotificationType {
   CIRCLE_MOVE_PROPOSED
   CIRCLE_MOVE_ANSWERED
   SENTINEL_TO_RESERVE
+  TRAVEL_CIRCLE_ADDED
+  WATCH_CHECK_DUE
+  WATCH_PAUSE_SOON
 }
 
 enum Gender {
@@ -144,7 +147,7 @@ model User {
 
   status    UserStatus @default(ACTIVE)
   deletedAt DateTime?
-
+  timeZone            String?  @db.VarChar(64) // IANA, e.g. "Europe/Zurich"; sent by the browser
   firstName    String
   lastName     String?
   userName     String? @unique
@@ -156,6 +159,7 @@ model User {
   // "Sign me out everywhere": any login token issued before this is refused.
   sessionsValidAfter DateTime?
   language            String?  @db.VarChar(5)
+
   alertContactSharing Boolean  @default(false)
   gender Gender? // how texts speak about me; null = inclusive wording
   phoneRecoveryRequestedAt   DateTime?
@@ -259,9 +263,11 @@ model Circle {
   groupRoot    Circle?  @relation("GroupMembers", fields: [groupRootId], references: [id], onDelete: Restrict)
   groupMembers Circle[] @relation("GroupMembers")
   groupInvitations SentinelGroupInvitation[]
-
+  tripId String? // travel circle: the trip (a TRAVEL alert in SENT) it was created for
+  trip   Alert?  @relation("TripCircles", fields: [tripId], references: [id], onDelete: Restrict)
 
   @@unique([userCompanionId, groupRootId])
+  @@index([tripId])
   @@unique([id, userCompanionId])
   @@index([userCompanionId, status])
 }
@@ -373,6 +379,9 @@ model Alert {
   tripId     String? // on an alert opened by a missed checkpoint: the trip (a TRAVEL alert in SENT)
   trip       Alert?  @relation("TripAlerts", fields: [tripId], references: [id], onDelete: Restrict)
   tripAlerts Alert[] @relation("TripAlerts")
+  checkInSchedule String?   @db.VarChar(191) // All Good rhythm, e.g. JSON {kind, days, every, unit, from, before}
+  pausedUntil     DateTime? // watch paused by its owner until this date
+  tripCircles     Circle[]  @relation("TripCircles")
   checkpoints       TravelCheckpoint[] @relation("TripCheckpoints")
   openedByCheckpoint TravelCheckpoint[] @relation("CheckpointOpenedAlert")
 
@@ -545,6 +554,7 @@ model TravelCheckpoint {
   validatedAt DateTime?
   validatedLatitude  Float?
   validatedLongitude Float?
+  validatedPlace     String? @db.VarChar(191) // "somewhere else, all is well": where
   validatedNote      String? @db.VarChar(500) // "somewhere else, all is well"
   missedAt    DateTime?
   alertId String           // the trip

@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import {
   AlertParticipantStatus,
-  AlertStatus,
   CircleStatus,
   CircleType,
   LinkStatus,
@@ -19,6 +18,7 @@ import {
 import { unlink } from 'fs/promises';
 import { basename, join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
+import { RUNNING_ALERT, RUNNING_WATCH } from '../common/running-alert';
 import { NotificationService } from '../notification/notification.service';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
 import type { RealtimeNotifier } from '../realtime/realtime-notifier.interface';
@@ -97,7 +97,7 @@ export class AccountDeletionService {
     const activeAlert = await this.prisma.alert.findFirst({
       where: {
         userCompanionId: userId,
-        alertStatus: { not: AlertStatus.RESOLVED },
+        alertStatus: RUNNING_ALERT,
       },
     });
     if (activeAlert) {
@@ -107,7 +107,7 @@ export class AccountDeletionService {
       where: {
         isLead: true,
         status: { not: AlertParticipantStatus.CLOSED },
-        alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+        alert: { alertStatus: RUNNING_ALERT },
         userSentinels: { userSentinelId: userId },
       },
     });
@@ -165,9 +165,23 @@ export class AccountDeletionService {
 
   // History stays readable (messages and alerts keep their text, signed
   // "Compte supprimé"), but what pinpoints the person goes: their shared
-  // GPS positions, their photos, their personal death messages. Returns
+  // GPS positions (alerts and Watch Mode steps), their photos, their personal death messages. Returns
   // the photo files to unlink once the database is updated.
   private async eraseIdentifyingContent(userId: string): Promise<string[]> {
+    // Watch Mode: their watches end, and the positions of their steps go.
+    await this.prisma.alert.updateMany({
+      where: { userCompanionId: userId, ...RUNNING_WATCH },
+      data: { closedAt: new Date() },
+    });
+    await this.prisma.travelCheckpoint.updateMany({
+      where: { alert: { userCompanionId: userId } },
+      data: {
+        latitude: null,
+        longitude: null,
+        validatedLatitude: null,
+        validatedLongitude: null,
+      },
+    });
     const alerts = await this.prisma.alert.findMany({
       where: { userCompanionId: userId },
       select: { id: true, messageAlert: true },

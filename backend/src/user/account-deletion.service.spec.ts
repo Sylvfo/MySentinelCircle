@@ -4,6 +4,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { UnauthorizedException } from '@nestjs/common';
 import {
   AlertParticipantStatus,
+  AlertStatus,
   CircleType,
   LinkStatus,
   MessageType,
@@ -25,7 +26,13 @@ describe('AccountDeletionService', () => {
   let service: AccountDeletionService;
   let prisma: {
     user: { findUnique: jest.Mock; update: jest.Mock };
-    alert: { findFirst: jest.Mock; findMany: jest.Mock; update: jest.Mock };
+    alert: {
+      findFirst: jest.Mock;
+      findMany: jest.Mock;
+      update: jest.Mock;
+      updateMany: jest.Mock;
+    };
+    travelCheckpoint: { updateMany: jest.Mock };
     message: { findMany: jest.Mock; updateMany: jest.Mock };
     alertParticipant: { findFirst: jest.Mock };
     circle: { findMany: jest.Mock; updateMany: jest.Mock };
@@ -68,7 +75,9 @@ describe('AccountDeletionService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
+      travelCheckpoint: { updateMany: jest.fn() },
       message: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn(),
@@ -201,6 +210,28 @@ describe('AccountDeletionService', () => {
     expect(prisma.alert.update).toHaveBeenCalledWith({
       where: { id: 'a1' },
       data: { messageAlert: 'Je rentre tard\n\nPosition supprimée' },
+    });
+  });
+
+  it('ends their watches and erases the positions of their steps', async () => {
+    await service.deleteAccount('me');
+
+    expect(prisma.alert.updateMany).toHaveBeenCalledWith({
+      where: {
+        userCompanionId: 'me',
+        alertStatus: AlertStatus.SENT,
+        closedAt: null,
+      },
+      data: { closedAt: expect.any(Date) },
+    });
+    expect(prisma.travelCheckpoint.updateMany).toHaveBeenCalledWith({
+      where: { alert: { userCompanionId: 'me' } },
+      data: {
+        latitude: null,
+        longitude: null,
+        validatedLatitude: null,
+        validatedLongitude: null,
+      },
     });
   });
 

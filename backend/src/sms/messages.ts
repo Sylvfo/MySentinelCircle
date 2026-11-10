@@ -397,6 +397,134 @@ export function deathNoticeSms(lang: SmsLang = 'fr'): string {
   );
 }
 
+// ---- Watch Mode (trip / All Good Check) ---------------------------------
+
+// A deadline in the person's own zone (watch/zoned-time.ts deadlineParts):
+// "13:00", or "11.11 a 13:00" when it isn't today.
+export interface SmsDeadline {
+  time: string;
+  date: string | null;
+}
+
+function sayDeadline(d: SmsDeadline, lang: SmsLang): string {
+  if (!d.date) return d.time;
+  return lang === 'en' ? `${d.date} at ${d.time}` : `${d.date} a ${d.time}`;
+}
+
+// What the person typed (a place, a trip name, instructions), kept within
+// plain ASCII like the rest of the text. Long instructions are cut: the
+// full text is in the app.
+function asciiText(text: string, max = 300): string {
+  const plain = text
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^\x20-\x7E\n]/g, ' ')
+    .trim();
+  return plain.length > max ? `${plain.slice(0, max - 3).trimEnd()}...` : plain;
+}
+
+// To the traveller, at the time of a step.
+export function watchStepReminderSms(
+  place: string,
+  due: SmsDeadline,
+  alertAt: SmsDeadline,
+  gender: Gender | null,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return (
+      `${APP}: have you reached the step "${asciiText(place)}" ` +
+      `(planned at ${sayDeadline(due, lang)})? Reply OK if all is well, ` +
+      `or confirm in the app: ${LOGIN_LINK}\n` +
+      `Without an answer by ${sayDeadline(alertAt, lang)}, ` +
+      `your 1st circle will be told.`
+    );
+  }
+  const arrived =
+    gender === 'FEMALE' ? 'arrivee' : gender === 'MALE' ? 'arrive' : 'arrive.e';
+  return (
+    `${APP} : etes-vous bien ${arrived} a l'etape "${asciiText(place)}" ` +
+    `(prevue a ${sayDeadline(due, lang)}) ? Repondez OK si tout va bien, ` +
+    `ou validez dans l'app : ${LOGIN_LINK}\n` +
+    `Sans reponse a ${sayDeadline(alertAt, lang)}, ` +
+    `votre 1er cercle sera prevenu.`
+  );
+}
+
+// To the person, at the time of their All Good Check.
+export function watchAllGoodReminderSms(
+  alertAt: SmsDeadline,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return (
+      `${APP}: is all well? Reply OK, or confirm in the app: ${LOGIN_LINK}\n` +
+      `Without an answer by ${sayDeadline(alertAt, lang)}, ` +
+      `your 1st circle will be told.`
+    );
+  }
+  return (
+    `${APP} : tout va bien ? Repondez OK, ou validez dans l'app : ` +
+    `${LOGIN_LINK}\n` +
+    `Sans reponse a ${sayDeadline(alertAt, lang)}, ` +
+    `votre 1er cercle sera prevenu.`
+  );
+}
+
+// To the 1st circle, when a deadline passed without news: what was missed
+// and the person's own instructions.
+export function watchAlertSms(
+  companionFullName: string,
+  missed:
+    | { kind: 'STEP'; place: string; due: SmsDeadline; tripName: string }
+    | { kind: 'ALL_GOOD'; due: SmsDeadline },
+  instructions: string,
+  lang: SmsLang = 'fr',
+): string {
+  const name = asciiText(companionFullName, 100);
+  const todo = instructions.trim() ? asciiText(instructions) : '';
+  if (lang === 'en') {
+    const what =
+      missed.kind === 'STEP'
+        ? `the step "${asciiText(missed.place)}" of the trip ` +
+          `"${asciiText(missed.tripName, 100)}", planned at ` +
+          `${sayDeadline(missed.due, lang)}, was not confirmed.`
+        : `no "All good" since the check due at ` +
+          `${sayDeadline(missed.due, lang)}.`;
+    return (
+      `${APP}: alert for ${name}, whose Sentinel you are: ${what}\n` +
+      (todo ? `What to do: ${todo}\n` : '') +
+      `Answer in the app: ${LOGIN_LINK}`
+    );
+  }
+  const what =
+    missed.kind === 'STEP'
+      ? `l'etape "${asciiText(missed.place)}" du voyage ` +
+        `"${asciiText(missed.tripName, 100)}", prevue a ` +
+        `${sayDeadline(missed.due, lang)}, n'a pas ete validee.`
+      : `pas de "Tout va bien" depuis le check prevu a ` +
+        `${sayDeadline(missed.due, lang)}.`;
+  return (
+    `${APP} : alerte pour ${name}, dont vous etes Sentinel : ${what}\n` +
+    (todo ? `Que faire : ${todo}\n` : '') +
+    `Repondez dans l'app : ${LOGIN_LINK}`
+  );
+}
+
+// To the person, once their 1st circle was told.
+export function watchAlertToOwnerSms(lang: SmsLang = 'fr'): string {
+  if (lang === 'en') {
+    return (
+      `${APP}: no news from you, your 1st circle has been told. ` +
+      `If all is well, say so in the app: ${LOGIN_LINK}`
+    );
+  }
+  return (
+    `${APP} : sans nouvelles de vous, votre 1er cercle a ete prevenu. ` +
+    `Si tout va bien, dites-le dans l'app : ${LOGIN_LINK}`
+  );
+}
+
 export function otpSms(code: string, lang: SmsLang = 'fr'): string {
   if (lang === 'en') {
     return `Your ${APP} sign-in code: ${code}. Valid for 10 minutes. Never share it.`;

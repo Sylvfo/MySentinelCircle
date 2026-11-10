@@ -15,6 +15,7 @@ import { UserType, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NOT_A_WATCH } from '../common/running-alert';
 import { OTP_SENDER } from '../auth/otp/otp-sender.interface';
 import { EMAIL_SENDER } from '../email/email-sender.interface';
 
@@ -1098,7 +1099,7 @@ describe('UserService', () => {
         paymentAvailable: expect.any(Boolean),
       });
       expect(prisma.alert.count).toHaveBeenCalledWith({
-        where: { userCompanionId: 'my-id' },
+        where: { userCompanionId: 'my-id', alertStatus: NOT_A_WATCH },
       });
     });
 

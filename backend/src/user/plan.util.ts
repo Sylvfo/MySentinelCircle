@@ -10,6 +10,8 @@ export const FREE_TRIAL_USED_UP =
   'Free trial alerts used up — a paid Companion account is needed to raise more';
 export const GROUP_NEEDS_PAID =
   'A paid Companion account is needed to found a group circle';
+export const WATCH_NEEDS_SUBSCRIPTION =
+  'Watch Mode is part of the subscription';
 export const DEATH_NOTICE_NEEDS_PURCHASE =
   'The death notice needs a subscription or its one-time purchase';
 

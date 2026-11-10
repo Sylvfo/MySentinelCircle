@@ -1,12 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import {
-  AlertStatus,
-  CircleStatus,
-  CircleType,
-  UserStatus,
-  UserType,
-} from '@prisma/client';
+import { CircleStatus, CircleType, UserStatus, UserType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NOT_A_WATCH, RUNNING_ALERT } from '../common/running-alert';
 
 const DAY_MS = 86_400_000;
 const WEEKS_SHOWN = 8;
@@ -70,9 +65,9 @@ export class AdminService {
       this.prisma.user.count({ where: { lastLoginAt: { gte: ago(1) } } }),
       this.prisma.user.count({ where: { lastLoginAt: { gte: ago(7) } } }),
       this.prisma.user.count({ where: { lastLoginAt: { gte: ago(30) } } }),
-      this.prisma.alert.count(),
+      this.prisma.alert.count({ where: { alertStatus: NOT_A_WATCH } }),
       this.prisma.alert.count({
-        where: { alertStatus: { not: AlertStatus.RESOLVED } },
+        where: { alertStatus: RUNNING_ALERT },
       }),
       this.prisma.alert.count({ where: { launchedAt: { gte: ago(30) } } }),
       this.prisma.message.count({ where: { createdAt: { gte: ago(30) } } }),

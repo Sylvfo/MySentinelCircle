@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import {
   AlertParticipantStatus,
-  AlertStatus,
   CircleStatus,
   CircleType,
   LeadSlot,
@@ -22,6 +21,7 @@ import {
   Gender,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RUNNING_ALERT } from '../common/running-alert';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import { NotificationService } from '../notification/notification.service';
@@ -504,7 +504,7 @@ export class SentinelService {
       where: {
         userSentinelsId: link.id,
         status: { not: AlertParticipantStatus.CLOSED },
-        alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+        alert: { alertStatus: RUNNING_ALERT },
       },
     });
     if (inAlert > 0) {

@@ -18,6 +18,7 @@ import {
 } from '@prisma/client';
 import { AlertService } from './alert.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NOT_A_WATCH, RUNNING_ALERT } from '../common/running-alert';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
 import { NotificationService } from '../notification/notification.service';
@@ -2310,7 +2311,7 @@ describe('AlertService', () => {
         expect.objectContaining({
           where: {
             alertParticipant: expect.objectContaining({
-              alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+              alert: { alertStatus: RUNNING_ALERT },
             }),
           },
           orderBy: { createdAt: 'desc' },
@@ -2533,6 +2534,7 @@ describe('AlertService', () => {
       ]);
       expect(prisma.alert.findMany).toHaveBeenCalledWith({
         where: {
+          alertStatus: NOT_A_WATCH,
           OR: [
             { userCompanionId: 'alice-id' },
             {

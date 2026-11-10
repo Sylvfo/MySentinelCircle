@@ -21,6 +21,7 @@ import {
   LeadSlot,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NOT_A_WATCH, RUNNING_ALERT, isWatch } from '../common/running-alert';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import { REALTIME_NOTIFIER } from '../realtime/realtime-notifier.interface';
@@ -55,7 +56,7 @@ import { smsLang, type SmsLang } from '../sms/messages';
 export const LEAD_CANNOT_PAUSE =
   'You are a Lead on an alert in progress — hand the lead over and leave that alert before pausing';
 
-const ALERT_TYPE_LABELS: Record<AlertType, string> = {
+export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   BYCOMPANION: 'Appel a l’aide',
   LITTLEWORRY: 'Petite inquietude',
   MISSING: 'Personne introuvable',
@@ -119,48 +120,9 @@ export class AlertService {
       dto.payForThisAlert === true,
     );
 
-    const circle = await this.prisma.circle.findFirst({
-      where: {
-        userCompanionId: dto.companionId,
-        circleType: CircleType.FIRST,
-        status: CircleStatus.ACTIVE,
-      },
-    });
-
-    // Per plan.txt, the 1st circle must always keep >=1 Lead Sentinel —
-    // without one, nobody would actually be in charge to drive the alert,
-    // so raising isn't allowed yet. Covers both "no 1st circle at all"
-    // (trivially no lead) and "1st circle exists but no accepted lead".
-    const firstCircleLinks = circle
-      ? await this.prisma.linkSentinels.findMany({
-          where: { circleId: circle.id, status: LinkStatus.ACCEPTED },
-          include: {
-            linkAsSentinel: {
-              select: {
-                id: true,
-                firstName: true,
-                phone: true,
-                pausedForOthers: true,
-                language: true,
-              },
-            },
-          },
-        })
-      : [];
-    if (!circle || !firstCircleLinks.some((link) => link.leadSlot !== null)) {
-      throw new ConflictException(
-        'This companion’s 1st circle has no Lead Sentinel yet — an alert can’t be raised',
-      );
-    }
-    // A Sentinel paused for others is never asked to take part.
-    const links = firstCircleLinks.filter(
-      (link) => !link.linkAsSentinel.pausedForOthers,
+    const { circle, links } = await this.loadFirstCircleForAlert(
+      dto.companionId,
     );
-    if (!links.some((link) => link.leadSlot !== null)) {
-      throw new ConflictException(
-        'Every Lead Sentinel of this 1st circle is on pause — an alert can’t be raised',
-      );
-    }
 
     await this.assertCanRaise(callerId, dto.companionId);
 
@@ -181,62 +143,15 @@ export class AlertService {
       links,
     );
 
-    const alert = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.alert.create({
-        data: {
-          label: ALERT_TYPE_LABELS[dto.alertType],
-          messageAlert: location
-            ? `${dto.reason}\n\n${location.text}`
-            : dto.reason,
-          alertStatus: AlertStatus.LAUNCHED,
-          alertType: dto.alertType,
-          launchedAt: new Date(),
-          launchedById: callerId,
-          userCompanionId: dto.companionId,
-          firstCircleId: circle.id,
-          paidById,
-        },
-      });
-
-      // The responsible Lead from the start: Lead 1 (lowest slot), decided
-      // in advance by the companion — never a choice made during the alert.
-      // Any other Lead can still take over later (claimLead).
-      const responsibleLinkId = links
-        .filter((link) => link.leadSlot !== null)
-        .sort((a, b) => a.leadSlot!.localeCompare(b.leadSlot!))[0]?.id;
-
-      for (const link of links) {
-        await tx.alertParticipant.create({
-          data: {
-            status: AlertParticipantStatus.WAITING,
-            circleId: circle.id,
-            circleName: circle.label,
-            canSendPhoneAtAlert: link.canSendPhone,
-            isLead: link.leadSlot !== null,
-            leadAssignedAt: link.id === responsibleLinkId ? new Date() : null,
-            requestedById: callerId,
-            alertId: created.id,
-            userSentinelsId: link.id,
-          },
-        });
-      }
-
-      // The 1st circle's own group chat ("1st circle room"), scoped to this
-      // alert: every Sentinel of the 1st circle — and the person the alert
-      // is about, who can write there too (Sylvie's call, 2026-11).
-      await tx.conversation.create({
-        data: {
-          alertId: created.id,
-          participants: {
-            create: [
-              ...links.map((link) => ({ userId: link.linkAsSentinel.id })),
-              { userId: dto.companionId },
-            ],
-          },
-        },
-      });
-
-      return created;
+    const alert = await this.openAlert({
+      companionId: dto.companionId,
+      circle,
+      links,
+      alertType: dto.alertType,
+      label: ALERT_TYPE_LABELS[dto.alertType],
+      messageAlert: location ? `${dto.reason}\n\n${location.text}` : dto.reason,
+      launchedById: callerId,
+      paidById,
     });
 
     await this.notifyParticipants(alert.id, links, (lang) =>
@@ -271,6 +186,142 @@ export class AlertService {
     return alert;
   }
 
+  // The 1st circle an alert about this person goes to, and who in it to
+  // ask (a Sentinel paused for others never is). Per plan.txt, the 1st
+  // circle must always keep >=1 Lead Sentinel — without one, nobody would
+  // actually be in charge to drive the alert, so raising isn't allowed yet.
+  // Covers both "no 1st circle at all" and "no accepted lead".
+  // requireLead false (an alert the app opens itself, e.g. a missed Watch
+  // Mode check): telling whoever can be told beats telling nobody.
+  async loadFirstCircleForAlert(
+    companionId: string,
+    { requireLead = true }: { requireLead?: boolean } = {},
+  ) {
+    const circle = await this.prisma.circle.findFirst({
+      where: {
+        userCompanionId: companionId,
+        circleType: CircleType.FIRST,
+        status: CircleStatus.ACTIVE,
+      },
+    });
+    const firstCircleLinks = circle
+      ? await this.prisma.linkSentinels.findMany({
+          where: { circleId: circle.id, status: LinkStatus.ACCEPTED },
+          include: {
+            linkAsSentinel: {
+              select: {
+                id: true,
+                firstName: true,
+                phone: true,
+                pausedForOthers: true,
+                language: true,
+              },
+            },
+          },
+        })
+      : [];
+    const links = firstCircleLinks.filter(
+      (link) => !link.linkAsSentinel.pausedForOthers,
+    );
+    if (!requireLead) {
+      if (!circle || links.length === 0) {
+        throw new ConflictException(
+          'Nobody in this companion’s 1st circle can be told',
+        );
+      }
+      return { circle, links };
+    }
+    if (!circle || !firstCircleLinks.some((link) => link.leadSlot !== null)) {
+      throw new ConflictException(
+        'This companion’s 1st circle has no Lead Sentinel yet — an alert can’t be raised',
+      );
+    }
+    if (!links.some((link) => link.leadSlot !== null)) {
+      throw new ConflictException(
+        'Every Lead Sentinel of this 1st circle is on pause — an alert can’t be raised',
+      );
+    }
+    return { circle, links };
+  }
+
+  // Creates the alert itself: its 1st-circle participants and their room.
+  // Telling them (SMS, notifications) is the caller's job. launchedById
+  // null: opened by the app itself (a missed Watch Mode check, tripId).
+  async openAlert(input: {
+    companionId: string;
+    circle: { id: string; label: string };
+    links: {
+      id: string;
+      canSendPhone: boolean;
+      leadSlot: LeadSlot | null;
+      linkAsSentinel: { id: string };
+    }[];
+    alertType: AlertType;
+    label: string;
+    messageAlert: string;
+    launchedById: string | null;
+    paidById: string | null;
+    tripId?: string;
+  }) {
+    const { circle, links } = input;
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.alert.create({
+        data: {
+          label: input.label,
+          messageAlert: input.messageAlert,
+          alertStatus: AlertStatus.LAUNCHED,
+          alertType: input.alertType,
+          launchedAt: new Date(),
+          launchedById: input.launchedById,
+          userCompanionId: input.companionId,
+          firstCircleId: circle.id,
+          paidById: input.paidById,
+          ...(input.tripId ? { tripId: input.tripId } : {}),
+        },
+      });
+
+      // The responsible Lead from the start: Lead 1 (lowest slot), decided
+      // in advance by the companion — never a choice made during the alert.
+      // Any other Lead can still take over later (claimLead).
+      const responsibleLinkId = links
+        .filter((link) => link.leadSlot !== null)
+        .sort((a, b) => a.leadSlot!.localeCompare(b.leadSlot!))[0]?.id;
+
+      for (const link of links) {
+        await tx.alertParticipant.create({
+          data: {
+            status: AlertParticipantStatus.WAITING,
+            circleId: circle.id,
+            circleName: circle.label,
+            canSendPhoneAtAlert: link.canSendPhone,
+            isLead: link.leadSlot !== null,
+            leadAssignedAt: link.id === responsibleLinkId ? new Date() : null,
+            requestedById: input.launchedById,
+            alertId: created.id,
+            userSentinelsId: link.id,
+          },
+        });
+      }
+
+      // The 1st circle's own group chat ("1st circle room"), scoped to this
+      // alert: every Sentinel of the 1st circle — and the person the alert
+      // is about, who can write there too (Sylvie's call, 2026-11).
+      await tx.conversation.create({
+        data: {
+          alertId: created.id,
+          participants: {
+            create: [
+              ...links.map((link) => ({ userId: link.linkAsSentinel.id })),
+              { userId: input.companionId },
+            ],
+          },
+        },
+      });
+
+      return created;
+    });
+  }
+
   // finalWord (optional): a few closing words ("All fine, thank you all")
   // — the stopper's status note, posted in every chat of the alert they're
   // in, and included in the end-of-alert SMS.
@@ -293,7 +344,9 @@ export class AlertService {
         },
       },
     });
-    if (!alert) throw new NotFoundException('Alert not found');
+    if (!alert || isWatch(alert)) {
+      throw new NotFoundException('Alert not found');
+    }
     if (alert.alertStatus === AlertStatus.RESOLVED) {
       throw new ConflictException('This alert is already closed');
     }
@@ -402,7 +455,7 @@ export class AlertService {
       where: { alertId, userSentinels: { userSentinelId: callerId } },
       include: { alert: { select: { alertStatus: true } } },
     });
-    if (!participant) {
+    if (!participant || isWatch(participant.alert)) {
       throw new NotFoundException('You have no participation on this alert');
     }
     if (!participant.isLead) {
@@ -436,7 +489,7 @@ export class AlertService {
       where: { alertId, userSentinels: { userSentinelId: callerId } },
       include: { alert: { select: { alertStatus: true } } },
     });
-    if (!participant) {
+    if (!participant || isWatch(participant.alert)) {
       throw new NotFoundException('You have no participation on this alert');
     }
     if (participant.alert.alertStatus === AlertStatus.RESOLVED) {
@@ -481,7 +534,7 @@ export class AlertService {
     const participations = await this.prisma.alertParticipant.findMany({
       where: {
         status: { not: AlertParticipantStatus.CLOSED },
-        alert: { alertStatus: { not: AlertStatus.RESOLVED } },
+        alert: { alertStatus: RUNNING_ALERT },
         userSentinels: { userSentinelId: userId },
       },
       select: { id: true, alertId: true, isLead: true },
@@ -505,7 +558,9 @@ export class AlertService {
     const alert = await this.prisma.alert.findUnique({
       where: { id: alertId },
     });
-    if (!alert) throw new NotFoundException('Alert not found');
+    if (!alert || isWatch(alert)) {
+      throw new NotFoundException('Alert not found');
+    }
     return alert;
   }
 
@@ -592,7 +647,9 @@ export class AlertService {
         },
       },
     });
-    if (!alert) throw new NotFoundException('Alert not found');
+    if (!alert || isWatch(alert)) {
+      throw new NotFoundException('Alert not found');
+    }
 
     await this.assertIsCompanionOrFirstCircleMember(
       callerId,
@@ -810,7 +867,7 @@ export class AlertService {
       },
       orderBy: { contactedAt: 'desc' },
     });
-    if (!participant) {
+    if (!participant || isWatch(participant.alert)) {
       throw new ForbiddenException('You have no participation on this alert');
     }
     return {
@@ -895,7 +952,9 @@ export class AlertService {
         },
       },
     });
-    if (!alert) throw new NotFoundException('Alert not found');
+    if (!alert || isWatch(alert)) {
+      throw new NotFoundException('Alert not found');
+    }
     if (callerId !== alert.userCompanionId) {
       throw new ForbiddenException(
         'Only the person the alert is about can share their position',
@@ -970,7 +1029,8 @@ export class AlertService {
   // historical participant roster on every minor note change would be noise.
   async notifyAlertParticipants(
     alertId: string,
-    notify?: { type: NotificationType; actorId: string },
+    // actorId unset: the app itself (a missed Watch Mode check).
+    notify?: { type: NotificationType; actorId?: string },
   ) {
     const alert = await this.prisma.alert.findUnique({
       where: { id: alertId },
@@ -1010,6 +1070,7 @@ export class AlertService {
   async listMyAlerts(callerId: string) {
     const alerts = await this.prisma.alert.findMany({
       where: {
+        alertStatus: NOT_A_WATCH,
         OR: [
           { userCompanionId: callerId },
           {
@@ -1055,7 +1116,7 @@ export class AlertService {
     const existing = await this.prisma.alert.findFirst({
       where: {
         userCompanionId: companionId,
-        alertStatus: { not: AlertStatus.RESOLVED },
+        alertStatus: RUNNING_ALERT,
       },
     });
     if (existing) {
@@ -1081,7 +1142,7 @@ export class AlertService {
     if (companion && isSubscribed(companion)) return null;
 
     const count = await this.prisma.alert.count({
-      where: { userCompanionId: companionId },
+      where: { userCompanionId: companionId, alertStatus: NOT_A_WATCH },
     });
     if (count < FREE_ALERT_TRIAL_LIMIT) return null;
     if (!payForThisAlert) throw new ForbiddenException(FREE_TRIAL_USED_UP);
@@ -1114,7 +1175,7 @@ export class AlertService {
   // An alert needs someone reachable to act on it. For yourself: your own
   // verified phone and a Lead with a phone. For a companion: a Lead with a
   // phone, or, when you are that Lead, another Sentinel with a phone.
-  private async assertAlertCanBeAnswered(
+  async assertAlertCanBeAnswered(
     callerId: string,
     companionId: string,
     companion: { phone: string | null; phoneVerifiedAt: Date | null } | null,

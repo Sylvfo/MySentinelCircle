@@ -14,6 +14,7 @@ import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { SentinelModule } from './sentinel/sentinel.module';
 import { AlertModule } from './alert/alert.module';
+import { WatchModule } from './watch/watch.module';
 import { OrganizationModule } from './organization/organization.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { SupportModule } from './support/support.module';
@@ -39,6 +40,7 @@ import { HealthController } from './health/health.controller';
     UserModule,
     SentinelModule,
     AlertModule,
+    WatchModule,
     OrganizationModule,
     MessagingModule,
     PrivacyModule,

@@ -19,6 +19,7 @@ import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { CircleType, LinkStatus, UserType, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NOT_A_WATCH } from '../common/running-alert';
 import { DEFAULT_CIRCLES } from '../sentinel/default-circles';
 import { DELETED_ACCOUNT_LABEL } from './user-status.util';
 import {
@@ -136,7 +137,9 @@ export class UserService {
     const subscribed = isSubscribed(user);
     const alertsUsed = subscribed
       ? 0
-      : await this.prisma.alert.count({ where: { userCompanionId: userId } });
+      : await this.prisma.alert.count({
+          where: { userCompanionId: userId, alertStatus: NOT_A_WATCH },
+        });
     return {
       hasPaid: subscribed,
       // Kept after it ends, to say "your subscription ended on …".
