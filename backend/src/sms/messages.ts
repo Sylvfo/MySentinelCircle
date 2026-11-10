@@ -1,28 +1,48 @@
 import type { Gender } from '@prisma/client';
-// Wording for every SMS the app sends. Kept in French only for now (the app
-// default language) since recipients may be non-app users with no locale — a
-// bilingual/Accept-Language pass is noted in Afaireplustard.txt (i18n backend).
+// Wording for every SMS the app sends, in the recipient's language (French or
+// English, User.language): an account holder's own choice in the app, or, for
+// someone without an account, the language of whoever invited them.
 //
 // Plain ASCII on purpose: an accent switches an SMS to a shorter length limit.
-// `inviter` / `requester` are a human-readable label for a User. There's no
-// display-name field on User yet, so callers pass the email or phone.
+// `inviter` / `requester` are a human-readable label for a User (their first
+// name, else their number).
 
-import { alertQuestionText, repliesFor } from '../alert/alert-replies';
-import type { AlertQuestionKind } from '../alert/alert-replies';
+import {
+  alertQuestionText,
+  repliesFor,
+  replyLabel,
+} from '../alert/alert-replies';
+import type { AlertQuestionKind, SmsLang } from '../alert/alert-replies';
 import { normalizeSmsText } from './normalize-sms';
+
+export type { SmsLang } from '../alert/alert-replies';
 
 const APP = 'MySentinelCircle';
 const SITE = 'mysentinelcircle.ch';
 const LOGIN_LINK = `${SITE}/a`;
 
-// Me -> Sentinel: sent to the invited person when "Me" adds them to a circle.
+// A stored language (User.language) as an SMS language: French unless English.
+export function smsLang(language: string | null | undefined): SmsLang {
+  return language === 'en' ? 'en' : 'fr';
+}
+
 // Invited into a group: with an account, they answer in the app; without
 // one, they first create it with this same number (the invitation waits).
 export function groupInvitationSms(
   inviter: string,
   group: string,
   hasAccount: boolean,
+  lang: SmsLang = 'fr',
 ): string {
+  if (lang === 'en') {
+    return (
+      `${inviter} invites you to the group ${group} on ${APP}, ` +
+      `a mutual-aid network where everyone watches over the others. ` +
+      (hasAccount
+        ? `Sign in to accept or decline: ${SITE}`
+        : `Create your account with this number to join the group: ${SITE}`)
+    );
+  }
   return (
     `${inviter} vous invite dans le groupe ${group} sur ${APP}, ` +
     `un reseau d'entraide ou chacun.e veille sur les autres. ` +
@@ -32,7 +52,20 @@ export function groupInvitationSms(
   );
 }
 
-export function sentinelInvitationSms(inviter: string): string {
+// Me -> Sentinel: sent to the invited person when "Me" adds them to a circle.
+export function sentinelInvitationSms(
+  inviter: string,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return (
+      `${inviter} chose you as a Sentinel on ${APP}, ` +
+      `a mutual-aid network that alerts your loved ones in an emergency. ` +
+      `No account needed. ` +
+      `Reply YES to accept, NO to decline, ` +
+      `STOP to never be contacted again (your number will be erased). ${SITE}`
+    );
+  }
   return (
     `${inviter} vous a choisi.e comme Sentinel sur ${APP}, ` +
     `un reseau d'entraide qui previent vos proches en cas d'urgence. ` +
@@ -44,7 +77,16 @@ export function sentinelInvitationSms(inviter: string): string {
 
 // Confirmation to the Sentinel once they accept. The one moment INFO is
 // announced to someone who may never open the app.
-export function sentinelAcceptedSms(inviter: string): string {
+export function sentinelAcceptedSms(
+  inviter: string,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return (
+      `Done: you are now a Sentinel of ${inviter} on ${APP}. Thank you!\n` +
+      `Send INFO to learn more, STOP to quit.\n${SITE}`
+    );
+  }
   return (
     `C'est note : vous etes desormais Sentinel de ${inviter} sur ${APP}. Merci !\n` +
     `Envoyez INFO pour en savoir plus, STOP pour arreter.\n${SITE}`
@@ -52,18 +94,36 @@ export function sentinelAcceptedSms(inviter: string): string {
 }
 
 // Confirmation to the Sentinel once they decline.
-export function sentinelDeclinedSms(inviter: string): string {
+export function sentinelDeclinedSms(
+  inviter: string,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return `You declined the invitation from ${inviter} on ${APP}. Nothing more is needed from you. ${SITE}`;
+  }
   return `Vous avez refuse l'invitation de ${inviter} sur ${APP}. Aucune action de votre part n'est requise. ${SITE}`;
 }
 
 // Sent to "Me" when their only Lead Sentinel is gone: without a Lead, no alert
 // can be raised.
-export function lastLeadLeftSms(): string {
+export function lastLeadLeftSms(lang: SmsLang = 'fr'): string {
+  if (lang === 'en') {
+    return `You no longer have a Lead Sentinel on ${APP}. Without a Lead, your network can't work in an alert. Choose one: ${SITE}`;
+  }
   return `Vous n'avez plus de Lead Sentinel sur ${APP}. Sans Lead, votre reseau ne peut pas fonctionner en cas d'alerte. Designez-en un : ${SITE}`;
 }
 
 // Reply to the last Lead sending STOP: the circle would be left without one.
-export function lastLeadCannotLeaveSms(companionLabel: string): string {
+export function lastLeadCannotLeaveSms(
+  companionLabel: string,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return (
+      `${companionLabel} has no other Lead Sentinel: without a Lead, their network doesn't work. ` +
+      `We are asking them to choose one, then send STOP again. ${SITE}`
+    );
+  }
   return (
     `${companionLabel} n'a pas d'autre Lead Sentinel : sans Lead, son reseau ne fonctionne pas. ` +
     `Nous lui demandons d'en designer un, puis renvoyez STOP. ${SITE}`
@@ -71,7 +131,16 @@ export function lastLeadCannotLeaveSms(companionLabel: string): string {
 }
 
 // Sent to "Me" when their last Lead asks to leave.
-export function lastLeadWantsToLeaveSms(sentinelLabel: string): string {
+export function lastLeadWantsToLeaveSms(
+  sentinelLabel: string,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return (
+      `${sentinelLabel} wants to stop being a Lead Sentinel on ${APP}. ` +
+      `Without a Lead, your network can't work. Choose another one: ${SITE}`
+    );
+  }
   return (
     `${sentinelLabel} souhaite arreter d'etre Lead Sentinel sur ${APP}. ` +
     `Sans Lead, votre reseau ne peut pas fonctionner. Designez-en un autre : ${SITE}`
@@ -79,7 +148,13 @@ export function lastLeadWantsToLeaveSms(sentinelLabel: string): string {
 }
 
 // Confirmation to the Sentinel who just opted out.
-export function sentinelLeaveConfirmSms(ownerLabel: string): string {
+export function sentinelLeaveConfirmSms(
+  ownerLabel: string,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return `Done: you are no longer a Sentinel of ${ownerLabel} on ${APP}. ${SITE}`;
+  }
   return `C'est note : vous n'etes plus Sentinel de ${ownerLabel} sur ${APP}. ${SITE}`;
 }
 
@@ -87,14 +162,27 @@ function numberedNames(names: string[]): string {
   return names.map((name, index) => `${index + 1} ${name}`).join('\n');
 }
 
-function stopChoices(names: string[]): string {
-  return names.map((_, index) => `STOP ${index + 1}`).join(' ou ');
+function stopChoices(names: string[], lang: SmsLang): string {
+  return names
+    .map((_, index) => `STOP ${index + 1}`)
+    .join(lang === 'en' ? ' or ' : ' ou ');
 }
 
 // Reply to INFO.
-export function sentinelInfoSms(names: string[], hasAccount: boolean): string {
+export function sentinelInfoSms(
+  names: string[],
+  hasAccount: boolean,
+  lang: SmsLang = 'fr',
+): string {
+  const stop = names.length > 1 ? stopChoices(names, lang) : 'STOP';
+  if (lang === 'en') {
+    const noAccount = hasAccount ? '' : 'No account. ';
+    return (
+      `${APP}: you are a Sentinel of:\n${numberedNames(names)}\n` +
+      `${noAccount}To quit: ${stop}. ${SITE}`
+    );
+  }
   const noAccount = hasAccount ? '' : 'Pas de compte. ';
-  const stop = names.length > 1 ? stopChoices(names) : 'STOP';
   return (
     `${APP} : vous etes Sentinel de :\n${numberedNames(names)}\n` +
     `${noAccount}Pour arreter : ${stop}. ${SITE}`
@@ -103,16 +191,31 @@ export function sentinelInfoSms(names: string[], hasAccount: boolean): string {
 
 // Reply to a bare STOP from someone following several people: nobody is
 // removed until they say who.
-export function stopChoiceSms(names: string[]): string {
+export function stopChoiceSms(names: string[], lang: SmsLang = 'fr'): string {
+  if (lang === 'en') {
+    return (
+      `You watch over several people:\n${numberedNames(names)}\n` +
+      `Reply ${stopChoices(names, lang)}. ${SITE}`
+    );
+  }
   return (
     `Vous suivez plusieurs personnes :\n${numberedNames(names)}\n` +
-    `Repondez ${stopChoices(names)}. ${SITE}`
+    `Repondez ${stopChoices(names, lang)}. ${SITE}`
   );
 }
 
 // Reply when several people are waiting for an answer and the SMS doesn't say
 // which one. Homonyms can't be told apart here, hence the login link.
-export function severalRequestsSms(examples: string[]): string {
+export function severalRequestsSms(
+  examples: string[],
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return (
+      `Several requests are waiting. Reply with the first name: ${examples.join(' or ')}.\n` +
+      `Or sign in: ${LOGIN_LINK}`
+    );
+  }
   return (
     `Plusieurs demandes en cours. Repondez avec le prenom : ${examples.join(' ou ')}.\n` +
     `Ou connectez-vous : ${LOGIN_LINK}`
@@ -120,7 +223,10 @@ export function severalRequestsSms(examples: string[]): string {
 }
 
 // Reply to a message that matches nothing, outside any alert.
-export function smsHelpSms(): string {
+export function smsHelpSms(lang: SmsLang = 'fr'): string {
+  if (lang === 'en') {
+    return `Send INFO to see your loved ones, STOP to quit.`;
+  }
   return `Envoyez INFO pour voir vos proches, STOP pour arreter.`;
 }
 
@@ -133,7 +239,18 @@ export function alertRaisedSms(
   companionFullName: string,
   mapUrl?: string,
   sharedBy?: string,
+  lang: SmsLang = 'fr',
 ): string {
+  if (lang === 'en') {
+    const position = sharedBy
+      ? `Position of ${sharedBy} (who raised the alert): ${mapUrl}\n`
+      : `Their position: ${mapUrl}\n`;
+    return (
+      `${APP}: alert for ${companionFullName}, whose Sentinel you are.\n` +
+      (mapUrl ? position : '') +
+      `Can you take care of it now? Answer in the app: ${LOGIN_LINK}`
+    );
+  }
   const position = sharedBy
     ? `Position de ${sharedBy} (qui a lance l'alerte) : ${mapUrl}\n`
     : `Sa position : ${mapUrl}\n`;
@@ -145,7 +262,16 @@ export function alertRaisedSms(
 }
 
 // Sent directly to "Me" when a Sentinel raises an alert on their behalf.
-export function alertRaisedToCompanionSms(raiserLabel: string): string {
+export function alertRaisedToCompanionSms(
+  raiserLabel: string,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return (
+      `${raiserLabel} raised an alert about you on ${APP}. ` +
+      `Your 1st circle has been told. ${SITE}`
+    );
+  }
   return (
     `${raiserLabel} a declenche une alerte vous concernant sur ${APP}. ` +
     `Votre 1er cercle a ete prevenu. ${SITE}`
@@ -158,7 +284,16 @@ export function alertRaisedToCompanionSms(raiserLabel: string): string {
 export function alertClosedSms(
   companionLabel: string,
   finalWord?: string | null,
+  lang: SmsLang = 'fr',
 ): string {
+  if (lang === 'en') {
+    return (
+      `The alert about ${companionLabel} on ${APP} is over` +
+      (finalWord ? `: ${finalWord}\n` : '. ') +
+      `Thank you for your help.\n` +
+      `Send INFO to learn more.\n${SITE}`
+    );
+  }
   return (
     `L'alerte concernant ${companionLabel} sur ${APP} est terminee` +
     (finalWord ? ` : ${finalWord}\n` : '. ') +
@@ -168,21 +303,32 @@ export function alertClosedSms(
 }
 
 // Sent to "Me" when the 1st circle (not "Me" themself) closed the alert.
-export function alertClosedToCompanionSms(): string {
+export function alertClosedToCompanionSms(lang: SmsLang = 'fr'): string {
+  if (lang === 'en') {
+    return `Your 1st circle closed the alert about you on ${APP}. ${SITE}`;
+  }
   return `Votre 1er cercle a cloture l'alerte vous concernant sur ${APP}. ${SITE}`;
 }
 
-function alertReplyChoices(kind: AlertQuestionKind): string {
+function alertReplyChoices(kind: AlertQuestionKind, lang: SmsLang): string {
   const replies = repliesFor(kind);
-  if (replies.length === 0) return 'Ou repondez ici en quelques mots';
+  if (replies.length === 0) {
+    return lang === 'en'
+      ? 'Or reply here in a few words'
+      : 'Ou repondez ici en quelques mots';
+  }
   const choices = replies.map(
-    (reply, index) => `${index + 1} ${reply.smsLabel}`,
+    (reply, index) => `${index + 1} ${replyLabel(reply, lang)}`,
   );
-  return `Ou repondez : ${choices.join(', ')}`;
+  return lang === 'en'
+    ? `Or reply: ${choices.join(', ')}`
+    : `Ou repondez : ${choices.join(', ')}`;
 }
 
-function alertReplyPrompt(kind: AlertQuestionKind): string {
-  return `Connectez-vous : ${LOGIN_LINK}\n${alertReplyChoices(kind)}`;
+function alertReplyPrompt(kind: AlertQuestionKind, lang: SmsLang): string {
+  const signIn = lang === 'en' ? 'Sign in' : 'Connectez-vous';
+  const colon = lang === 'en' ? ':' : ' :';
+  return `${signIn}${colon} ${LOGIN_LINK}\n${alertReplyChoices(kind, lang)}`;
 }
 
 // One question asked to an outer-circle Sentinel during an alert.
@@ -191,10 +337,15 @@ export function alertQuestionSms(
   kind: AlertQuestionKind,
   // How to speak about them ("la voir" / "le voir"); unset = "la".
   about?: { firstName: string; gender: Gender | null },
+  lang: SmsLang = 'fr',
 ): string {
+  const head =
+    lang === 'en'
+      ? `${APP}: alert ${companionFullName}`
+      : `${APP} : alerte ${companionFullName}`;
   return (
-    `${APP} : alerte ${companionFullName}\n${alertQuestionText(kind, about)}\n` +
-    alertReplyPrompt(kind)
+    `${head}\n${alertQuestionText(kind, about, lang)}\n` +
+    alertReplyPrompt(kind, lang)
   );
 }
 
@@ -202,7 +353,16 @@ export function alertQuestionSms(
 export function alertReplyAckSms(
   companionLabel: string,
   kind: AlertQuestionKind,
+  lang: SmsLang = 'fr',
 ): string {
+  if (lang === 'en') {
+    const ack = `Thank you, noted for ${companionLabel}.`;
+    if (repliesFor(kind).length === 0) return ack;
+    return (
+      `${ack} To change your mind, sign in: ${LOGIN_LINK}\n` +
+      `Or reply 1, 2 or 3.`
+    );
+  }
   const ack = `Merci, c'est note pour ${companionLabel}.`;
   if (repliesFor(kind).length === 0) return ack;
   return (
@@ -212,14 +372,24 @@ export function alertReplyAckSms(
 }
 
 // Sent back when an alert SMS reply can't be understood.
-export function alertReplyHelpSms(kind: AlertQuestionKind): string {
-  return alertReplyPrompt(kind);
+export function alertReplyHelpSms(
+  kind: AlertQuestionKind,
+  lang: SmsLang = 'fr',
+): string {
+  return alertReplyPrompt(kind, lang);
 }
 
 // Sent to every opted-in recipient once a death is confirmed. Deliberately
 // neither the name nor the announcement: the news must not arrive in a
 // notification preview, it waits behind the login.
-export function deathNoticeSms(): string {
+export function deathNoticeSms(lang: SmsLang = 'fr'): string {
+  if (lang === 'en') {
+    return (
+      `${APP}: a death has been reported to us.\n` +
+      `The person had put you on their list.\n` +
+      `Sign in with your number: ${LOGIN_LINK}`
+    );
+  }
   return (
     `${APP} : un deces nous a ete signale.\n` +
     `La personne vous avait mis sur sa liste.\n` +
@@ -227,8 +397,57 @@ export function deathNoticeSms(): string {
   );
 }
 
-export function otpSms(code: string): string {
+export function otpSms(code: string, lang: SmsLang = 'fr'): string {
+  if (lang === 'en') {
+    return `Your ${APP} sign-in code: ${code}. Valid for 10 minutes. Never share it.`;
+  }
   return `Votre code de connexion ${APP} : ${code}. Valable 10 minutes. Ne le donnez a personne.`;
+}
+
+// Lost phone (account recovery through the 1st circle) ---------------------
+
+// To each Lead (and possible second confirmer) of the person's 1st circle.
+export function phoneRecoveryRequestedSms(
+  label: string,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return (
+      `${APP}: ${label} says they lost their phone and asks to change their number. ` +
+      `Check with them yourself before confirming in the app, otherwise refuse: ${LOGIN_LINK}`
+    );
+  }
+  return (
+    `${APP} : ${label} dit avoir perdu son telephone et demande a changer de numero. ` +
+    `Verifiez avec elle avant de confirmer dans l'app, sinon refusez : ${LOGIN_LINK}`
+  );
+}
+
+// To the old number: if the phone isn't lost, its owner learns someone asked.
+export function phoneRecoveryOldNumberSms(lang: SmsLang = 'fr'): string {
+  if (lang === 'en') {
+    return `${APP}: someone asked to move your account to a new number. If it wasn't you, sign in and tell your 1st circle: ${SITE}`;
+  }
+  return `${APP} : quelqu'un a demande a passer votre compte sur un nouveau numero. Si ce n'est pas vous, connectez-vous et prevenez votre 1er cercle : ${SITE}`;
+}
+
+// To the new number once the 1st circle confirmed: the code that finishes it.
+export function phoneRecoveryCodeSms(
+  code: string,
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    return `${APP}: your 1st circle confirmed it's you. Code to confirm your new number: ${code}. Valid for 10 minutes.`;
+  }
+  return `${APP} : votre 1er cercle a confirme que c'est vous. Code pour valider votre nouveau numero : ${code}. Valable 10 minutes.`;
+}
+
+// To the new number when a confirmer refused.
+export function phoneRecoveryRefusedSms(lang: SmsLang = 'fr'): string {
+  if (lang === 'en') {
+    return `${APP}: your request to change your number was not confirmed by your 1st circle. ${SITE}`;
+  }
+  return `${APP} : votre demande de changement de numero n'a pas ete confirmee par votre 1er cercle. ${SITE}`;
 }
 
 // Reply-keyword parsing for SMS accept/decline. Matching is done on

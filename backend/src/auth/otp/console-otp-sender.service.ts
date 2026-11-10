@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OtpSender } from './otp-sender.interface';
-import { otpSms } from '../../sms/messages';
+import { otpSms, smsLang } from '../../sms/messages';
 import { isProduction, maskPhone } from '../../common/log-redact';
 
 // Dev stub — logs the code instead of sending a real SMS, and best-effort
@@ -14,7 +14,11 @@ export class ConsoleOtpSenderService implements OtpSender {
 
   constructor(private readonly config: ConfigService) {}
 
-  async send(phone: string, code: string): Promise<void> {
+  async send(
+    phone: string,
+    code: string,
+    language?: string | null,
+  ): Promise<void> {
     // Never log a usable code or the full number in production.
     this.logger.log(
       isProduction()
@@ -31,7 +35,7 @@ export class ConsoleOtpSenderService implements OtpSender {
         body: JSON.stringify({
           channel: 'otp',
           to: phone,
-          body: otpSms(code),
+          body: otpSms(code, smsLang(language)),
         }),
         signal: AbortSignal.timeout(2000),
       });

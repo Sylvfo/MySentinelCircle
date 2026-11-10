@@ -4,6 +4,9 @@ import { sendImageMessage, sendMessage } from '../api/messaging';
 import { EmojiButton } from './EmojiButton';
 import { useAction } from '../useAction';
 
+// Backend refusal (messaging.service.ts CONTACT_DETAILS_REFUSED).
+const CONTACT_DETAILS_REFUSED = 'Phone numbers and email addresses cannot be shared in this alert chat';
+
 // The "+" button and its menu (a photo now, the GPS position later). It
 // only opens the menu: the caller owns the hidden file input.
 export function AttachMenu({ disabled, onPickPhoto }: { disabled?: boolean; onPickPhoto: () => void }) {
@@ -64,7 +67,10 @@ export function ChatComposer({
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
-  const { busy: sending, run } = useAction({ onError });
+  const { busy: sending, run } = useAction({
+    // The backend's refusal of a number or an email in an alert chat.
+    onError: (message) => onError(message === CONTACT_DETAILS_REFUSED ? t('conversation.contactDetailsRefused') : message),
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const send = (action: () => Promise<unknown>) =>

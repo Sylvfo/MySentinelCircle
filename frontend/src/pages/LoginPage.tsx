@@ -97,13 +97,15 @@ export function LoginPage() {
         </button>
       </form>
 
-      {/* Two ways in without the password: a code by SMS (phone), or the
-          reset link by email (ForgotPasswordPage). */}
+      {/* Ways in without the password: a code by SMS (phone), the reset
+          link by email (ForgotPasswordPage), or, phone lost, the 1st circle
+          vouching for them (RecoverPhonePage). */}
       <div className="login-help">
         <button type="button" className="link-button" disabled={submitting} onClick={handleCodeRequest}>
           {t('auth.getSmsCode')}
         </button>
         <Link to="/forgot-password">{t('auth.forgotPasswordEmail')}</Link>
+        <Link to="/recover-phone">{t('auth.recover.link')}</Link>
       </div>
 
       <div className="auth-divider">{t('common.or')}</div>

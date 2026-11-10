@@ -95,6 +95,16 @@ export interface CompanionDeathNotice {
   canReport: boolean;
 }
 
+// They lost their phone and ask their 1st circle to vouch for them
+// (PhoneRecoveryService). Only shown to their 1st circle.
+export interface CompanionPhoneRecovery {
+  newPhone: string;
+  requestedAt: string;
+  confirmedByMe: boolean;
+  // Two people confirmed: the code went to the new number.
+  codeSent: boolean;
+}
+
 export interface Companion {
   linkId: string;
   sentinelType: SentinelType;
@@ -127,6 +137,7 @@ export interface Companion {
     gender: Gender | null;
     isLead: boolean;
   }[];
+  phoneRecovery: CompanionPhoneRecovery | null;
   deathNotice: CompanionDeathNotice;
 }
 
@@ -221,6 +232,14 @@ export const confirmDeath = (companionId: string) =>
 
 export const rejectDeathReport = (companionId: string) =>
   apiPost<{ rejected: true }>(`/sentinel/companions/${companionId}/death-notice/reject`, {});
+
+// ---- Lost phone (vouched for by their 1st circle) ---------------------------
+
+export const confirmPhoneRecovery = (companionId: string) =>
+  apiPost<{ confirmations: 1 | 2 }>(`/sentinel/companions/${companionId}/phone-recovery/confirm`, {});
+
+export const rejectPhoneRecovery = (companionId: string) =>
+  apiPost<{ rejected: true }>(`/sentinel/companions/${companionId}/phone-recovery/reject`, {});
 
 export interface DeathNoticeAnnouncement {
   announcementMessage: string;

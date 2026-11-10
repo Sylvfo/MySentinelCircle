@@ -95,7 +95,24 @@
     "phoneOrEmailPlaceholder": "+41791234567 or name@mail.com",
     "getSmsCode": "Get a code by SMS",
     "forgotPasswordEmail": "Forgot your password? Get a link by email",
-    "smsCodeNeedsPhone": "Enter your phone number above to get a code by SMS."
+    "smsCodeNeedsPhone": "Enter your phone number above to get a code by SMS.",
+    "recover": {
+      "link": "I lost my phone",
+      "title": "Lost phone",
+      "intro": "Your account moves to your new number once two people of your 1st circle (at least one a Lead Sentinel) confirm in the app that it's really you. Let them know. The code then comes by SMS to the new number.",
+      "oldPhone": "Old number (the account's)",
+      "newPhone": "New number",
+      "submit": "Ask my 1st circle",
+      "haveCode": "I already got a code",
+      "asked": "If this number has an account, your 1st circle got an SMS. As soon as two people confirm, you get a code on your new number, valid for 10 minutes.",
+      "codeHint": "Code expired or not received? Ask again with the same numbers: if your 1st circle already confirmed, a new code is sent.",
+      "again": "Ask again",
+      "done": "Done: your account now uses your new number. All your devices were signed out, sign in again.",
+      "noCode": "No code pending for this number. Your 1st circle may not have confirmed yet.",
+      "invalidCode": "Wrong code.",
+      "numberTaken": "This new number already has an account.",
+      "askAgain": "This code doesn't work any more. Ask again to get a new one."
+    }
   },
   "dashboard": {
     "title": "Dashboard",
@@ -272,7 +289,8 @@
     "sections": {
       "myPlace": "My place",
       "firstCircle": "Also in {{name}}'s 1st circle",
-      "deathNotice": "Death notice"
+      "deathNotice": "Death notice",
+      "phoneRecovery": "Lost phone"
     },
     "firstCircleAlone": "Nobody else in this 1st circle for now.",
     "firstCircleLead": "Lead",
@@ -344,6 +362,16 @@
       "inReserve": "You are in {{name}}'s reserve: you aren't contacted for their alerts. Only {{name}} can put you back in a circle.",
       "inReserve_female": "You are in {{name}}'s reserve: you aren't contacted for her alerts. Only {{name}} can put you back in a circle.",
       "inReserve_male": "You are in {{name}}'s reserve: you aren't contacted for his alerts. Only {{name}} can put you back in a circle."
+    },
+    "phoneRecovery": {
+      "asks": "{{name}} says they lost their phone and asks to move their account to {{phone}}.",
+      "checkFirst": "Check with {{name}} by voice or in person before confirming. Two confirmations are needed, at least one from a Lead Sentinel.",
+      "confirm": "It's really them",
+      "reject": "Refuse",
+      "waitingSecond": "You confirmed. Waiting for a second person of the 1st circle.",
+      "codeSent": "Two people confirmed: the code was sent to the new number.",
+      "needsLead": "A Lead Sentinel must confirm too: neither you nor the first person is a Lead.",
+      "numberTaken": "This new number already has an account: it cannot be confirmed."
     }
   },
   "alerts": {
@@ -785,7 +813,8 @@
     "meNotForThem": "You don't watch over {{name}}",
     "roleCircle": "Sentinel",
     "chipLead": "Lead · 1st circle",
-    "chipFirstCircle": "1st circle"
+    "chipFirstCircle": "1st circle",
+    "contactDetailsRefused": "This message contains a phone number or an email address. The person the alert is about doesn't want them exchanged: please write it without."
   },
   "notifications": {
     "title": "Notifications",
@@ -944,7 +973,9 @@
       "unknownDevice": "Unknown device",
       "signOutEverywhere": "Sign me out of all my devices",
       "signOutConfirm": "All your devices will be signed out, this one too. You'll have to sign in again everywhere."
-    }
+    },
+    "alertContactSharing": "During an alert, my Sentinels may exchange their phone number or email",
+    "alertContactSharingHint": "Off: alert chats refuse phone numbers and email addresses between your Sentinels, so they stay in touch inside the app."
   },
   "welcome": {
     "title": "Welcome",

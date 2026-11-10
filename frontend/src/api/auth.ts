@@ -59,6 +59,13 @@ export const requestPasswordReset = (email: string) =>
 export const confirmPasswordReset = (token: string, newPassword: string) =>
   apiPost<{ message: string }>('/auth/password-reset/confirm', { token, newPassword });
 
+// Lost phone: the 1st circle confirms in the app, then a code to the new number.
+export const requestPhoneRecovery = (phone: string, newPhone: string) =>
+  apiPost<{ message: string }>('/auth/phone-recovery/request', { phone, newPhone });
+
+export const verifyPhoneRecovery = (newPhone: string, code: string) =>
+  apiPost<{ message: string }>('/auth/phone-recovery/verify', { newPhone, code });
+
 // Dev-only — backend refuses in production regardless.
 
 export type LoginMethod = 'EMAIL_PASSWORD' | 'PHONE_PASSWORD' | 'GOOGLE' | 'SMS_CODE';

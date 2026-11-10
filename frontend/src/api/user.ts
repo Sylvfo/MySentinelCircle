@@ -16,6 +16,11 @@ export interface Me {
   // General switch: during an alert, may my Sentinels of other circles chat
   // with my 1st circle? Off = nobody; on = each circle decides.
   alertChatWithFirstCircle: boolean;
+  // Language of the SMS I receive ("fr" / "en"; null = French until synced).
+  language: 'fr' | 'en' | null;
+  // May my Sentinels give each other a phone number or email during an
+  // alert about me? Off: refused in my alert chats.
+  alertContactSharing: boolean;
   // Nobody else may raise an alert about me (I still can).
   pausedForMe: boolean;
   // I can't be asked to take part in any alert.
@@ -69,7 +74,15 @@ export const updateProfile = (
   dto: Partial<
     Pick<
       Me,
-      'firstName' | 'lastName' | 'userName' | 'isMajor' | 'publicStatus' | 'alertChatWithFirstCircle' | 'gender'
+      | 'firstName'
+      | 'lastName'
+      | 'userName'
+      | 'isMajor'
+      | 'publicStatus'
+      | 'alertChatWithFirstCircle'
+      | 'gender'
+      | 'language'
+      | 'alertContactSharing'
     >
   >,
 ) => apiPatch<Me>('/user/me', dto);

@@ -48,6 +48,8 @@ import {
   getUserOrThrow,
   userLabel,
 } from './sentinel-helpers';
+import { smsLang } from '../sms/messages';
+import { pendingRecoveryPhone } from './phone-recovery.service';
 
 const ACTIVE_STATUSES: LinkStatus[] = [LinkStatus.PENDING, LinkStatus.ACCEPTED];
 // A 1st circle handles an alert together, live: kept small (Sylvie's call).
@@ -229,6 +231,7 @@ export class SentinelService {
       this.prisma,
       phone,
       dto.name,
+      inviter.language,
     );
 
     const link = await this.createOrReactivateLink({
@@ -241,7 +244,10 @@ export class SentinelService {
       requestedAsLead: dto.requestedAsLead,
     });
 
-    await this.sms.send(phone, sentinelInvitationSms(userLabel(inviter)));
+    await this.sms.send(
+      phone,
+      sentinelInvitationSms(userLabel(inviter), smsLang(sentinelUser.language)),
+    );
     await this.notifications.create({
       userId: sentinelUser.id,
       type: NotificationType.SENTINEL_INVITATION_RECEIVED,
@@ -409,6 +415,7 @@ export class SentinelService {
     if (link.userSentinelId !== userId) {
       throw new ForbiddenException('This proposal is not addressed to you');
     }
+    assertNotDeceased(link.userCompanion, 'This companion');
     if (!link.proposedCircleId) {
       throw new ConflictException('No pending circle move for this link');
     }
@@ -437,6 +444,15 @@ export class SentinelService {
     return this.applyResponse(link, accept, true);
   }
 
+  // The language of the SMS sent to this number (null = French).
+  async languageByPhone(phone: string): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { phone },
+      select: { language: true },
+    });
+    return user?.language ?? null;
+  }
+
   // Oldest first, so the numbers in an INFO reply stay the same between two
   // messages.
   listActiveLinksByPhone(phone: string) {
@@ -460,6 +476,7 @@ export class SentinelService {
     if (link.status !== LinkStatus.ACCEPTED) {
       throw new ConflictException('This link is not active');
     }
+    assertNotDeceased(link.userCompanion, 'This companion');
     return link;
   }
 
@@ -547,6 +564,10 @@ export class SentinelService {
                 status: true,
                 deathReportedAt: true,
                 deathReportedById: true,
+                pendingPhone: true,
+                phoneRecoveryRequestedAt: true,
+                phoneRecoveryConfirmedById: true,
+                otpCodeHash: true,
               },
             },
           },
@@ -738,6 +759,19 @@ export class SentinelService {
         firstCircleMembers: isPrimary
           ? (firstCircleMembersByCircle.get(l.circle.id) ?? [])
           : [],
+        // Lost phone: asking their 1st circle to confirm it's them.
+        phoneRecovery: (() => {
+          const newPhone = isPrimary ? pendingRecoveryPhone(companion) : null;
+          return newPhone
+            ? {
+                newPhone,
+                requestedAt: companion.phoneRecoveryRequestedAt,
+                confirmedByMe: companion.phoneRecoveryConfirmedById === userId,
+                // Both confirmations in: the code went to the new number.
+                codeSent: companion.otpCodeHash !== null,
+              }
+            : null;
+        })(),
         deathNotice: {
           isDeceased,
           pending,
@@ -1051,11 +1085,17 @@ export class SentinelService {
     if (viaSms) {
       await this.sendSms(
         link.linkAsSentinel.phone,
-        sentinelLeaveConfirmSms(userLabel(link.userCompanion)),
+        sentinelLeaveConfirmSms(
+          userLabel(link.userCompanion),
+          smsLang(link.linkAsSentinel.language),
+        ),
       );
     }
     if (isLastLead) {
-      await this.sendSms(link.userCompanion.phone, lastLeadLeftSms());
+      await this.sendSms(
+        link.userCompanion.phone,
+        lastLeadLeftSms(smsLang(link.userCompanion.language)),
+      );
     }
     return updated;
   }
@@ -1069,11 +1109,17 @@ export class SentinelService {
       const sentinelLabel = userLabel(link.linkAsSentinel);
       await this.sendSms(
         link.linkAsSentinel.phone,
-        lastLeadCannotLeaveSms(companionLabel),
+        lastLeadCannotLeaveSms(
+          companionLabel,
+          smsLang(link.linkAsSentinel.language),
+        ),
       );
       await this.sendSms(
         link.userCompanion.phone,
-        lastLeadWantsToLeaveSms(sentinelLabel),
+        lastLeadWantsToLeaveSms(
+          sentinelLabel,
+          smsLang(link.userCompanion.language),
+        ),
       );
       return false;
     }
@@ -1132,8 +1178,14 @@ export class SentinelService {
       await this.sendSms(
         link.linkAsSentinel.phone,
         accept
-          ? sentinelAcceptedSms(companionLabel)
-          : sentinelDeclinedSms(companionLabel),
+          ? sentinelAcceptedSms(
+              companionLabel,
+              smsLang(link.linkAsSentinel.language),
+            )
+          : sentinelDeclinedSms(
+              companionLabel,
+              smsLang(link.linkAsSentinel.language),
+            ),
       );
     }
 
@@ -1172,6 +1224,7 @@ export class SentinelService {
         linkAsSentinel: {
           select: { userType: true, phone: true, firstName: true },
         },
+        userCompanion: { select: { status: true } },
       },
     });
     if (!link) throw new NotFoundException('Membership not found');
@@ -1180,6 +1233,8 @@ export class SentinelService {
         'This Sentinel is not in one of your circles',
       );
     }
+    // A confirmed death freezes the circles as they were.
+    assertNotDeceased(link.userCompanion, 'This companion');
     return link;
   }
 

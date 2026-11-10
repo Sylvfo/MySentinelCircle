@@ -9,22 +9,33 @@ import type { PrismaService } from '../prisma/prisma.service';
 // separate Contact model) — a phone-only Sentinel is a User with
 // userType ONLY_SMS. Phone is globally unique, so this is a single lookup,
 // not scoped per companion like the old Contact list was.
+// `language`: the inviter's, for the SMS sent to someone without an account
+// (kept if they already have one).
 export async function findOrCreateUserByPhone(
   prisma: PrismaService,
   phone: string,
   name: string,
+  language?: string | null,
 ): Promise<User> {
   const existing = await prisma.user.findUnique({ where: { phone } });
   // A number that only ever started a phone login has no name yet.
   if (existing?.firstName === '') {
     return prisma.user.update({
       where: { id: existing.id },
-      data: { firstName: name },
+      data: {
+        firstName: name,
+        ...(existing.language ? {} : { language: language ?? null }),
+      },
     });
   }
   if (existing) return existing;
   return prisma.user.create({
-    data: { phone, firstName: name, userType: UserType.ONLY_SMS },
+    data: {
+      phone,
+      firstName: name,
+      userType: UserType.ONLY_SMS,
+      language: language ?? null,
+    },
   });
 }
 

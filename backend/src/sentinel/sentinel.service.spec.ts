@@ -13,6 +13,7 @@ import {
   LinkStatus,
   NotificationType,
   SentinelType,
+  UserStatus,
   UserType,
 } from '@prisma/client';
 import { SentinelService } from './sentinel.service';
@@ -973,6 +974,7 @@ describe('SentinelService', () => {
             phone: '+41790000009',
             firstName: 'Dan',
             userType: UserType.ONLY_SMS,
+            language: null,
           },
         });
         // No trust-chain check on this path.
@@ -2207,7 +2209,9 @@ describe('SentinelService', () => {
           status: LinkStatus.ACCEPTED,
           notifyOnDeath: true,
         },
-        include: { linkAsSentinel: { select: { id: true, phone: true } } },
+        include: {
+          linkAsSentinel: { select: { id: true, phone: true, language: true } },
+        },
       });
       // Neither the name nor the announcement: they wait behind the login.
       expect(sms.send).toHaveBeenCalledWith(
@@ -2378,6 +2382,7 @@ describe('SentinelService', () => {
               isLead: false,
             },
           ],
+          phoneRecovery: null,
           deathNotice: { isDeceased: false, pending: null, canReport: true },
         },
       ]);
@@ -2436,6 +2441,57 @@ describe('SentinelService', () => {
         },
         canReport: false, // not a Lead here (leadSlot is null)
       });
+    });
+  });
+
+  describe('after a confirmed death', () => {
+    const deceased = { status: UserStatus.DECEASED };
+
+    it('refuses changing, removing or blocking the deceased companion’s Sentinels', async () => {
+      const link = {
+        id: 'link-1',
+        status: LinkStatus.ACCEPTED,
+        circleId: 'first-1',
+        leadSlot: null,
+        circle: { userCompanionId: 'me', circleType: CircleType.FIRST },
+        linkAsSentinel: { userType: UserType.ACCOUNT },
+        userCompanion: deceased,
+      };
+      prisma.linkSentinels.findUnique.mockResolvedValue(link);
+
+      await expect(
+        service.updateMembership('me', 'link-1', { circleId: 'work-1' }),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(service.removeMembership('me', 'link-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      await expect(service.blockMembership('me', 'link-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses a Sentinel leaving, going to the reserve or answering a move', async () => {
+      prisma.linkSentinels.findUnique.mockResolvedValue({
+        id: 'link-1',
+        userSentinelId: 'sentinel-1',
+        status: LinkStatus.ACCEPTED,
+        proposedCircleId: 'first-1',
+        circle: { id: 'work-1', circleType: CircleType.BASIC },
+        linkAsSentinel: { phone: '+33611111111', firstName: 'Ada' },
+        userCompanion: { ...deceased, phone: null, firstName: 'Me' },
+      });
+
+      await expect(
+        service.leaveMembershipAsSentinel('sentinel-1', 'link-1'),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.moveSelfToReserve('sentinel-1', 'link-1'),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.respondToCircleMove('sentinel-1', 'link-1', true),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.linkSentinels.update).not.toHaveBeenCalled();
     });
   });
 });

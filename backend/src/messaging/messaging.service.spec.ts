@@ -20,6 +20,7 @@ describe('MessagingService', () => {
     conversation: { findFirst: jest.Mock; create: jest.Mock };
     message: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
     alertParticipant: { findMany: jest.Mock };
+    alert: { findUnique: jest.Mock };
   };
   let sentinel: { canSendDirectMessage: jest.Mock };
   let notifier: { notifyAlertChanged: jest.Mock; notifyNewMessage: jest.Mock };
@@ -40,6 +41,7 @@ describe('MessagingService', () => {
         findUnique: jest.fn(),
       },
       alertParticipant: { findMany: jest.fn() },
+      alert: { findUnique: jest.fn() },
     };
     sentinel = { canSendDirectMessage: jest.fn() };
     notifier = { notifyAlertChanged: jest.fn(), notifyNewMessage: jest.fn() };
@@ -186,6 +188,51 @@ describe('MessagingService', () => {
         type: NotificationType.NEW_MESSAGE,
         actorUserId: 'user-1',
         targetId: 'conv-1',
+      });
+    });
+
+    describe('a phone number or an email in an alert chat', () => {
+      function inAlertChat(alertContactSharing: boolean) {
+        prisma.conversationParticipant.findFirst.mockResolvedValueOnce({
+          id: 'part-1',
+          conversation: { closedAt: null, alertId: 'alert-1' },
+        });
+        prisma.conversationParticipant.findMany
+          .mockResolvedValueOnce([{ user: { status: 'ACTIVE' } }])
+          .mockResolvedValueOnce([{ userId: 'user-1' }]);
+        prisma.alert.findUnique.mockResolvedValueOnce({
+          userCompanionId: 'companion-1',
+          userCompanion: { alertContactSharing },
+        });
+        prisma.message.create.mockResolvedValueOnce({ id: 'msg-1' });
+      }
+
+      it('is refused between Sentinels unless the person allows it', async () => {
+        inAlertChat(false);
+        await expect(
+          service.sendMessage('user-1', 'conv-1', {
+            body: 'Appelle-moi au 079 123 45 67',
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.message.create).not.toHaveBeenCalled();
+      });
+
+      it('goes through when the person allows it', async () => {
+        inAlertChat(true);
+        await expect(
+          service.sendMessage('user-1', 'conv-1', {
+            body: 'mon mail: lea@example.ch',
+          }),
+        ).resolves.toEqual({ id: 'msg-1' });
+      });
+
+      it('is always allowed to the person themself', async () => {
+        inAlertChat(false);
+        await expect(
+          service.sendMessage('companion-1', 'conv-1', {
+            body: 'Mon numéro : 079 123 45 67',
+          }),
+        ).resolves.toEqual({ id: 'msg-1' });
       });
     });
 

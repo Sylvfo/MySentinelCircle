@@ -31,6 +31,7 @@ import {
   getUserOrThrow,
   userLabel,
 } from './sentinel-helpers';
+import { smsLang } from '../sms/messages';
 
 // ---- Groups (mutual mesh, invite-by-connection only) -----------------------
 //
@@ -192,6 +193,7 @@ export class GroupService {
           userLabel(inviter),
           root?.label ?? '',
           target.userType !== UserType.ONLY_SMS,
+          smsLang(target.language),
         ),
       );
     }
@@ -211,7 +213,12 @@ export class GroupService {
     if (inviter.phone === phone) {
       throw new BadRequestException('You cannot invite yourself');
     }
-    return findOrCreateUserByPhone(this.prisma, phone, name.trim());
+    return findOrCreateUserByPhone(
+      this.prisma,
+      phone,
+      name.trim(),
+      inviter.language,
+    );
   }
 
   // Picked from my contacts: someone I already have an accepted link with,

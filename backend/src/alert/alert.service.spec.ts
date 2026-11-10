@@ -2205,7 +2205,10 @@ describe('AlertService', () => {
       alertParticipant: {
         id: 'participant-1',
         alertId: 'alert-1',
-        userSentinels: { userSentinelId: 'sentinel-1' },
+        userSentinels: {
+          userSentinelId: 'sentinel-1',
+          linkAsSentinel: { language: null },
+        },
         alert: { userCompanion: { firstName: 'Marc' } },
       },
     });

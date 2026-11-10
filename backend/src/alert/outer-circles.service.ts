@@ -31,11 +31,17 @@ import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
 import { NOT_PAUSED_SENTINEL } from '../user/user-status.util';
 import { AlertService, companionFullName } from './alert.service';
+import { smsLang, type SmsLang } from '../sms/messages';
 
 export const OPEN_QUESTION_INCLUDE = {
   alertParticipant: {
     include: {
-      userSentinels: { select: { userSentinelId: true } },
+      userSentinels: {
+        select: {
+          userSentinelId: true,
+          linkAsSentinel: { select: { language: true } },
+        },
+      },
       alert: { select: { userCompanion: { select: { firstName: true } } } },
     },
   },
@@ -117,7 +123,7 @@ export class OuterCirclesService {
         linkAsSentinel: NOT_PAUSED_SENTINEL,
       },
       include: {
-        linkAsSentinel: { select: { id: true, phone: true } },
+        linkAsSentinel: { select: { id: true, phone: true, language: true } },
       },
     });
     if (links.length === 0) {
@@ -219,7 +225,10 @@ export class OuterCirclesService {
       },
       include: {
         userSentinels: {
-          select: { id: true, linkAsSentinel: { select: { phone: true } } },
+          select: {
+            id: true,
+            linkAsSentinel: { select: { phone: true, language: true } },
+          },
         },
       },
     });
@@ -288,13 +297,16 @@ export class OuterCirclesService {
       where: { id: alert.userCompanionId },
       select: { firstName: true, lastName: true, gender: true },
     });
-    return alertQuestionSms(
-      companionFullName(companion),
-      kind,
-      companion
-        ? { firstName: companion.firstName, gender: companion.gender }
-        : undefined,
-    );
+    // Written in each recipient's language (notifyParticipants).
+    return (lang: SmsLang) =>
+      alertQuestionSms(
+        companionFullName(companion),
+        kind,
+        companion
+          ? { firstName: companion.firstName, gender: companion.gender }
+          : undefined,
+        lang,
+      );
   }
 
   // At most OUTER_CIRCLE_BATCH_SIZE members per call — ordered by manual
@@ -400,9 +412,12 @@ export class OuterCirclesService {
     body: string,
   ) {
     const kind = question.kind as AlertQuestionKind;
+    const lang = smsLang(
+      question.alertParticipant.userSentinels.linkAsSentinel.language,
+    );
     const reply = parseAlertReply(body, kind);
     if (!reply) {
-      await this.sms.send(phone, alertReplyHelpSms(kind));
+      await this.sms.send(phone, alertReplyHelpSms(kind, lang));
       return { matched: true as const, action: 'alert_reply_not_understood' };
     }
 
@@ -410,7 +425,7 @@ export class OuterCirclesService {
     await this.recordReply(participant.id, reply, question.id);
     await this.sms.send(
       phone,
-      alertReplyAckSms(participant.alert.userCompanion.firstName, kind),
+      alertReplyAckSms(participant.alert.userCompanion.firstName, kind, lang),
     );
     await this.alerts.notifyAlertParticipants(participant.alertId, {
       type: NotificationType.ALERT_RESPONSE,
