@@ -17,6 +17,7 @@ import { RequestCircleDto } from './dto/request-circle.dto';
 import { RespondAlertDto } from './dto/respond-alert.dto';
 import { UpdateAlertStatusDto } from './dto/update-alert-status.dto';
 import { UpdateAlertLabelDto } from './dto/update-alert-label.dto';
+import { UpdateAlertTypeDto } from './dto/update-alert-type.dto';
 import { OuterCirclesService } from './outer-circles.service';
 
 @UseGuards(JwtAuthGuard)
@@ -108,6 +109,17 @@ export class AlertController {
     @Body() dto: UpdateAlertLabelDto,
   ) {
     return this.alert.updateLabel(user.userId, id, dto);
+  }
+
+  // An alert opened by a missed Watch Mode deadline, requalified by the
+  // 1st circle (disappearance, emergency, or back to its own type).
+  @Patch(':id/type')
+  updateType(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: UpdateAlertTypeDto,
+  ) {
+    return this.alert.updateType(user.userId, id, dto);
   }
 
   @Get('mine')

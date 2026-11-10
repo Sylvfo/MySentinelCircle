@@ -2345,12 +2345,15 @@ a.map-link, .app-content button.map-link, button.map-link {
 .pay-choice button{align-self:stretch;}
 
 /* "Subscription" lock pill on paid features, nudges and gifts (free plan). */
-.paid-pill{display:inline-flex; align-items:center; gap:0.3rem; vertical-align:middle; margin-left:0.5rem; padding:0.1rem 0.6rem; border:1.5px solid var(--accent); border-radius:999px; color:var(--accent); background:transparent; font:inherit; font-size:0.8rem; font-weight:700; letter-spacing:0.03em; text-transform:uppercase; white-space:nowrap; cursor:pointer; line-height:1.4;}
-.paid-pill svg{width:13px; height:13px; fill:currentColor; stroke:currentColor; stroke-width:2;}
-.paid-pill.chip{cursor:default; font-size:0.7rem; padding:0 0.45rem;}
-.app-content button.paid-pill{margin:0 0 0 0.5rem; padding:0.1rem 0.6rem; border:1.5px solid var(--accent); border-radius:999px; background:transparent; color:var(--accent);}
-.paid-pill:hover{background:var(--accent-subtle);}
-.paid-pill:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+/* A paid feature on a free account: the gold star (same as a subscriber's),
+   a button opening "comes with the subscription". Padded so it is easy to
+   tap without looking bigger. */
+.paid-star{display:inline-flex; align-items:center; justify-content:center; vertical-align:middle; width:1.1em; height:1.1em; margin-left:0.3em;}
+span.paid-star{cursor:default;}
+.app-content button.paid-star,button.paid-star{box-sizing:content-box; width:1.1em; height:1.1em; min-height:0; margin:-0.4em -0.4em -0.4em -0.1em; padding:0.4em; border:none; border-radius:50%; background:none; cursor:pointer;}
+.paid-star svg{width:100%; height:100%; display:block; overflow:visible;}
+.paid-star path{fill:#C9952F; stroke:var(--bg); stroke-width:1.2; stroke-linejoin:round;}
+button.paid-star:focus-visible{outline:2px solid var(--accent); outline-offset:0;}
 .header-action-row{display:inline-flex; align-items:center; flex-wrap:wrap; gap:0.25rem;}
 .raise-alert-btn .raise-alert-plan{display:block; margin-top:0.3rem; font-size:0.85rem; font-weight:700; opacity:0.9;}
 .plan-nudge{border:1px solid var(--accent); background:var(--accent-subtle); border-radius:var(--radius); padding:0.8rem 1rem; display:flex; flex-direction:column; gap:0.5rem;}
@@ -2478,3 +2481,406 @@ details.role-banner[open] > ol{margin-top:0.5rem;}
 .admin-bar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 0.15rem; }
 .admin-bar-fill { width: 70%; min-height: 2px; border-radius: 4px 4px 0 0; background: var(--accent); }
 .admin-bar-count, .admin-bar-label { font-size: 0.75rem; color: var(--text-muted); }
+
+/* ---------------------------------------------------------------------------
+   Watch Mode (Mode veille): the same satin tiles, in green. Raise Alert's
+   green tile, the Watch Mode page, the dashboard's small tile, the trip and
+   All Good pages.
+   ------------------------------------------------------------------------- */
+:root {
+  --watch-ink: #145c38;
+  --watch-strong: #1f7a4d;
+  --watch-border: #9fd3b4;
+  --watch-satin: radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #f1f9f4 45%, #dff0e6 100%);
+  --watch-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 14px rgba(20, 90, 50, 0.13);
+}
+.tile.tile-watch,
+.raise-grid .tile.tile-watch {
+  background: var(--watch-satin);
+  border: 1.5px solid var(--watch-border);
+  box-shadow: var(--watch-shadow);
+  color: var(--text);
+}
+.tile.tile-watch .tile-header h2,
+.raise-grid .tile.tile-watch .tile-header h2 { color: var(--watch-ink); }
+.tile.tile-watch p { margin: 0; color: var(--text); }
+.tile.tile-watch p + p { margin-top: 0.3rem; }
+.watch-pill {
+  display: inline-block;
+  margin-top: 0.6rem;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--watch-border);
+  color: var(--watch-ink);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.watch-pill.inline { margin-top: 0; }
+.watch-pill.paused { border-color: #c9c2dd; color: var(--pause-ink); }
+
+/* Dashboard: one small green tile under the alerts, for my own watch. */
+.dashboard .tile-link.watch-link { flex: 0 0 auto; margin-top: 0.6rem; }
+.dashboard .tile.tile-watch.tile-watch-running { padding: 1rem 1.3rem; margin-top: 0; height: auto; }
+.tile.tile-watch-running .tile-header { margin-bottom: 0.35rem; }
+/* Same title size as the other main tiles (Mes cercles, alerts). */
+.tile.tile-watch-running .tile-header h2 { font-size: 1.5rem; line-height: 1.15; }
+.tile.tile-watch-running .watch-label { font-size: 1.05rem; }
+.tile.tile-watch-running .watch-detail { font-size: 1.05rem; font-weight: 700; }
+.tile.tile-watch-running .watch-then { font-size: 0.9rem; }
+/* A watch running: Mes compagnons keeps just the room its figures and
+   names need (never cut), Mes cercles takes what is left; a clear gap on
+   each side of the watch tile. */
+.dashboard.has-watch .tile-link.watch-link { margin-top: 0.75rem; }
+.dashboard.has-watch .tile-grid { margin-top: 0.75rem; grid-template-rows: minmax(0, 1fr) auto; }
+.dashboard.has-watch .tile.tile-dash .dash-preview.companions-preview { flex: 0 0 auto; min-height: 6.2rem; }
+
+.watch-page { display: flex; flex-direction: column; gap: 1rem; }
+.watch-page .back-link { align-self: flex-start; min-height: 44px; display: flex; align-items: center; font-weight: 700; text-decoration: none; }
+.watch-page h1 { margin: 0; }
+.watch-how { padding: 0.75rem 0.9rem; border-radius: var(--radius); background: rgba(255, 255, 255, 0.75); font-size: 0.9rem; }
+.watch-how ol { margin: 0.4rem 0 0; padding-left: 1.25rem; }
+.watch-included { text-align: center; font-size: 0.85rem; }
+.watch-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius);
+  background: var(--watch-satin);
+  border: 1.5px solid var(--watch-border);
+  box-shadow: var(--watch-shadow);
+}
+.watch-section h2 { margin: 0; font-size: 1.05rem; color: var(--watch-ink); }
+.watch-section .row { flex-wrap: wrap; }
+.watch-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+.watch-page label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 600; }
+.watch-page label.check { flex-direction: row; align-items: center; gap: 0.5rem; font-weight: 400; }
+.watch-page label.check input { width: auto; }
+/* Same fields as the Raise Alert form. */
+.watch-page input:not([type='checkbox']),
+.watch-page select,
+.watch-page textarea {
+  font: inherit;
+  font-weight: 400;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+}
+:root[data-theme='dark'] .watch-page input:not([type='checkbox']),
+:root[data-theme='dark'] .watch-page select,
+:root[data-theme='dark'] .watch-page textarea { background: #14202a; color: #e6edf3; border-color: #2c3a46; }
+.watch-primary {
+  min-height: 52px;
+  border: none;
+  border-radius: 999px;
+  background: var(--watch-strong);
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.watch-primary:disabled { background: #9aa3ab; }
+.watch-outline {
+  min-height: 44px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+.watch-danger {
+  min-height: 44px;
+  border: 1.5px solid var(--danger);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--danger);
+  font-weight: 700;
+}
+.watch-add {
+  min-height: 44px;
+  border: 1.5px dashed var(--watch-strong);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--watch-ink);
+  font-weight: 700;
+}
+/* Every button above keeps its own look over the app's default button
+   (white text): each sets its own text color. */
+.app-content .watch-page button.watch-outline { background: #fff; color: var(--text); border-color: var(--text); }
+.app-content .watch-page button.watch-danger { background: transparent; color: var(--danger); }
+.app-content .watch-page button.watch-add { background: rgba(255, 255, 255, 0.6); color: var(--watch-ink); }
+/* "Terminer le voyage": green outline. */
+.app-content .watch-page button.watch-end {
+  min-height: 44px;
+  border: 1.5px solid var(--watch-strong);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--watch-ink);
+  font-weight: 700;
+}
+:root[data-theme='dark'] .app-content .watch-page button.watch-outline,
+:root[data-theme='dark'] .app-content .watch-page button.watch-end { background: #14202a; color: #e6edf3; border-color: #9fe0bb; }
+.watch-when-summary { margin: 0; font-size: 0.9rem; color: var(--watch-ink); font-weight: 600; }
+.watch-step-draft { display: flex; flex-direction: column; gap: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--watch-border); }
+
+/* Trip page: its fixed top, then the rings. */
+.trip-head { display: flex; flex-direction: column; gap: 0.5rem; }
+.trip-title { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.trip-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-height: 48px;
+  padding: 0 0.9rem;
+  border: 1.5px solid var(--watch-border);
+  border-radius: var(--radius);
+  background: var(--watch-satin);
+  color: var(--text);
+  text-align: left;
+}
+.app-content .watch-page button.trip-fold { background: var(--watch-satin); color: var(--text); }
+.trip-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-height: 40px;
+  padding: 0.35rem 0.75rem;
+  border: none;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text);
+  font-size: 0.85rem;
+  text-align: left;
+}
+.app-content .watch-page button.trip-note { background: rgba(255, 255, 255, 0.7); color: var(--text); }
+.trip-note b { color: var(--accent); flex-shrink: 0; }
+.trip-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; }
+
+.watch-steps { display: flex; flex-direction: column; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
+.watch-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius);
+  background: #fff;
+  border: 1px solid var(--border);
+}
+.watch-step.next { border: 2px solid var(--watch-strong); }
+.watch-step-row { display: flex; gap: 0.6rem; align-items: flex-start; }
+.watch-step-num {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--watch-strong);
+  background: #fff;
+  color: var(--watch-ink);
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.watch-step.done .watch-step-num { background: var(--watch-strong); color: #fff; }
+.watch-step.missed .watch-step-num { border-color: var(--danger); color: var(--danger); }
+.watch-step-text { flex: 1; min-width: 0; }
+.watch-step-text small { display: block; font-size: 0.85rem; }
+.watch-step-status { font-weight: 700; color: var(--watch-ink); font-size: 0.85rem; }
+.watch-step.missed .watch-step-status { color: var(--danger); }
+.watch-step .link-button { background: none; border: none; padding: 0 0.25rem; min-height: 40px; color: var(--accent); font-weight: 700; }
+.app-content .watch-page button.link-button { background: none; color: var(--accent); }
+
+/* On/off switch (a button with aria-pressed). */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+}
+.app-content .watch-page button.switch-row { background: #fff; color: var(--text); }
+.switch-track {
+  flex-shrink: 0;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: #9aa3ab;
+  display: flex;
+  align-items: center;
+  padding: 0 3px;
+  box-sizing: border-box;
+}
+.switch-track::after { content: ''; width: 20px; height: 20px; border-radius: 50%; background: #fff; }
+.switch-row[aria-pressed='true'] .switch-track { background: var(--watch-strong); justify-content: flex-end; }
+
+/* Choice cards ("Je suis là" / "Je suis ailleurs", end-of-trip choices). */
+.choice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+}
+.app-content .watch-page button.choice-card { background: #fff; color: var(--text); }
+.app-content .watch-page button.choice-card[aria-pressed='true'] { border: 2px solid var(--watch-strong); background: #e7f5ed; }
+.choice-card span { font-size: 0.85rem; font-weight: 400; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.app-content .watch-page button.chip-choice {
+  min-height: 40px;
+  padding: 0 0.8rem;
+  border: 1.5px solid var(--watch-strong);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--watch-ink);
+  font-weight: 600;
+}
+.app-content .watch-page button.chip-choice[aria-pressed='true'] { background: var(--watch-strong); color: #fff; }
+.app-content .watch-page button.chip-choice.day { width: 40px; padding: 0; }
+.watch-done { padding: 0.75rem 0.9rem; border-radius: var(--radius); background: #e7f5ed; border: 1px solid var(--watch-border); }
+.watch-done strong { display: block; color: var(--watch-ink); }
+.watch-logbook { display: flex; flex-direction: column; gap: 0.5rem; }
+.watch-logbook article { padding: 0.6rem 0.75rem; border-radius: var(--radius); background: rgba(255, 255, 255, 0.8); }
+.watch-logbook small { display: block; font-size: 0.85rem; color: var(--text-muted); }
+.watch-status-card { display: flex; flex-direction: column; gap: 0.35rem; }
+.watch-person-row { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; }
+.watch-person-row select { max-width: 55%; }
+
+/* Night mode: deep green satin, light text. */
+:root[data-theme='dark'] .tile.tile-watch,
+:root[data-theme='dark'] .raise-grid .tile.tile-watch,
+:root[data-theme='dark'] .watch-section,
+:root[data-theme='dark'] .trip-fold,
+:root[data-theme='dark'] .app-content .watch-page button.trip-fold {
+  background: radial-gradient(120% 90% at 0% 0%, #2a6e4a 0%, #1f5a3c 55%, #17462f 100%);
+  border-color: #4fae7b;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+:root[data-theme='dark'] .tile.tile-watch *,
+:root[data-theme='dark'] .watch-section h2 { color: #fff; }
+:root[data-theme='dark'] .watch-pill { background: rgba(255, 255, 255, 0.12); border-color: #4fae7b; color: #dff5e8; }
+:root[data-theme='dark'] .watch-step,
+:root[data-theme='dark'] .switch-row,
+:root[data-theme='dark'] .app-content .watch-page button.switch-row,
+:root[data-theme='dark'] .app-content .watch-page button.choice-card,
+:root[data-theme='dark'] .watch-logbook article,
+:root[data-theme='dark'] .watch-how,
+:root[data-theme='dark'] .trip-note,
+:root[data-theme='dark'] .app-content .watch-page button.trip-note {
+  background: #14202a;
+  color: #e6edf3;
+  border-color: #2c3a46;
+}
+:root[data-theme='dark'] .app-content .watch-page button.choice-card[aria-pressed='true'],
+:root[data-theme='dark'] .watch-done { background: #17462f; border-color: #4fae7b; }
+:root[data-theme='dark'] .watch-step-num { background: #14202a; color: #9fe0bb; }
+:root[data-theme='dark'] .watch-step-status { color: #9fe0bb; }
+.conversation-rel.watch-rel { color: var(--watch-ink); }
+:root[data-theme='dark'] .conversation-rel.watch-rel { color: #9fe0bb; }
+a.watch-pill { text-decoration: none; }
+.app-content a.history-row.nested { padding-left: 2rem; font-size: 0.95rem; }
+.history-section { margin: 0; padding: 0.75rem 1rem 0.25rem; font-size: 1rem; }
+.history-row.static { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+/* Past its time: the dashboard's watch tile turns red. */
+.dashboard .tile.tile-watch.tile-watch-running.late {
+  background: radial-gradient(120% 90% at 0% 0%, #ffffff 0%, #fbf3f3 45%, #f3e3e3 100%);
+  border-color: #eab0ab;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 14px rgba(120, 30, 30, 0.13);
+}
+.dashboard .tile.tile-watch-running.late .tile-header h2 { color: var(--danger); }
+:root[data-theme='dark'] .dashboard .tile.tile-watch.tile-watch-running.late {
+  background: radial-gradient(120% 90% at 0% 0%, #c0392b 0%, #a52d24 55%, #8c241d 100%);
+  border-color: #e0574a;
+}
+.trip-kind { display: block; font-size: 0.9rem; color: var(--watch-ink); }
+/* The fixed top never grows past the screen: an open fold scrolls inside. */
+.trip-head.sticky-header .watch-status-card { max-height: 45vh; overflow-y: auto; }
+
+/* Code QR (add someone): my code, scan, or a number. */
+.connect-page { display: flex; flex-direction: column; gap: 1rem; max-width: 480px; }
+.connect-page h1 { margin: 0; }
+.connect-tabs { display: flex; gap: 0.4rem; }
+.app-content .connect-tabs button { flex: 1; min-height: 44px; border: 1.5px solid var(--accent); border-radius: 999px; background: #fff; color: var(--accent); font-weight: 600; }
+.app-content .connect-tabs button[aria-selected='true'] { background: var(--accent); color: #fff; }
+.connect-mine { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
+.qr-image { width: min(260px, 80vw); height: auto; image-rendering: pixelated; background: #fff; border-radius: var(--radius); }
+.qr-video { width: 100%; max-height: 60vh; border-radius: var(--radius); background: #000; object-fit: cover; }
+.connect-phone, .connect-choices { display: flex; flex-direction: column; gap: 0.75rem; }
+.connect-page label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 600; }
+.connect-page label.check { flex-direction: row; align-items: center; gap: 0.5rem; font-weight: 400; }
+.connect-page label.check input { width: auto; }
+.connect-person { display: flex; align-items: center; gap: 0.75rem; }
+.user-menu-language { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.9rem; }
+:root[data-theme='dark'] .app-content .connect-tabs button { background: #14202a; color: #e6edf3; }
+:root[data-theme='dark'] .app-content .connect-tabs button[aria-selected='true'] { background: #1d6178; }
+
+/* Test lab (/lab, dev only): its own full-window layout, outside the app. */
+.lab { min-height: 100vh; display: flex; flex-direction: column; background: #e9eef3; color: var(--text); }
+.lab-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.8rem 1.5rem; background: #134356; color: #fff; }
+.lab-header strong { font-family: var(--font-brand); font-size: 1.35rem; }
+.lab-header span { font-size: 0.85rem; opacity: 0.85; }
+.lab-body { flex: 1; display: flex; gap: 1.25rem; padding: 1.25rem 1.5rem; align-items: flex-start; }
+.lab-aside { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.9rem; }
+.lab-card { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.9rem 1rem; border-radius: var(--radius); background: #fff; border: 1px solid var(--border); }
+.lab-card h2 { margin: 0; font-size: 1.05rem; }
+.lab button { font: inherit; cursor: pointer; }
+.lab-scenario { min-height: 40px; padding: 0.4rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); font-weight: 600; text-align: left; }
+.lab-scenario[aria-pressed='true'] { border: 2px solid #134356; background: #eef4f8; }
+.lab-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0; }
+.lab-tag { min-height: 34px; padding: 0 0.65rem; border-radius: 999px; background: #fff; font-size: 0.85rem; font-weight: 600; }
+.lab-tag.good { border: 1.5px solid #1f7a4d; color: #1f7a4d; }
+.lab-tag.bad { border: 1.5px solid #b3261e; color: #b3261e; }
+.lab-tag.good[aria-pressed='true'] { background: #1f7a4d; color: #fff; }
+.lab-tag.bad[aria-pressed='true'] { background: #b3261e; color: #fff; }
+.lab-card label { font-weight: 600; }
+.lab-card textarea { padding: 0.5rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; font: inherit; resize: vertical; }
+.lab-shot { min-height: 40px; border: 1.5px dashed #134356; border-radius: 8px; background: #fff; color: #134356; font-weight: 700; }
+.lab-send { min-height: 40px; border: none; border-radius: 999px; background: #134356; color: #fff; font-weight: 700; }
+.lab-send:disabled { background: #9aa3ab; }
+.lab-done { margin: 0; color: #1f7a4d; font-weight: 600; }
+.lab-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1rem; }
+.lab-phones { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
+.lab-phone { display: flex; flex-direction: column; gap: 0.4rem; }
+.lab-phone-name { font-family: var(--font-brand); font-size: 1.05rem; }
+.lab-screen { position: relative; overflow: hidden; border-radius: 22px; box-shadow: 0 0 0 7px #1f2933, 0 6px 20px rgba(0, 0, 0, 0.25); background: #fff; }
+.lab-screen iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: top left; }
+.lab-sms { display: flex; flex-direction: column; gap: 0.5rem; min-height: 180px; box-sizing: border-box; padding: 0.7rem; border-radius: 12px; background: #1f2933; color: #e6edf3; }
+.lab-sms.tall { min-height: 520px; }
+.lab-sms-title { font-size: 0.8rem; font-weight: 700; color: #9aa3ab; }
+.lab-sms-list { flex: 1; display: flex; flex-direction: column; gap: 0.4rem; max-height: 260px; overflow-y: auto; }
+.lab-sms.tall .lab-sms-list { max-height: 520px; }
+.lab-sms-list p { margin: 0; padding: 0.5rem 0.65rem; border-radius: 10px; font-size: 0.9rem; line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; }
+.lab-sms-list p.out { background: #2c3a46; align-self: flex-start; }
+.lab-sms-list p.in { background: #1f7a4d; align-self: flex-end; }
+.lab-sms-reply { display: flex; gap: 0.4rem; }
+.lab-sms-reply input { flex: 1; min-width: 0; min-height: 34px; padding: 0 0.5rem; border: none; border-radius: 8px; font: inherit; }
+.lab-sms-reply button { min-height: 34px; padding: 0 0.7rem; border: none; border-radius: 8px; background: #1f7a4d; color: #fff; font-weight: 700; }
+.lab-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+.lab-controls button { min-height: 44px; padding: 0 1.2rem; border-radius: 999px; font-weight: 700; }
+.lab-advance { border: none; background: #1f7a4d; color: #fff; }
+.lab-reset, .lab-toggle { border: 1.5px solid #134356; background: #fff; color: #134356; }
+.lab-tester { max-width: 360px; margin: 15vh auto; display: flex; flex-direction: column; gap: 1rem; padding: 0 1rem; }
+.lab-tester label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 600; }
+.lab-error { margin: 2rem; }
+.lab-feedback article { padding: 0.6rem 0; border-top: 1px solid var(--border); }
+.lab-feedback article.read { opacity: 0.6; }
+.lab-feedback p { margin: 0.2rem 0; }
+.lab-shot-thumb { max-width: 240px; border-radius: 6px; border: 1px solid var(--border); }
+.lab-header .lab-logout { margin-left: 0.5rem; padding: 0.15rem 0.6rem; border: 1px solid rgba(255, 255, 255, 0.6); border-radius: 999px; background: none; color: #fff; font-size: 0.8rem; }

@@ -8,6 +8,7 @@ import {
   watchAlertSms,
   watchAlertToOwnerSms,
   watchAllGoodReminderSms,
+  watchCheckAckSms,
   watchStepReminderSms,
 } from './messages';
 import { parseAlertReply } from '../alert/alert-replies';
@@ -26,7 +27,7 @@ describe('SMS in English', () => {
   it('writes the invitation and the code in English', () => {
     const invitation = sentinelInvitationSms('Lea', 'en');
     expect(invitation).toContain('Lea chose you as a Sentinel');
-    expect(invitation).toContain('Reply YES to accept, NO to decline');
+    expect(invitation).toContain('Reply 111 Yes, 112 No, STOP');
     expect(invitation).toMatch(ascii);
     expect(otpSms('123456', 'en')).toContain('sign-in code: 123456');
   });
@@ -35,7 +36,7 @@ describe('SMS in English', () => {
     const sms = alertQuestionSms('Chloe Martin', 'CAN_VISIT', undefined, 'en');
     expect(sms).toContain('alert Chloe Martin');
     expect(sms).toContain('Can you go and see her?');
-    expect(sms).toContain('Or reply: 1 Yes, 2 Later, 3 No');
+    expect(sms).toContain('Reply: 211 Yes, 212 Later, 213 No');
     expect(sms).toMatch(ascii);
     expect(
       alertQuestionSms(
@@ -90,7 +91,14 @@ describe('SMS in English', () => {
       watchAlertToOwnerSms('fr'),
       watchAlertToOwnerSms('en'),
     ];
+    all.push(
+      watchCheckAckSms({ kind: 'STEP', place: 'Col', due }, 'fr'),
+      watchCheckAckSms({ kind: 'ALL_GOOD', due: alertAt }, 'en'),
+      watchCheckAckSms({ kind: 'NO_STEP' }, 'fr'),
+    );
     for (const text of all) expect(text).toMatch(ascii);
+    expect(all[9]).toContain('Prochaine etape : "Col" a 13:00');
+    expect(all[10]).toContain('Next check by 11.11 at 15:00');
     expect(all[4]).toContain('alerte pour Lea Martin');
     expect(all[4]).toContain('Que faire : Appeler le refuge');
     // Long instructions are cut, the rest is in the app.

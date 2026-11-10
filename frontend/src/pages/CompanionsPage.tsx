@@ -40,10 +40,16 @@ export function CompanionsPage() {
   const needsAnswer = (c: Companion) => !!c.proposedCircle || !!c.deathNotice.pending?.canConfirmOrReject;
   const sorted = [...companions].sort((a, b) => Number(needsAnswer(b)) - Number(needsAnswer(a)));
   // Grouped by my role towards them, closest first. Empty groups are skipped.
+  // "En voyage avec vous": I'm on their trip (Watch Mode) — someone who is
+  // also in their 1st circle shows in both; someone added only for the trip
+  // shows only there.
+  const travelling = (c: Companion) => !!c.watches?.some((w) => w.role === 'TRAVEL_CIRCLE');
+  const onlyForTrip = (c: Companion) => !!c.circle.trip && !c.circle.trip.closedAt;
   const groups = [
     { key: 'lead', items: sorted.filter((c) => c.leadSlot) },
     { key: 'firstCircle', items: sorted.filter((c) => !c.leadSlot && c.circle.isPrimary) },
-    { key: 'others', items: sorted.filter((c) => !c.leadSlot && !c.circle.isPrimary) },
+    { key: 'travel', items: sorted.filter(travelling) },
+    { key: 'others', items: sorted.filter((c) => !c.leadSlot && !c.circle.isPrimary && !onlyForTrip(c)) },
   ];
 
   // /companions/:linkId: one companion's details and actions, like a
@@ -102,6 +108,7 @@ export function CompanionsPage() {
                         {c.companion.firstName}
                         {c.companion.subscribed && <NameStar />}
                       </span>
+                      <WatchPills companion={c} />
                       {needsAnswer(c) && (
                         <span className="companion-needs-answer">{t('companions.needsAnswer')}</span>
                       )}
@@ -122,6 +129,25 @@ export function CompanionsPage() {
         )
       )}
     </div>
+  );
+}
+
+// Green pill under the name, for anyone in Watch Mode I may know about:
+// "En voyage · Col du Lac", "Check tout va bien".
+function WatchPills({ companion }: { companion: Companion }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {(companion.watches ?? []).map((w) => (
+        <span key={w.watchId} className="watch-pill inline">
+          {w.mode === 'ALL_GOOD'
+            ? t('watch.allGood.title')
+            : w.currentPlace
+              ? t('companions.watchPill.tripAt', { place: w.currentPlace })
+              : t('companions.watchPill.trip')}
+        </span>
+      ))}
+    </>
   );
 }
 

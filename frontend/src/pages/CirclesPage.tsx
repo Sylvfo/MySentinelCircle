@@ -22,7 +22,7 @@ import { useAuth } from '../auth/AuthContext';
 import { PauseNotice, PausePill } from '../components/PauseNotice';
 import { SecurityScoreBar } from '../components/SecurityScoreBar';
 import { PENDING_AVATAR_COLOR } from '../theme';
-import { PaidPill } from '../components/Upgrade';
+import { SubscriptionModal } from '../components/Upgrade';
 import { IncludedStar } from '../components/SubscribedStar';
 import { usePlan } from '../plan';
 import { PersonAvatar } from '../components/PersonAvatar';
@@ -46,6 +46,7 @@ export function CirclesPage() {
   const { circleId } = useParams();
   const navigate = useNavigate();
   const [scoreRefresh, setScoreRefresh] = useState(0);
+  const [paidOpen, setPaidOpen] = useState(false);
   // Sentinels who are themselves the subject of an alert still in progress
   // (only alerts I take part in, so this reveals nothing new): drawn red.
   const [inAlertUserIds, setInAlertUserIds] = useState<Set<string>>(new Set());
@@ -157,12 +158,19 @@ export function CirclesPage() {
             {t('circles.newCircle')}
           </Link>
           <span className="header-action-row">
-            <Link to="/circles/new-group" className="button-link">
-              {t('groups.newGroup')}
-              {plan?.hasPaid && <IncludedStar />}
-            </Link>
-            {plan && !plan.groups && <PaidPill feature="groups" />}
+            {plan && !plan.groups ? (
+              <button type="button" onClick={() => setPaidOpen(true)}>
+                {t('groups.newGroup')}
+                <IncludedStar />
+              </button>
+            ) : (
+              <Link to="/circles/new-group" className="button-link">
+                {t('groups.newGroup')}
+                {plan?.hasPaid && <IncludedStar />}
+              </Link>
+            )}
           </span>
+          {paidOpen && <SubscriptionModal onClose={() => setPaidOpen(false)} />}
         </div>
       </div>
 
@@ -191,6 +199,11 @@ export function CirclesPage() {
           <div className="circles-other-row">
             {otherCircles.map((c, i) => (
               <div key={c.id}>
+                {/* A travel circle of a trip still going (it carries the
+                    trip's name): green, a "Voyage" pill, and it opens the trip. */}
+                {c.trip && !c.trip.closedAt && (
+                  <span className="watch-pill inline">{t('history.watch.trip')}</span>
+                )}
                 <CircleRing
                   label={c.label}
                   members={liveMembersOf(c)}
@@ -201,7 +214,8 @@ export function CirclesPage() {
                   isGroup={c.circleType === 'GROUP'}
                   showNames={c.circleType !== 'GROUP'}
                   inAlertUserIds={inAlertUserIds}
-                  onOpen={() => navigate(`/circles/${c.id}`)}
+                  travel={!!c.trip && !c.trip.closedAt}
+                  onOpen={() => navigate(c.trip && !c.trip.closedAt ? `/watch/${c.trip.id}` : `/circles/${c.id}`)}
                 />
               </div>
             ))}

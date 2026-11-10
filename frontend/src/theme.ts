@@ -8,6 +8,8 @@ export const PRIMARY_RING_COLOR = '#F7ECDC';
 export const PRIMARY_AVATAR_COLOR = '#D9A066';
 export const PRIMARY_LEAD_COLOR = '#B8822E';
 export const PENDING_AVATAR_COLOR = '#9a9a9a';
+// Watch Mode: travel circles are green rings.
+export const TRAVEL_PALETTE = { color: '#2F8F5B', ring: '#DCF1E4' };
 // A Sentinel who is themselves the subject of an alert in progress.
 export const IN_ALERT_AVATAR_COLOR = '#b3261e';
 export const PAGE_BG_COLOR = '#EAF4F2';

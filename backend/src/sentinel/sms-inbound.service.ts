@@ -1,8 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UserType } from '@prisma/client';
+import { AlertType, UserType } from '@prisma/client';
 import { OuterCirclesService } from '../alert/outer-circles.service';
 import type { OpenAlertQuestion } from '../alert/outer-circles.service';
-import { repliesFor } from '../alert/alert-replies';
 import type { AlertQuestionKind } from '../alert/alert-replies';
 import {
   parseSmsCommand,
@@ -11,13 +10,19 @@ import {
   severalRequestsSms,
   smsHelpSms,
   stopChoiceSms,
+  watchCheckAckSms,
+  alertReplyChoicesText,
 } from '../sms/messages';
+import type { SmsLang } from '../sms/messages';
+import { SMS_CATEGORY, parseReplyCode, replyCode } from '../sms/sms-reply-code';
 import type { SmsCommand } from '../sms/messages';
 import { findReplyTarget } from '../sms/sms-reply-target';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import { RetentionService } from '../privacy/retention.service';
 import { SentinelService } from './sentinel.service';
+import { WatchService } from '../watch/watch.service';
+import { deadlineParts } from '../watch/zoned-time';
 import type { LinkWithParties } from './sentinel.service';
 import { smsLang } from '../sms/messages';
 
@@ -26,11 +31,15 @@ const NO_MATCH = { matched: false as const, reason: 'no_actionable_link' };
 
 type SmsResult = { matched: true; action: string };
 
-// Something this number can answer: an alert question or an invitation.
+// Something this number can answer: an alert question, a Watch Mode
+// deadline of their own, or an invitation.
+// `code`: its SMS reply code (sms-reply-code.ts), "21" -> 211 / 212…;
+// `choices`: how to answer it, for the "several requests" SMS.
 interface SmsRequest {
   name: string;
   answered: boolean;
-  exampleReply: string;
+  code: string;
+  choices: (lang: SmsLang) => string;
   answer: (reply: string) => Promise<SmsResult | null>;
 }
 
@@ -45,6 +54,7 @@ export class SmsInboundService {
   constructor(
     private readonly sentinel: SentinelService,
     private readonly outerCircles: OuterCirclesService,
+    private readonly watches: WatchService,
     private readonly retention: RetentionService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
   ) {}
@@ -56,6 +66,16 @@ export class SmsInboundService {
     if (command) return this.handleCommand(phone, command);
 
     const requests = await this.listRequests(phone);
+    // A reply code says exactly what it answers ("212", "21 au marche").
+    const coded = parseReplyCode(body);
+    const codeTarget =
+      coded && requests.find((request) => request.code === coded.code);
+    if (coded && codeTarget) {
+      const answered = await codeTarget.answer(coded.reply);
+      return answered ?? this.sendHelpOncePerDay(phone);
+    }
+
+    // Older SMS asked for the first name in front ("Lea 1"): still read.
     const target = findReplyTarget(
       body,
       requests.map((request) => request.name),
@@ -71,11 +91,12 @@ export class SmsInboundService {
       unanswered.length > 0 ? unanswered : requests.slice(0, 1);
 
     if (candidates.length > 1) {
+      const lang = smsLang(await this.sentinel.languageByPhone(phone));
       await this.sms.send(
         phone,
         severalRequestsSms(
-          candidates.map(({ name, exampleReply }) => `${name} ${exampleReply}`),
-          smsLang(await this.sentinel.languageByPhone(phone)),
+          candidates.map(({ name, choices }) => `${name} : ${choices(lang)}`),
+          lang,
         ),
       );
       return { matched: true as const, action: 'several_requests' };
@@ -85,16 +106,60 @@ export class SmsInboundService {
     return result ?? this.sendHelpOncePerDay(phone);
   }
 
-  // Alerts first, being more urgent, newest first.
+  // Alerts first, being more urgent, newest first; then the person's own
+  // watch deadlines; invitations last.
   private async listRequests(phone: string): Promise<SmsRequest[]> {
-    const [questions, invitations] = await Promise.all([
+    const [questions, watchChecks, invitations] = await Promise.all([
       this.outerCircles.listOpenQuestionsByPhone(phone),
+      this.watches.smsChecksByPhone(phone),
       this.sentinel.listInvitationsByPhone(phone),
     ]);
     return [
       ...questions.map((question) => this.questionRequest(phone, question)),
+      ...watchChecks.map((watch) => this.watchRequest(phone, watch)),
       ...invitations.map((link) => this.invitationRequest(link)),
     ];
+  }
+
+  // "OK" to a Watch Mode reminder: the deadline is validated as planned.
+  private watchRequest(
+    phone: string,
+    watch: Awaited<ReturnType<WatchService['smsChecksByPhone']>>[number],
+  ): SmsRequest {
+    // 311 a trip, 321 the All Good Check (one of each at most).
+    const code = replyCode(
+      SMS_CATEGORY.WATCH,
+      watch.alertType === AlertType.TRAVEL ? 1 : 2,
+    );
+    return {
+      name: watch.label,
+      answered: false,
+      code,
+      choices: (lang) =>
+        `${code}1 ${lang === 'en' ? 'All good' : 'Tout va bien'}`,
+      answer: async (reply) => {
+        if (reply.trim() !== '1' && parseSmsReply(reply) !== 'accept') {
+          return null;
+        }
+        const done = await this.watches.confirmBySms(watch);
+        const now = new Date();
+        const due = done.next
+          ? deadlineParts(done.next.expectedAt, done.timeZone, now)
+          : null;
+        await this.sms.send(
+          phone,
+          watchCheckAckSms(
+            !due
+              ? { kind: 'NO_STEP' }
+              : done.mode === 'TRIP'
+                ? { kind: 'STEP', place: done.next!.placeName ?? '', due }
+                : { kind: 'ALL_GOOD', due },
+            smsLang(done.language),
+          ),
+        );
+        return { matched: true as const, action: 'watch_confirmed' };
+      },
+    };
   }
 
   private questionRequest(
@@ -102,22 +167,35 @@ export class SmsInboundService {
     question: OpenAlertQuestion,
   ): SmsRequest {
     const kind = question.kind as AlertQuestionKind;
+    const code = replyCode(SMS_CATEGORY.ALERT_QUESTION, question.smsSlot ?? 1);
     return {
       name: question.alertParticipant.alert.userCompanion.firstName,
       answered: question.response !== null,
-      exampleReply: repliesFor(kind).length > 0 ? '1' : 'votre reponse',
+      code,
+      choices: (lang) => alertReplyChoicesText(kind, lang, code),
       answer: (reply) =>
         this.outerCircles.answerQuestion(question, phone, reply),
     };
   }
 
   private invitationRequest(link: LinkWithParties): SmsRequest {
+    const code = replyCode(SMS_CATEGORY.INVITATION, link.smsSlot ?? 1);
     return {
       name: link.userCompanion.firstName,
       answered: false,
-      exampleReply: 'OUI',
+      code,
+      choices: (lang) =>
+        lang === 'en'
+          ? `${code}1 Yes, ${code}2 No`
+          : `${code}1 Oui, ${code}2 Non`,
       answer: async (reply) => {
-        const intent = parseSmsReply(reply);
+        const digit = reply.trim();
+        const intent =
+          digit === '1'
+            ? 'accept'
+            : digit === '2'
+              ? 'decline'
+              : parseSmsReply(reply);
         if (intent === 'unknown') return null;
         return this.answerInvitation(link, intent === 'accept');
       },

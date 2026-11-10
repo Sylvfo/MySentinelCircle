@@ -114,7 +114,9 @@ export class WatchScheduler {
     }
   }
 
-  async runDeadlines(now: Date) {
+  // `ownerIds`: only these people's watches (the test lab's "advance the
+  // time", which must not touch other testers' watches).
+  async runDeadlines(now: Date, ownerIds?: string[]) {
     // A confirmed death freezes the account: nobody is told anything more.
     await this.prisma.alert.updateMany({
       where: {
@@ -125,7 +127,10 @@ export class WatchScheduler {
     });
 
     const watches = await this.prisma.alert.findMany({
-      where: RUNNING_WATCH,
+      where: {
+        ...RUNNING_WATCH,
+        ...(ownerIds ? { userCompanionId: { in: ownerIds } } : {}),
+      },
       select: WATCH_SELECT,
     });
     if (watches.length === 0) return;
@@ -383,7 +388,7 @@ export class WatchScheduler {
         id: true,
         firstCircleId: true,
         userCompanionId: true,
-        userCompanion: { select: { paidUntil: true } },
+        userCompanion: { select: { paidUntil: true, firstName: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -412,6 +417,7 @@ export class WatchScheduler {
       for (const m of members) {
         await this.remindOnce(m.userSentinelId, circleFrom, {
           actorUserId: watch.userCompanionId,
+          actorLabel: watch.userCompanion.firstName,
           targetId: watch.userCompanionId,
         });
       }
@@ -422,7 +428,7 @@ export class WatchScheduler {
   private async remindOnce(
     userId: string,
     since: Date,
-    about: { actorUserId?: string; targetId: string },
+    about: { actorUserId?: string; actorLabel?: string; targetId: string },
   ) {
     const already = await this.prisma.notification.count({
       where: {

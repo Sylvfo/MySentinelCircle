@@ -6,7 +6,7 @@ import { addSubscriptionYear, type Plan } from '../api/user';
 import type { UpgradeReason } from '../plan';
 import { Modal } from './Modal';
 import { genderContext, type Gender } from '../gender';
-import { LockShape } from './icons';
+import { STAR } from './SubscribedStar';
 import { useAction } from '../useAction';
 
 // Shown where a paid feature is reached on a free account: what's missing
@@ -57,33 +57,30 @@ export function PayForAlertChoice({
   );
 }
 
-function LockIcon() {
+// The same gold star as on a subscriber's name: it always means
+// "subscription".
+function PaidStarIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <LockShape />
+      <path d={STAR} />
     </svg>
   );
 }
 
 export type PaidFeature = UpgradeReason | 'travel';
 
-// "🔒 Subscription" next to a paid feature on a free account. Hover: what
-// it is; click: a small window with the explanation and the Plans link.
-// `chip` = a plain label, for spots already inside a button (Settings tiles).
-// Safe inside a link (Dashboard tiles): clicks never reach it.
-export function PaidPill({ feature, chip }: { feature: PaidFeature; chip?: boolean }) {
+// A gold star next to a paid feature on a free account (never a lock).
+// Hover: what it is; click: a small window saying it comes with the
+// subscription, with the Plans link. `chip` = a plain star, for spots
+// already inside a button (Settings tiles).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function PaidPill({ feature: _feature, chip }: { feature: PaidFeature; chip?: boolean }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const label = (
-    <>
-      <LockIcon />
-      {t('plans.pill.label')}
-    </>
-  );
   if (chip) {
     return (
-      <span className="paid-pill chip" title={t(`plans.pill.${feature}`)}>
-        {label}
+      <span className="paid-star" role="img" aria-label={t('plans.pill.label')}>
+        <PaidStarIcon />
       </span>
     );
   }
@@ -93,22 +90,33 @@ export function PaidPill({ feature, chip }: { feature: PaidFeature; chip?: boole
   };
   return (
     <span className="paid-pill-wrap" onClick={(e) => e.stopPropagation()}>
-      <button type="button" className="paid-pill" title={t(`plans.pill.${feature}`)} onClick={openModal}>
-        {label}
+      <button
+        type="button"
+        className="paid-star"
+        aria-label={t('plans.pill.label')}
+        onClick={openModal}
+      >
+        <PaidStarIcon />
       </button>
       {open &&
         createPortal(
           <span onClick={(e) => e.stopPropagation()}>
-            <Modal title={t('plans.pill.modalTitle')} onClose={() => setOpen(false)}>
-              <p>{t(`plans.pill.${feature}`)}</p>
-              <Link to="/plans" className="button-link" onClick={() => setOpen(false)}>
-                {t('plans.seePlans')}
-              </Link>
-            </Modal>
+            <SubscriptionModal onClose={() => setOpen(false)} />
           </span>,
           document.body,
         )}
     </span>
+  );
+}
+
+export function SubscriptionModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Modal title={t('plans.pill.modalTitle')} onClose={onClose}>
+      <Link to="/plans" className="button-link" onClick={onClose}>
+        {t('plans.seePlans')}
+      </Link>
+    </Modal>
   );
 }
 

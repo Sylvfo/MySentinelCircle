@@ -1,5 +1,8 @@
 export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
-const TOKEN_KEY = 'msc_token';
+// Test lab (/lab): each phone is a frame named "lab-…" with its own
+// sign-in, so four people can be signed in side by side.
+const LAB_FRAME = typeof window !== 'undefined' && window.name.startsWith('lab-') ? window.name : null;
+const TOKEN_KEY = LAB_FRAME ? `msc_token:${LAB_FRAME}` : 'msc_token';
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -77,7 +80,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 // The server's answer: its JSON body, or an ApiError carrying its message.
-async function readResponse<T>(res: Response): Promise<T> {
+export async function readResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) return null as T;
 
   let body: any;

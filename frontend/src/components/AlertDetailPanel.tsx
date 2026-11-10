@@ -24,6 +24,7 @@ import { genderContext } from '../gender';
 import { useSocketEvent } from '../realtime/useSocketEvent';
 import { Loading } from './Loading';
 import { ConversationThread } from './ConversationThread';
+import { RequalifyButtons, TripAlertGuide, TripTimeline } from './watch/TripAlertSections';
 import {
   CircleChatSection,
   LeaveAlertButton,
@@ -463,6 +464,8 @@ export function AlertDetailPanel({
           onChange={loadDetail}
         />
       )}
+      {/* Opened by a missed Watch Mode deadline: reach them first. */}
+      {running && isFirstCircleSentinel && detail.trip && <TripAlertGuide detail={detail} />}
       {/* Once a 1st-circle Sentinel has answered: where to find what. */}
       {running && isFirstCircleSentinel && myParticipant?.response && (
         <section className="where-card">
@@ -487,6 +490,15 @@ export function AlertDetailPanel({
         </section>
       )}
 
+      {detail.trip && (
+        <AlertSection
+          title={detail.trip.alertType === 'TRAVEL' ? t('watch.alert.theTrip') : t('watch.allGood.title')}
+          collapsible
+        >
+          <TripTimeline trip={detail.trip} />
+        </AlertSection>
+      )}
+
       <AlertSection title={t('alerts.detail.sections.replies')} collapsible>
         <AlertRepliesTimeline detail={detail} />
       </AlertSection>
@@ -494,6 +506,12 @@ export function AlertDetailPanel({
       <AlertSection title={t('alerts.detail.sections.circles')} collapsible>
         <AlertCircleTiles detail={detail} canAct={canRequestCircle} onChange={loadDetail} />
       </AlertSection>
+
+      {running && isFirstCircleSentinel && detail.trip && (
+        <AlertSection title={t('watch.alert.changeType')} collapsible>
+          <RequalifyButtons detail={detail} onChange={loadDetail} />
+        </AlertSection>
+      )}
 
       {error && <p className="form-error">{error}</p>}
 

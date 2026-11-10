@@ -6,6 +6,8 @@ import { alertNeedsMe, getMyParticipation, listAlerts, type MyAlertSummary, type
 import { replyLabel } from '../components/replyLabel';
 import { firstCircleAskKey } from '../alertAsk';
 import { listCircles, listCompanions, type Circle } from '../api/sentinel';
+import { listMyWatches, type Watch } from '../api/watch';
+import { watchToDo } from '../components/watch/watchFormat';
 import { PauseBadge } from '../components/PauseBadge';
 import { PauseNotice, PausePill } from '../components/PauseNotice';
 import { PlanNudge } from '../components/PlanNudge';
@@ -19,17 +21,32 @@ import { CircleRing } from '../components/CircleRing';
 import { companionColor, companionGold } from '../theme';
 import { Loading } from '../components/Loading';
 import { useLoad } from '../useLoad';
+import { useSocketEvent } from '../realtime/useSocketEvent';
 
 export function DashboardPage() {
   const { user } = useAuth();
-  const { t } = useTranslation();
-  const { data, loading, error } = useLoad(async () => {
-    const [alerts, circles, companions] = await Promise.all([listAlerts(), listCircles(), listCompanions()]);
-    return { alerts, circles, companions };
+  const { t, i18n } = useTranslation();
+  const { data, loading, error, reload } = useLoad(async () => {
+    const [alerts, circles, companions, watches] = await Promise.all([
+      listAlerts(),
+      listCircles(),
+      listCompanions(),
+      // A failure here must not hide the rest of the dashboard.
+      listMyWatches().catch(() => [] as Watch[]),
+    ]);
+    return { alerts, circles, companions, watches };
   });
   const alerts = data?.alerts ?? [];
   const circles = data?.circles ?? [];
   const companions = data?.companions ?? [];
+  // My own watch, one small green tile: the trip if one runs (the All Good
+  // Check rests meanwhile), else the All Good Check.
+  const watches = data?.watches ?? [];
+  const myWatch = watches.find((w) => w.mode === 'TRIP') ?? watches.find((w) => w.mode === 'ALL_GOOD');
+  const watchTodo = myWatch ? watchToDo(myWatch, t, i18n.language) : null;
+  // The server pings at a watch's deadline (and on every alert change): the
+  // tiles follow without a page reload.
+  useSocketEvent('alert:changed', reload);
   // alertId -> first name of the person each running alert is about.
   const [aboutNames, setAboutNames] = useState<Record<string, string>>({});
   // alertId -> my own participation (my answer, the questions put to me),
@@ -111,7 +128,7 @@ export function DashboardPage() {
   return (
     // has-alert: the Running Alert tile takes the room, My Circles / My
     // Companions shrink to compact headers, Raise Alert stays reachable.
-    <div className={`dashboard${activeAlerts.length > 0 ? ' has-alert' : ''}`}>
+    <div className={`dashboard${activeAlerts.length > 0 ? ' has-alert' : ''}${myWatch ? ' has-watch' : ''}`}>
       <header className="dashboard-greeting">
         <h1>{t('dashboard.greeting.hello', { name: user?.firstName ?? '' })}</h1>
         {/* A reminder, so a pause isn't forgotten: changed in Settings. */}
@@ -146,6 +163,28 @@ export function DashboardPage() {
           </Tile>
         </Link>
       ))}
+
+      {myWatch && watchTodo && (
+        <Link
+          to={
+            myWatch.mode === 'ALL_GOOD'
+              ? '/watch/all-good'
+              : myWatch.currentCheckpointId
+                ? `/watch/${myWatch.id}/validate`
+                : `/watch/${myWatch.id}`
+          }
+          className="tile-link watch-link"
+        >
+          <Tile
+            className={`tile-watch tile-watch-running${watchTodo.late ? ' late' : ''}`}
+            title={myWatch.mode === 'TRIP' ? t('dashboard.watch.trip') : t('watch.allGood.title')}
+          >
+            <p className="watch-label">{watchTodo.label}</p>
+            {watchTodo.detail && <p className="watch-detail">{watchTodo.detail}</p>}
+            {watchTodo.then && <p className="watch-then">{watchTodo.then}</p>}
+          </Tile>
+        </Link>
+      )}
 
       <div className="tile-grid">
         <Link to="/circles" className="tile-link">
@@ -192,6 +231,7 @@ export function DashboardPage() {
                     colorIndex={0}
                     size={140}
                     isGroup={otherCircles[0].circleType === 'GROUP'}
+                    travel={isRunningTrip(otherCircles[0])}
                     showNames={otherCircles[0].circleType !== 'GROUP'}
                     strongRing
                   />
@@ -207,6 +247,7 @@ export function DashboardPage() {
                     colorIndex={1}
                     size={140}
                     isGroup={otherCircles[1].circleType === 'GROUP'}
+                    travel={isRunningTrip(otherCircles[1])}
                     showNames={otherCircles[1].circleType !== 'GROUP'}
                     strongRing
                   />
@@ -266,6 +307,11 @@ export function DashboardPage() {
       </Link>
     </div>
   );
+}
+
+// A travel circle of a trip still going (Watch Mode): drawn green.
+function isRunningTrip(circle: Circle): boolean {
+  return !!circle.trip && !circle.trip.closedAt;
 }
 
 // The 1st circle can carry an alert: a Lead and at least one other

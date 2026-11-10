@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getPlan, type Plan } from './api/user';
 
-export type UpgradeReason = 'alerts' | 'groups' | 'deathNotice';
+export type UpgradeReason = 'alerts' | 'groups' | 'deathNotice' | 'travel';
 
 // My plan, loaded once per page. null while loading (or if it failed:
 // the backend still enforces every rule, so nothing unsafe is shown).
@@ -21,6 +21,7 @@ const UPGRADE_ERRORS: Record<string, UpgradeReason> = {
   'Free trial alerts used up — a paid Companion account is needed to raise more': 'alerts',
   'A paid Companion account is needed to found a group circle': 'groups',
   'The death notice needs a subscription or its one-time purchase': 'deathNotice',
+  'Watch Mode is part of the subscription': 'travel',
 };
 
 export function upgradeReasonOf(message: string | null): UpgradeReason | null {

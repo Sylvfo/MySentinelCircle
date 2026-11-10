@@ -1,3 +1,4 @@
+import type { WatchView } from './watch';
 import type { Gender } from '../gender';
 import { apiDelete, apiGet, apiGetShared, apiPatch, apiPost } from './client';
 
@@ -55,6 +56,15 @@ export interface Circle {
   // Only counts when the companion's general switch (Me.
   // alertChatWithFirstCircle) is on; meaningless for the 1st circle itself.
   alertChatWithFirstCircle: boolean;
+  // A travel circle (Watch Mode): its trip. Once the trip is over
+  // (closedAt), it is a normal circle.
+  trip?: TripRef | null;
+}
+
+export interface TripRef {
+  id: string;
+  label: string;
+  closedAt: string | null;
 }
 
 export interface PersonRef {
@@ -109,7 +119,17 @@ export interface Companion {
   linkId: string;
   sentinelType: SentinelType;
   leadSlot: LeadSlot | null;
-  circle: { id: string; label: string; isPrimary: boolean; isReserve: boolean; isGroup: boolean };
+  circle: {
+    id: string;
+    label: string;
+    isPrimary: boolean;
+    isReserve: boolean;
+    isGroup: boolean;
+    // I was added for their trip (Watch Mode).
+    trip?: TripRef | null;
+  };
+  // Their running watches I may know about (Watch Mode).
+  watches?: WatchView[];
   proposedCircle: { id: string; label: string } | null;
   companion: PersonRef & {
     firstName: string;

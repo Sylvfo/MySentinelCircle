@@ -159,6 +159,7 @@ model User {
   // "Sign me out everywhere": any login token issued before this is refused.
   sessionsValidAfter DateTime?
   language            String?  @db.VarChar(5)
+  connectCode String? @unique @db.VarChar(32) // personal QR code (add someone): stands in for the phone number; can be regenerated
 
   alertContactSharing Boolean  @default(false)
   gender Gender? // how texts speak about me; null = inclusive wording
@@ -283,7 +284,8 @@ model LinkSentinels {
 
   sentinelType    SentinelType @default(ONLY_SMS)
   requestedAsLead Boolean      @default(false)
-  leadSlot        LeadSlot?
+   smsSlot Int? @db.TinyInt // SMS reply code 1<slot><choice> (111 yes / 112 no); free again once answered
+ leadSlot        LeadSlot?
 
   //canMessageOwnCircle      Boolean       @default(true)
   //firstCircleMessagingMode MessagingMode @default(NONE)
@@ -513,6 +515,7 @@ model AlertQuestion {
 
   askedById String
   askedBy   User   @relation("AlertQuestionAskedBy", fields: [askedById], references: [id], onDelete: Restrict)
+  smsSlot Int? @db.TinyInt // SMS reply code 2<slot><choice> (211 / 212 / 213); free again once the alert closes
 
   alertParticipantId String
   alertParticipant   AlertParticipant @relation(fields: [alertParticipantId], references: [id], onDelete: Restrict)
@@ -565,6 +568,35 @@ model TravelCheckpoint {
   @@index([validatedAt, expectedAt])
 }
 
+
+// for testing purpose 
+enum LabSmsDirection {
+  OUT // app -> phone
+  IN  // phone -> app
+}
+
+// Test lab only: the SMS each test phone sent and received.
+model LabSms {
+  id        String          @id @default(cuid())
+  createdAt DateTime        @default(now())
+  phone     String          @db.VarChar(32)
+  direction LabSmsDirection
+  body      String          @db.Text
+
+  @@index([phone, createdAt])
+}
+
+// Test lab only: what testers thought of a scenario.
+model LabFeedback {
+  id             String    @id @default(cuid())
+  createdAt      DateTime  @default(now())
+  testerName     String    @db.VarChar(80)
+  scenario       String    @db.VarChar(64)
+  tags           String    @db.VarChar(191) // chosen chips, e.g. "ok,idea,lost"
+  text           String?   @db.Text
+  screenshotPath String?   @db.VarChar(191)
+  readAt         DateTime? // read on the Admin page
+}
 /*
 A DEFINIR APRES:
 ORGANISATION

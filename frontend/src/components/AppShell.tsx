@@ -1,4 +1,5 @@
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { NotificationBell } from './NotificationBell';
@@ -8,6 +9,7 @@ import { UserMenu } from './UserMenu';
 import { AlertSignal } from './AlertSignal';
 import logo from '../assets/logo.png';
 import { useLanguageSync } from '../languageSync';
+import { takeAfterLogin } from '../auth/afterLogin';
 
 // No separate "Dashboard" link — the logo itself always goes there (see
 // .brand below), so a second link to the same place would be redundant.
@@ -28,6 +30,13 @@ export function AppShell() {
   useUnreadCountsRefresher();
   // My SMS follow the app's language.
   useLanguageSync();
+  const navigate = useNavigate();
+  // Signed in from a scanned QR link: back to it.
+  useEffect(() => {
+    const path = takeAfterLogin();
+    if (path) navigate(path, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { messages: unreadMessages, support: unreadSupport } = useUnreadCounts();
   return (
     <div className="app-shell">

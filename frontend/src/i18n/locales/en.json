@@ -41,7 +41,8 @@
     "settings": "Settings",
     "logout": "Log out",
     "info": "Info",
-    "admin": "Admin"
+    "admin": "Admin",
+    "qr": "QR code"
   },
   "auth": {
     "loginTitle": "Log in",
@@ -146,6 +147,9 @@
         "thanks": "Thank you, your answer was passed on. The 1st circle takes care of the rest.",
         "generic": "See the alert and answer if you're asked to."
       }
+    },
+    "watch": {
+      "trip": "Trip mode"
     }
   },
   "circles": {
@@ -317,11 +321,13 @@
     "groups": {
       "lead": "You're their Lead Sentinel",
       "firstCircle": "You're in their 1st circle",
+      "travel": "Travelling with you",
       "others": "You're their Sentinel"
     },
     "groupHints": {
       "lead": "You're responsible for them if something happens: you coordinate the alert and the other Sentinels.",
       "firstCircle": "If something happens, you're part of the group that handles the alert.",
+      "travel": "You are in their travel circle: if something goes wrong during the trip, their 1st circle may ask you for help.",
       "others": "If something happens, their 1st circle may ask for your help: answer a question, go and check…"
     },
     "leaveExplain": "You will no longer watch over {{name}}. Nothing changes the other way: if {{name}} watches over you, {{name}} stays your Sentinel.",
@@ -372,6 +378,10 @@
       "codeSent": "Two people confirmed: the code was sent to the new number.",
       "needsLead": "A Lead Sentinel must confirm too: neither you nor the first person is a Lead.",
       "numberTaken": "This new number already has an account: it cannot be confirmed."
+    },
+    "watchPill": {
+      "trip": "Travelling",
+      "tripAt": "Travelling · {{place}}"
     }
   },
   "alerts": {
@@ -408,7 +418,8 @@
       "INCIDENT": "Incident reported",
       "EMERGENCY": "Emergency",
       "NOCONTACT": "No contact",
-      "UNKNOWN": "Alert"
+      "UNKNOWN": "Alert",
+      "TRAVEL": "Trip alert"
     },
     "detail": {
       "show": "Details",
@@ -529,11 +540,11 @@
         "title": "Someone needs assistance",
         "hint": "Need to reach their loved ones."
       },
-      "travel": {
-        "title": "Travel mode",
-        "hint": "Your circles watch over you during a trip."
-      },
-      "soon": "Coming soon"
+      "soon": "Coming soon",
+      "watch": {
+        "title": "Watch Mode",
+        "hint": "Trip mode or All Good Check."
+      }
     },
     "self": {
       "situationLabel": "What's happening?",
@@ -755,11 +766,16 @@
   },
   "history": {
     "title": "History",
-    "intro": "Finished alerts you took part in.",
+    "intro": "Finished alerts you took part in, and your watches.",
     "empty": "No resolved alert yet.",
     "backToList": "← Back to history",
     "concerns": "About: {{who}}",
-    "concernsMe": "you"
+    "concernsMe": "you",
+    "watch": {
+      "trip": "Trip",
+      "running": "running",
+      "withOthers": "Trips with others"
+    }
   },
   "runningAlertPage": {
     "title": "Running Alert",
@@ -841,7 +857,11 @@
       "CIRCLE_MOVE_PROPOSED_male": "{{who}} invites you to join his 1st circle",
       "CIRCLE_MOVE_ACCEPTED": "{{who}} joined your 1st circle",
       "CIRCLE_MOVE_DECLINED": "{{who}} declined to join your 1st circle",
-      "SENTINEL_TO_RESERVE": "{{who}} went to your reserve for now"
+      "SENTINEL_TO_RESERVE": "{{who}} went to your reserve for now",
+      "TRAVEL_CIRCLE_ADDED": "{{who}} takes you on their trip",
+      "WATCH_CHECK_DUE": "It's time: say all is well",
+      "WATCH_PAUSE_SOON": "Your subscription ends soon: your watch will pause",
+      "WATCH_PAUSE_SOON_CIRCLE": "{{who}} has a watch running in the background: you are only told if something is wrong. Their subscription ends soon and this watch will pause."
     }
   },
   "settings": {
@@ -1212,6 +1232,10 @@
         "send": "Send the invitation",
         "theyAsked": "{{name}} asked to watch over you."
       }
+    },
+    "trip": {
+      "inMyCircle": "{{name}} travels with you",
+      "inTheirCircle": "You are in {{name}}'s travel circle"
     }
   },
   "pause": {
@@ -1294,7 +1318,7 @@
         "alerts": "Unlimited alerts about you, SMS included",
         "groups": "Create group circles",
         "deathNotice": "The death notice",
-        "travel": "Travel mode",
+        "travel": "Watch Mode: trips and All Good Check",
         "noAds": "No ads"
       },
       "renew": "Add a year",
@@ -1313,7 +1337,8 @@
     "locked": {
       "alerts": "Your free alerts are used up. To raise more alerts, you need the subscription.",
       "groups": "Creating a group circle is part of the subscription. Joining someone else's group stays free.",
-      "deathNotice": "Preparing the death notice is part of the subscription, or can be bought once on its own."
+      "deathNotice": "Preparing the death notice is part of the subscription, or can be bought once on its own.",
+      "travel": "Watch Mode (trip, All Good Check) is part of the subscription."
     },
     "payAlert": {
       "self": {
@@ -1332,7 +1357,7 @@
       "label": "Subscription",
       "modalTitle": "Part of the subscription",
       "groups": "Creating a group circle is part of the subscription. Joining someone else's group stays free.",
-      "travel": "The travel alert will be part of the subscription: your close ones are warned if you don't reach your destination on time.",
+      "travel": "Watch Mode is part of the subscription: travelling or day to day, your 1st circle is told if you give no news at the planned time.",
       "deathNotice": "Preparing the death notice is part of the subscription, or can be bought once on its own.",
       "alerts": "After your free alert, alerts about you are part of the subscription."
     },
@@ -1425,5 +1450,294 @@
       "uptimeValue": "{{days}} d {{hours}} h",
       "version": "Version"
     }
+  },
+  "watch": {
+    "title": "Watch Mode",
+    "intro": "You set checkpoints: at each one, you confirm in the app that all is well. Miss one, and your 1st circle is told.",
+    "pill": {
+      "on": "On",
+      "tripOn": "Running",
+      "tripAt": "Running · {{place}}",
+      "paused": {
+        "SUBSCRIPTION": "Paused (subscription ended)",
+        "MANUAL": "Paused",
+        "TRIP": "Paused during the trip"
+      }
+    },
+    "paused": {
+      "SUBSCRIPTION": "Paused: your subscription has ended. Nothing happens at the planned times until it is renewed.",
+      "MANUAL": "Paused for now, as you asked.",
+      "TRIP": "Paused during your trip: the trip's steps are what count."
+    },
+    "todo": {
+      "nextStep": "Next step to confirm",
+      "nextCheck": "Next check to confirm",
+      "alertAt": "No news by {{at}}: an alert will go off.",
+      "alertSent": "Alert sent: your 1st circle has been told.",
+      "sayAllGood": "Confirm to say all is well.",
+      "planNext": "No step planned: plan the next one.",
+      "late": "To confirm",
+      "before": "by {{due}}"
+    },
+    "delay": {
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "hours_one": "{{count}} hour",
+      "hours_other": "{{count}} hours",
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "weeks_one": "{{count}} week",
+      "weeks_other": "{{count}} weeks"
+    },
+    "trip": {
+      "title": "Trip",
+      "hint": "A check-in at each step of your trip.",
+      "running": "Trip running",
+      "end": "End the trip",
+      "endTitle": "End this trip?",
+      "endText": "Nobody watches over your journey any more: no reminder, no alert. The trip and its logbook go to the history. This is final.",
+      "endPeople": "The people of your travel circles stay your Sentinels: you will then choose whom to keep.",
+      "endConfirm": "Yes, end the trip",
+      "ended": "Trip {{name}} ended ✓",
+      "settings": "Trip settings"
+    },
+    "newTrip": {
+      "title": "New trip",
+      "name": "Trip name",
+      "namePlaceholder": "E.g. Lake Pass, Thailand…",
+      "firstStep": "First step",
+      "start": "Start watching",
+      "stepN": "Step {{n}}",
+      "withCircle": "Create a circle for this trip"
+    },
+    "step": {
+      "place": "Place",
+      "placePlaceholder": "E.g. pass car park",
+      "pasteLink": "Paste a map link",
+      "useLink": "Use this link",
+      "linkNotUnderstood": "This link gives no point on the map. You can also type “46.5, 6.6”.",
+      "pointSet": "Point on the map:",
+      "removePoint": "Remove the point",
+      "alertAfter": "Alert after",
+      "day": "Day",
+      "time": "Time"
+    },
+    "instructions": {
+      "label": "What to do if the alert goes off?",
+      "tripPlaceholder": "E.g. call mountain rescue (112), my car is…",
+      "allGoodPlaceholder": "E.g. go to my home: my neighbour on the 2nd floor has a spare key."
+    },
+    "steps": {
+      "title": "Steps",
+      "alertIfNothing": "alert if nothing by {{at}}",
+      "validated": "Confirmed at {{at}} ✓",
+      "validatedElsewhere": "Confirmed at {{at}}, elsewhere: {{place}} ✓",
+      "missed": "Not confirmed in time",
+      "isNext": "Next step",
+      "add": "Add a step",
+      "addConfirm": "Add the step",
+      "after": "then: {{place}}, {{at}}",
+      "noneAfter": "no other step planned"
+    },
+    "see": {
+      "shareTrip": "My 1st circle can see my trip"
+    },
+    "circles": {
+      "newCircle": "New travel circle",
+      "newGroup": "New travel group",
+      "ringTrip": "Trip {{name}}"
+    },
+    "validate": {
+      "open": "Confirm the step {{place}} · {{at}}",
+      "title": "Step {{n}}: {{place}}",
+      "planned": "Planned {{at}}. No news by {{alertAt}}: your 1st circle is told.",
+      "alertRunning": "The time has passed and your 1st circle has been told. Confirm to tell them all is well.",
+      "asPlanned": "I'm here, as planned",
+      "elsewhere": "I'm somewhere else, but all is well",
+      "where": "Where are you?",
+      "wherePlaceholder": "E.g. we're sleeping at the Peak hut",
+      "sharePosition": "Attach my position (phone GPS)",
+      "logbook": "Logbook (optional)",
+      "logbookPlaceholder": "A word about the step: weather, how you feel, a change of plan…",
+      "submit": "Confirm the step",
+      "planNext": "Plan the next step",
+      "submitWithNext": "Confirm and plan this step",
+      "lastStep": "That was the last step: end the trip",
+      "done": "Step confirmed ✓",
+      "doneAt": "At {{place}} at {{at}} ({{timing}}).",
+      "doneElsewhere": "Elsewhere, all is well: {{place}}.",
+      "withPosition": "Position attached.",
+      "onTime": "at the planned time",
+      "late_one": "{{count}} min after the planned time",
+      "late_other": "{{count}} min after the planned time",
+      "early_one": "{{count}} min before the planned time",
+      "early_other": "{{count}} min before the planned time",
+      "nextStillGood": "Is your next step still right?",
+      "stillGood": "Yes, still right",
+      "confirmed": "Confirmed ✓",
+      "addAnother": "Add another step",
+      "finish": "Done",
+      "confirmFirst": "First confirm your next step",
+      "nothing": "There is no step to confirm for now."
+    },
+    "logbook": {
+      "title": "Logbook",
+      "entry": "Step {{n}} · {{at}} (planned {{planned}}) · {{place}}"
+    },
+    "allGood": {
+      "title": "All Good Check",
+      "hint": "A regular check-in, day to day.",
+      "on": "On",
+      "nextBefore": "next check by {{at}}",
+      "lastValidation": "Last confirmation: {{at}}",
+      "noValidationYet": "No confirmation yet.",
+      "allGood": "All good ✓",
+      "early": "You can confirm from the morning, before the time.",
+      "when": "When?",
+      "rhythm": {
+        "legend": "How often",
+        "daily": "Every day",
+        "weekdays": "Some days",
+        "every": "Every…"
+      },
+      "days": {
+        "1": "Monday",
+        "2": "Tuesday",
+        "3": "Wednesday",
+        "4": "Thursday",
+        "5": "Friday",
+        "6": "Saturday",
+        "7": "Sunday"
+      },
+      "daysShort": {
+        "1": "M",
+        "2": "T",
+        "3": "W",
+        "4": "T",
+        "5": "F",
+        "6": "S",
+        "7": "S"
+      },
+      "everyLabel": "Every",
+      "howMany": "How many",
+      "unit": "Unit",
+      "units": {
+        "DAY": "day(s)",
+        "WEEK": "week(s)",
+        "MONTH": "month(s)"
+      },
+      "from": "Starting on",
+      "before": "By",
+      "delay": "With no confirmation, we remind you, then alert after",
+      "pause": "Pause",
+      "pauseUntil": "Pause until",
+      "pauseConfirm": "Pause",
+      "pausedUntil": "Paused until {{at}}.",
+      "resume": "Resume now",
+      "tripPause": "During a trip, the check pauses by itself: the trip's steps are what count.",
+      "firstCircle": "My 1st circle, before an alert",
+      "toggleKnown": "Knows it's on (and the time)",
+      "toggleLast": "Sees my last confirmation",
+      "start": "Turn on the check",
+      "saved": "Saved ✓",
+      "stop": "Turn off",
+      "stopConfirm": "Turn off the All Good Check? Nobody will be told if you give no news."
+    },
+    "end": {
+      "title_one": "{{count}} new Sentinel during this trip",
+      "title_other": "{{count}} new Sentinels during this trip",
+      "intro": "What to do? Your other Sentinels don't change.",
+      "forAll_one": "For this person",
+      "forAll_other": "For all {{count}}",
+      "endLink": "End the link",
+      "reserve": "Put them in the reserve circle",
+      "default": "default",
+      "keep": "Keep this trip's circle",
+      "each": "Or for each Sentinel",
+      "whatFor": "What happens to {{name}}",
+      "optionReserve": "Reserve circle",
+      "optionKeep": "Travel circle",
+      "groupsClose": "A travel group closes with the trip: its members go to your reserve, or elsewhere if you choose.",
+      "finish": "End the trip"
+    },
+    "alert": {
+      "reachFirst": "First, try to reach them",
+      "callThem": "Call {{name}}.",
+      "callTravelCircle": "Call the people travelling with them: {{circles}}. You can also ask them from “Circles”.",
+      "thenInstructions": "Nobody answers: follow the instructions, in “To know”.",
+      "theTrip": "The trip",
+      "lastNews": "Latest news:",
+      "noNews": "no confirmation yet.",
+      "planned": "planned {{at}}",
+      "changeType": "Change the alert type",
+      "changeTypeHint": "If things are more serious, the alert can become a disappearance or an emergency. Everyone sees it in the room."
+    }
+  },
+  "connect": {
+    "title": "QR code",
+    "tabs": {
+      "mine": "My code",
+      "scan": "Scan",
+      "phone": "Number"
+    },
+    "myCodeAlt": "My QR code",
+    "renew": "Change my code",
+    "watchesMe": "{{name}} watches over me",
+    "iWatch": "I watch over {{name}}",
+    "inCircle": "In the circle",
+    "send": "Send",
+    "sent": "Request sent to {{name}}.",
+    "phone": "Phone number",
+    "name": "First name",
+    "next": "Continue",
+    "scan": {
+      "unsupported": "This browser can't use the camera: scan with the phone's camera.",
+      "denied": "The camera isn't allowed: scan with the phone's camera.",
+      "notOurs": "This QR code isn't a MySentinelCircle code."
+    }
+  },
+  "lab": {
+    "title": "MySentinelCircle test lab",
+    "notReal": "Test version: nothing is real, no real SMS",
+    "start": "Start",
+    "scenarios": "Scenarios",
+    "scenario": {
+      "alert": "Raise an alert",
+      "trip": "A trip",
+      "allGood": "All Good Check",
+      "qr": "Add someone with a QR code",
+      "free": "Free"
+    },
+    "opinion": "What you think of this scenario",
+    "tags": {
+      "ok": "Works well",
+      "idea": "Great idea",
+      "want": "Makes me want to use it",
+      "broken": "Doesn't work",
+      "lost": "I don't understand",
+      "odd": "Not logical"
+    },
+    "aWord": "A word?",
+    "shot": "Attach a screenshot",
+    "shotTaken": "Screenshot attached ✓",
+    "shotFailed": "The screenshot couldn't be taken.",
+    "send": "Send",
+    "thanks": "Thank you!",
+    "smsTitle": "SMS received · {{phone}}",
+    "reply": "Reply",
+    "showOne": "Show one phone",
+    "showFour": "Show the 4 phones",
+    "advance": "Move time 2 h ahead",
+    "advanced": "2 hours later…",
+    "reset": "Reset",
+    "wasReset": "The alerts in progress are stopped.",
+    "admin": {
+      "title": "Lab feedback",
+      "markRead": "Mark as read",
+      "screenshot": "Screenshot"
+    },
+    "identifier": "User name",
+    "password": "Password",
+    "logout": "Sign out"
   }
 }

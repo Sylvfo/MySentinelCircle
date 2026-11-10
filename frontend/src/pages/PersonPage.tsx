@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { isChatClosed } from '../api/messaging';
 import { getAlert } from '../api/alert';
+import { listMyWatches, type Watch } from '../api/watch';
 import { useAuth } from '../auth/AuthContext';
 import {
   blockRelationship,
@@ -49,18 +50,21 @@ export function PersonPage() {
   // even with no direct link to me (then: first name only, no contact).
   const alertId = searchParams.get('alert');
   const { data, loading, error, setError, reload } = useLoad(async () => {
-    const [circles, companions, alert] = await Promise.all([
+    const [circles, companions, alert, myWatches] = await Promise.all([
       listCircles(),
       listCompanions(),
       // Only the companion and their 1st circle may read an alert's
       // detail; anyone else just gets the page without the alert part.
       alertId ? getAlert(alertId).catch(() => null) : Promise.resolve(null),
+      // My trip, for "X est dans votre cercle du voyage" (Watch Mode).
+      listMyWatches().catch(() => [] as Watch[]),
     ]);
-    return { circles, companions, alert };
+    return { circles, companions, alert, myWatches };
   }, [userId, alertId]);
   const circles = data?.circles ?? [];
   const companions = data?.companions ?? [];
   const alert = data?.alert ?? null;
+  const myWatches = data?.myWatches ?? [];
   // Ending / blocking the whole relationship, waiting for confirmation.
   const [confirming, setConfirming] = useState<EndKind | null>(null);
   const { run } = useAction({ onError: setError });
@@ -169,6 +173,22 @@ export function PersonPage() {
   const sentinelRoleLabel = t('conversation.roleCircle');
   const companionRoleLabel = t('conversation.roleCircle');
 
+  // Watch Mode, green lines, gone once the trip ends: they're in one of my
+  // travel circles (added for it, or an existing Sentinel along), and I'm
+  // in theirs.
+  const inMyTrip = myWatches
+    .filter((w) => w.mode === 'TRIP')
+    .flatMap((w) =>
+      w.travelCircles
+        .filter(
+          (tc) =>
+            tc.addedForTrip.some((p) => p.person.id === userId) ||
+            tc.alreadySentinels.some((p) => p.person.id === userId),
+        )
+        .map((tc) => ({ tripId: w.id, trip: w.label, circle: tc.label })),
+    );
+  const inTheirTrip = (companion?.watches ?? []).filter((w) => w.role === 'TRAVEL_CIRCLE');
+
   const toggle = (key: SectionKey) =>
     setOpen((current) => {
       const next = new Set(current);
@@ -220,6 +240,26 @@ export function PersonPage() {
                   {companionChip}
                 </span>
               )}
+            </div>
+          )}
+          {(inMyTrip.length > 0 || inTheirTrip.length > 0) && (
+            <div className="conversation-relations">
+              {inMyTrip.map((l) => (
+                <span key={`${l.tripId}-${l.circle}`} className="conversation-rel watch-rel">
+                  <SentinelIcon size={16} />
+                  <span>{t('person.trip.inMyCircle', { name })}</span>
+                  <Link to={`/watch/${l.tripId}`} className="watch-pill inline">
+                    {t('watch.circles.ringTrip', { name: l.trip })}
+                  </Link>
+                </span>
+              ))}
+              {inTheirTrip.map((w) => (
+                <span key={w.watchId} className="conversation-rel watch-rel">
+                  <CompanionIcon size={17} />
+                  <span>{t('person.trip.inTheirCircle', { name })}</span>
+                  <span className="watch-pill inline">{t('watch.circles.ringTrip', { name: w.label })}</span>
+                </span>
+              ))}
             </div>
           )}
           {/* No direct link: first name only, no way to contact them. */}

@@ -17,6 +17,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RUNNING_ALERT } from '../common/running-alert';
+import { SMS_CATEGORY, freeSlot, replyCode } from '../sms/sms-reply-code';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import { NotificationService } from '../notification/notification.service';
@@ -93,12 +94,16 @@ export class OuterCirclesService {
   ) {
     const alert = await this.getAlertToAskOn(callerId, alertId);
 
+    // An outer circle, or one of the person's travel groups (Watch Mode).
     const circle = await this.prisma.circle.findFirst({
       where: {
         id: dto.circleId,
         userCompanionId: alert.userCompanionId,
-        circleType: CircleType.BASIC,
         status: CircleStatus.ACTIVE,
+        OR: [
+          { circleType: CircleType.BASIC },
+          { circleType: CircleType.GROUP, tripId: { not: null } },
+        ],
       },
       include: {
         userCompanion: { select: { alertChatWithFirstCircle: true } },
@@ -117,9 +122,14 @@ export class OuterCirclesService {
       circle.userCompanion.alertChatWithFirstCircle &&
       circle.alertChatWithFirstCircle;
 
+    // A travel circle also counts the existing Sentinels who came on the
+    // trip (they kept their own circle) — unless already on this alert.
+    const travellerLinkIds = circle.tripId
+      ? await this.travellersNotOnAlert(circle.tripId, circle.id, alertId)
+      : [];
     const links = await this.prisma.linkSentinels.findMany({
       where: {
-        circleId: circle.id,
+        OR: [{ circleId: circle.id }, { id: { in: travellerLinkIds } }],
         status: LinkStatus.ACCEPTED,
         linkAsSentinel: NOT_PAUSED_SENTINEL,
       },
@@ -192,7 +202,7 @@ export class OuterCirclesService {
       }
     });
 
-    await this.createQuestions(
+    const codes = await this.createQuestions(
       alertId,
       batch.map((link) => link.id),
       dto.questionKind,
@@ -201,7 +211,7 @@ export class OuterCirclesService {
     await this.alerts.notifyParticipants(
       alertId,
       batch,
-      await this.questionSms(alert, dto.questionKind),
+      await this.questionSms(alert, dto.questionKind, codes),
     );
 
     await this.alerts.notifyAlertParticipants(alertId, {
@@ -240,7 +250,7 @@ export class OuterCirclesService {
     }
 
     const links = participants.map((p) => p.userSentinels);
-    await this.createQuestions(
+    const codes = await this.createQuestions(
       alertId,
       links.map((link) => link.id),
       dto.questionKind,
@@ -249,10 +259,40 @@ export class OuterCirclesService {
     await this.alerts.notifyParticipants(
       alertId,
       links,
-      await this.questionSms(alert, dto.questionKind),
+      await this.questionSms(alert, dto.questionKind, codes),
     );
     await this.alerts.notifyAlertParticipants(alertId);
     return this.alerts.getAlert(callerId, alertId);
+  }
+
+  // The Sentinels counted in this travel circle for the trip (Watch Mode)
+  // who aren't on the alert yet in some other circle (the 1st one, say).
+  private async travellersNotOnAlert(
+    tripId: string,
+    circleId: string,
+    alertId: string,
+  ) {
+    const travellers = await this.prisma.alertParticipant.findMany({
+      where: {
+        alertId: tripId,
+        circleId,
+        status: { not: AlertParticipantStatus.CLOSED },
+      },
+      select: { userSentinelsId: true },
+    });
+    if (travellers.length === 0) return [];
+    const onAlert = await this.prisma.alertParticipant.findMany({
+      where: {
+        alertId,
+        userSentinelsId: { in: travellers.map((t) => t.userSentinelsId) },
+        circleId: { not: circleId },
+      },
+      select: { userSentinelsId: true },
+    });
+    const taken = new Set(onAlert.map((p) => p.userSentinelsId));
+    return travellers
+      .map((t) => t.userSentinelsId)
+      .filter((id) => !taken.has(id));
   }
 
   // Every question goes through here: the place to add a per-alert limit,
@@ -270,6 +310,10 @@ export class OuterCirclesService {
     return alert;
   }
 
+  // One question per participant, each with its SMS reply code: 2<slot>.
+  // A further question on the same alert keeps the slot that person already
+  // has; otherwise the slot free among the questions waiting on their
+  // number (one per running alert). Returns linkId -> code.
   private async createQuestions(
     alertId: string,
     linkIds: string[],
@@ -278,28 +322,57 @@ export class OuterCirclesService {
   ) {
     const participants = await this.prisma.alertParticipant.findMany({
       where: { alertId, userSentinelsId: { in: linkIds } },
-      select: { id: true },
+      select: {
+        id: true,
+        userSentinelsId: true,
+        userSentinels: {
+          select: { linkAsSentinel: { select: { phone: true } } },
+        },
+      },
     });
-    await this.prisma.alertQuestion.createMany({
-      data: participants.map((p) => ({
-        kind,
-        askedById,
-        alertParticipantId: p.id,
-      })),
-    });
+    const codes = new Map<string, string>();
+    for (const p of participants) {
+      const earlier = await this.prisma.alertQuestion.findFirst({
+        where: { alertParticipantId: p.id, smsSlot: { not: null } },
+        orderBy: { createdAt: 'desc' },
+        select: { smsSlot: true },
+      });
+      const phone = p.userSentinels.linkAsSentinel.phone;
+      const slot =
+        earlier?.smsSlot ??
+        (phone
+          ? freeSlot(
+              (await this.listOpenQuestionsByPhone(phone)).map(
+                (q) => q.smsSlot,
+              ),
+            )
+          : null);
+      await this.prisma.alertQuestion.create({
+        data: { kind, askedById, alertParticipantId: p.id, smsSlot: slot },
+      });
+      if (slot) {
+        codes.set(
+          p.userSentinelsId,
+          replyCode(SMS_CATEGORY.ALERT_QUESTION, slot),
+        );
+      }
+    }
+    return codes;
   }
 
   // The question SMS, worded for the companion's gender.
   private async questionSms(
     alert: { userCompanionId: string },
     kind: AlertQuestionKind,
+    codes: Map<string, string>,
   ) {
     const companion = await this.prisma.user.findUnique({
       where: { id: alert.userCompanionId },
       select: { firstName: true, lastName: true, gender: true },
     });
-    // Written in each recipient's language (notifyParticipants).
-    return (lang: SmsLang) =>
+    // Written in each recipient's language, with their own reply code
+    // (notifyParticipants).
+    return (lang: SmsLang, linkId: string) =>
       alertQuestionSms(
         companionFullName(companion),
         kind,
@@ -307,6 +380,7 @@ export class OuterCirclesService {
           ? { firstName: companion.firstName, gender: companion.gender }
           : undefined,
         lang,
+        codes.get(linkId),
       );
   }
 
@@ -418,7 +492,14 @@ export class OuterCirclesService {
     );
     const reply = parseAlertReply(body, kind);
     if (!reply) {
-      await this.sms.send(phone, alertReplyHelpSms(kind, lang));
+      await this.sms.send(
+        phone,
+        alertReplyHelpSms(
+          kind,
+          lang,
+          replyCode(SMS_CATEGORY.ALERT_QUESTION, question.smsSlot ?? 1),
+        ),
+      );
       return { matched: true as const, action: 'alert_reply_not_understood' };
     }
 

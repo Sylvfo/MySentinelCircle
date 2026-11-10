@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { setThemeChoice, useThemeChoice } from '../themeMode';
 import { NameStar } from './SubscribedStar';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
-// Your own name in the nav: opens a small menu (Settings / Log out). The menu
+// Your own name in the nav: opens a small menu (Code QR, Settings,
+// language, day/night, Log out). The menu
 // is position: fixed from the button's on-screen spot, because the mobile
 // nav bar scrolls horizontally and would clip an absolutely placed dropdown.
 export function UserMenu() {
@@ -68,6 +70,9 @@ export function UserMenu() {
           role="menu"
           style={{ top: anchor.bottom + 6, right: window.innerWidth - anchor.right }}
         >
+          <Link to="/connect" role="menuitem">
+            {t('nav.qr')}
+          </Link>
           <Link to="/settings" role="menuitem">
             {t('nav.settings')}
           </Link>
@@ -76,6 +81,9 @@ export function UserMenu() {
               {t('nav.admin')}
             </Link>
           )}
+          <div className="user-menu-language" role="menuitem">
+            {t('common.language')} <LanguageSwitcher />
+          </div>
           {/* Quick day/night switch (the full choice, incl. Automatic, is in
               Settings). */}
           <button type="button" role="menuitem" onClick={() => setThemeChoice(isDark ? 'light' : 'dark')}>

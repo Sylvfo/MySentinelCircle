@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AlertStatus, LinkStatus, UserStatus, UserType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RUNNING_ALERT } from '../common/running-alert';
 import { DELETED_ACCOUNT_LABEL } from '../user/user-status.util';
 import {
   POSITION_MESSAGE_PREFIX,
@@ -13,7 +14,7 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Retention periods (nLPD / GDPR: keep personal data no longer than
 // needed) — Sylvie's call, 2026-11-06. See plan.txt DATA PROTECTION.
-export const POSITION_RETENTION_DAYS = 30; // after the alert is resolved
+export const POSITION_RETENTION_DAYS = 30; // after the alert is resolved / the watch ended
 export const NOTIFICATION_RETENTION_DAYS = 182; // ~6 months
 export const UNCLAIMED_STUB_RETENTION_DAYS = 182; // ~6 months
 export const LOGIN_EVENT_RETENTION_DAYS = 90;
@@ -50,11 +51,12 @@ export class RetentionService {
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async purge(now = new Date()) {
     const positions = await this.purgePositions(now);
+    const watchPositions = await this.purgeWatchPositions(now);
     const notifications = await this.purgeNotifications(now);
     const stubs = await this.purgeUnclaimedStubs(now);
     const logins = await this.purgeLoginEvents(now);
     this.logger.log(
-      `Retention purge: ${positions} alert(s) without position, ${notifications} notification(s), ${stubs} unclaimed number(s), ${logins} sign-in(s)`,
+      `Retention purge: ${positions} alert(s) without position, ${watchPositions} watch step(s) without position, ${notifications} notification(s), ${stubs} unclaimed number(s), ${logins} sign-in(s)`,
     );
   }
 
@@ -100,6 +102,28 @@ export class RetentionService {
       }),
     ]);
     return withPosition.length;
+  }
+
+  // Watch Mode: the GPS position given when validating a step, kept the
+  // same time after the watch ended — and never while an alert it opened
+  // is still running.
+  async purgeWatchPositions(now: Date): Promise<number> {
+    const before = new Date(now.getTime() - POSITION_RETENTION_DAYS * DAY_MS);
+    const { count } = await this.prisma.travelCheckpoint.updateMany({
+      where: {
+        alert: {
+          alertStatus: AlertStatus.SENT,
+          closedAt: { lt: before },
+          tripAlerts: { none: { alertStatus: RUNNING_ALERT } },
+        },
+        OR: [
+          { validatedLatitude: { not: null } },
+          { validatedLongitude: { not: null } },
+        ],
+      },
+      data: { validatedLatitude: null, validatedLongitude: null },
+    });
+    return count;
   }
 
   // Notifications are a passing inbox, not a record: deleted outright.

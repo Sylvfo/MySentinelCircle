@@ -53,16 +53,18 @@ export function groupInvitationSms(
 }
 
 // Me -> Sentinel: sent to the invited person when "Me" adds them to a circle.
+// `code`: its SMS reply code (sms-reply-code.ts), e.g. "11" -> 111 / 112.
 export function sentinelInvitationSms(
   inviter: string,
   lang: SmsLang = 'fr',
+  code = '11',
 ): string {
   if (lang === 'en') {
     return (
       `${inviter} chose you as a Sentinel on ${APP}, ` +
       `a mutual-aid network that alerts your loved ones in an emergency. ` +
       `No account needed. ` +
-      `Reply YES to accept, NO to decline, ` +
+      `Reply ${code}1 Yes, ${code}2 No, ` +
       `STOP to never be contacted again (your number will be erased). ${SITE}`
     );
   }
@@ -70,7 +72,7 @@ export function sentinelInvitationSms(
     `${inviter} vous a choisi.e comme Sentinel sur ${APP}, ` +
     `un reseau d'entraide qui previent vos proches en cas d'urgence. ` +
     `Aucun compte n'est necessaire. ` +
-    `Repondez OUI pour accepter, NON pour refuser, ` +
+    `Repondez ${code}1 Oui, ${code}2 Non, ` +
     `STOP pour ne plus etre contacte.e (votre numero sera efface). ${SITE}`
   );
 }
@@ -206,18 +208,19 @@ export function stopChoiceSms(names: string[], lang: SmsLang = 'fr'): string {
 
 // Reply when several people are waiting for an answer and the SMS doesn't say
 // which one. Homonyms can't be told apart here, hence the login link.
+// `examples`: one line per request waiting, "Lea : 211 Oui, 212 Non".
 export function severalRequestsSms(
   examples: string[],
   lang: SmsLang = 'fr',
 ): string {
   if (lang === 'en') {
     return (
-      `Several requests are waiting. Reply with the first name: ${examples.join(' or ')}.\n` +
+      `Several requests are waiting. Reply with the code:\n${examples.join('\n')}\n` +
       `Or sign in: ${LOGIN_LINK}`
     );
   }
   return (
-    `Plusieurs demandes en cours. Repondez avec le prenom : ${examples.join(' ou ')}.\n` +
+    `Plusieurs demandes en cours. Repondez avec le code :\n${examples.join('\n')}\n` +
     `Ou connectez-vous : ${LOGIN_LINK}`
   );
 }
@@ -310,25 +313,41 @@ export function alertClosedToCompanionSms(lang: SmsLang = 'fr'): string {
   return `Votre 1er cercle a cloture l'alerte vous concernant sur ${APP}. ${SITE}`;
 }
 
-function alertReplyChoices(kind: AlertQuestionKind, lang: SmsLang): string {
+// "211 Oui, 212 Plus tard, 213 Non" (code "21"); a free answer starts
+// with the code: "21 au marche".
+export function alertReplyChoicesText(
+  kind: AlertQuestionKind,
+  lang: SmsLang,
+  code: string,
+): string {
   const replies = repliesFor(kind);
   if (replies.length === 0) {
     return lang === 'en'
-      ? 'Or reply here in a few words'
-      : 'Ou repondez ici en quelques mots';
+      ? `${code} then your answer`
+      : `${code} puis votre reponse`;
   }
-  const choices = replies.map(
-    (reply, index) => `${index + 1} ${replyLabel(reply, lang)}`,
-  );
-  return lang === 'en'
-    ? `Or reply: ${choices.join(', ')}`
-    : `Ou repondez : ${choices.join(', ')}`;
+  return replies
+    .map((reply, index) => `${code}${index + 1} ${replyLabel(reply, lang)}`)
+    .join(', ');
 }
 
-function alertReplyPrompt(kind: AlertQuestionKind, lang: SmsLang): string {
+function alertReplyChoices(
+  kind: AlertQuestionKind,
+  lang: SmsLang,
+  code: string,
+): string {
+  const choices = alertReplyChoicesText(kind, lang, code);
+  return lang === 'en' ? `Reply: ${choices}` : `Repondez : ${choices}`;
+}
+
+function alertReplyPrompt(
+  kind: AlertQuestionKind,
+  lang: SmsLang,
+  code: string,
+): string {
   const signIn = lang === 'en' ? 'Sign in' : 'Connectez-vous';
   const colon = lang === 'en' ? ':' : ' :';
-  return `${signIn}${colon} ${LOGIN_LINK}\n${alertReplyChoices(kind, lang)}`;
+  return `${signIn}${colon} ${LOGIN_LINK}\n${alertReplyChoices(kind, lang, code)}`;
 }
 
 // One question asked to an outer-circle Sentinel during an alert.
@@ -338,6 +357,8 @@ export function alertQuestionSms(
   // How to speak about them ("la voir" / "le voir"); unset = "la".
   about?: { firstName: string; gender: Gender | null },
   lang: SmsLang = 'fr',
+  // Its SMS reply code (sms-reply-code.ts), "21" -> 211 / 212 / 213.
+  code = '21',
 ): string {
   const head =
     lang === 'en'
@@ -345,7 +366,7 @@ export function alertQuestionSms(
       : `${APP} : alerte ${companionFullName}`;
   return (
     `${head}\n${alertQuestionText(kind, about, lang)}\n` +
-    alertReplyPrompt(kind, lang)
+    alertReplyPrompt(kind, lang, code)
   );
 }
 
@@ -375,8 +396,9 @@ export function alertReplyAckSms(
 export function alertReplyHelpSms(
   kind: AlertQuestionKind,
   lang: SmsLang = 'fr',
+  code = '21',
 ): string {
-  return alertReplyPrompt(kind, lang);
+  return alertReplyPrompt(kind, lang, code);
 }
 
 // Sent to every opted-in recipient once a death is confirmed. Deliberately
@@ -434,7 +456,7 @@ export function watchStepReminderSms(
   if (lang === 'en') {
     return (
       `${APP}: have you reached the step "${asciiText(place)}" ` +
-      `(planned at ${sayDeadline(due, lang)})? Reply OK if all is well, ` +
+      `(planned at ${sayDeadline(due, lang)})? Reply 311 All good, ` +
       `or confirm in the app: ${LOGIN_LINK}\n` +
       `Without an answer by ${sayDeadline(alertAt, lang)}, ` +
       `your 1st circle will be told.`
@@ -444,7 +466,7 @@ export function watchStepReminderSms(
     gender === 'FEMALE' ? 'arrivee' : gender === 'MALE' ? 'arrive' : 'arrive.e';
   return (
     `${APP} : etes-vous bien ${arrived} a l'etape "${asciiText(place)}" ` +
-    `(prevue a ${sayDeadline(due, lang)}) ? Repondez OK si tout va bien, ` +
+    `(prevue a ${sayDeadline(due, lang)}) ? Repondez 311 Tout va bien, ` +
     `ou validez dans l'app : ${LOGIN_LINK}\n` +
     `Sans reponse a ${sayDeadline(alertAt, lang)}, ` +
     `votre 1er cercle sera prevenu.`
@@ -458,13 +480,13 @@ export function watchAllGoodReminderSms(
 ): string {
   if (lang === 'en') {
     return (
-      `${APP}: is all well? Reply OK, or confirm in the app: ${LOGIN_LINK}\n` +
+      `${APP}: is all well? Reply 321 All good, or confirm in the app: ${LOGIN_LINK}\n` +
       `Without an answer by ${sayDeadline(alertAt, lang)}, ` +
       `your 1st circle will be told.`
     );
   }
   return (
-    `${APP} : tout va bien ? Repondez OK, ou validez dans l'app : ` +
+    `${APP} : tout va bien ? Repondez 321 Tout va bien, ou validez dans l'app : ` +
     `${LOGIN_LINK}\n` +
     `Sans reponse a ${sayDeadline(alertAt, lang)}, ` +
     `votre 1er cercle sera prevenu.`
@@ -523,6 +545,32 @@ export function watchAlertToOwnerSms(lang: SmsLang = 'fr'): string {
     `${APP} : sans nouvelles de vous, votre 1er cercle a ete prevenu. ` +
     `Si tout va bien, dites-le dans l'app : ${LOGIN_LINK}`
   );
+}
+
+// Back to the person after their "OK": what comes next.
+export function watchCheckAckSms(
+  next:
+    | { kind: 'STEP'; place: string; due: SmsDeadline }
+    | { kind: 'ALL_GOOD'; due: SmsDeadline }
+    | { kind: 'NO_STEP' },
+  lang: SmsLang = 'fr',
+): string {
+  if (lang === 'en') {
+    const after =
+      next.kind === 'STEP'
+        ? `Next step: "${asciiText(next.place)}" at ${sayDeadline(next.due, lang)}.`
+        : next.kind === 'ALL_GOOD'
+          ? `Next check by ${sayDeadline(next.due, lang)}.`
+          : `Remember to plan your next step in the app: ${LOGIN_LINK}`;
+    return `${APP}: thank you, noted. ${after}`;
+  }
+  const after =
+    next.kind === 'STEP'
+      ? `Prochaine etape : "${asciiText(next.place)}" a ${sayDeadline(next.due, lang)}.`
+      : next.kind === 'ALL_GOOD'
+        ? `Prochain check avant ${sayDeadline(next.due, lang)}.`
+        : `Pensez a prevoir votre prochaine etape dans l'app : ${LOGIN_LINK}`;
+  return `${APP} : merci, c'est note. ${after}`;
 }
 
 export function otpSms(code: string, lang: SmsLang = 'fr'): string {

@@ -18,6 +18,7 @@ import {
 } from '@prisma/client';
 import { SentinelService } from './sentinel.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { WatchViewsService } from '../watch/watch-views.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import { NotificationService } from '../notification/notification.service';
 import { GroupService } from './group.service';
@@ -114,6 +115,10 @@ describe('SentinelService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: SMS_SENDER, useValue: sms },
         { provide: NotificationService, useValue: notifications },
+        {
+          provide: WatchViewsService,
+          useValue: { viewsFor: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
 
@@ -323,11 +328,19 @@ describe('SentinelService', () => {
       prisma.linkSentinels.findUnique.mockResolvedValueOnce(null); // no existing link
       prisma.linkSentinels.findMany.mockResolvedValueOnce([]); // no active leads yet
       prisma.linkSentinels.create.mockResolvedValueOnce({ id: 'link-1' });
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([]); // no other invitation waiting
 
       await service.inviteSentinel('me', 'first-1', {
         phone: '+33612345678',
         name: 'Ada',
       });
+
+      // Its SMS reply code: 111 / 112.
+      expect(prisma.linkSentinels.update).toHaveBeenCalledWith({
+        where: { id: 'link-1' },
+        data: { smsSlot: 1 },
+      });
+      expect(sms.send.mock.calls[0][1]).toContain('111 Oui, 112 Non');
 
       expect(prisma.linkSentinels.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -2384,6 +2397,8 @@ describe('SentinelService', () => {
           ],
           phoneRecovery: null,
           deathNotice: { isDeceased: false, pending: null, canReport: true },
+          // No watch of theirs that this Sentinel may know about.
+          watches: [],
         },
       ]);
       expect(prisma.linkSentinels.groupBy).not.toHaveBeenCalled();

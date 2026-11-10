@@ -8,7 +8,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   AlertStatus,
   AlertType,
-  CircleStatus,
   CircleType,
   UserStatus,
   UserType,
@@ -16,7 +15,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AlertService } from '../alert/alert.service';
 import { WATCH_NEEDS_SUBSCRIPTION } from '../user/plan.util';
-import { WatchService } from './watch.service';
+import { WatchService, renameTravelCircle } from './watch.service';
+import { TravelCircleService } from './travel-circles.service';
 
 const SUBSCRIBED = new Date('2999-01-01');
 const HOUR = 3_600_000;
@@ -41,14 +41,29 @@ describe('WatchService', () => {
     alert: {
       findFirst: jest.Mock;
       findMany: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
     };
-    travelCheckpoint: { create: jest.Mock; update: jest.Mock };
-    circle: { create: jest.Mock; updateMany: jest.Mock };
-    user: { findUnique: jest.Mock };
+    travelCheckpoint: {
+      create: jest.Mock;
+      update: jest.Mock;
+      findFirst: jest.Mock;
+    };
+    circle: {
+      create: jest.Mock;
+      updateMany: jest.Mock;
+      findMany: jest.Mock;
+      update: jest.Mock;
+    };
+    user: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock };
     message: { create: jest.Mock };
     $transaction: jest.Mock;
+  };
+  let travel: {
+    peopleOf: jest.Mock;
+    endPlan: jest.Mock;
+    endOfTrip: jest.Mock;
   };
   let alerts: {
     loadFirstCircleForAlert: jest.Mock;
@@ -107,12 +122,28 @@ describe('WatchService', () => {
       alert: {
         findFirst: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          userCompanionId: 'lea',
+          alertType: AlertType.TRAVEL,
+        }),
         create: jest.fn().mockResolvedValue({ id: 'trip-1' }),
         update: jest.fn(),
       },
-      travelCheckpoint: { create: jest.fn(), update: jest.fn() },
-      circle: { create: jest.fn(), updateMany: jest.fn() },
-      user: { findUnique: jest.fn().mockResolvedValue(user()) },
+      travelCheckpoint: {
+        create: jest.fn(),
+        update: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      circle: {
+        create: jest.fn(),
+        updateMany: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn(),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue(user()),
+        findUniqueOrThrow: jest.fn(),
+      },
       message: { create: jest.fn() },
       $transaction: jest.fn((arg: unknown) =>
         typeof arg === 'function'
@@ -128,9 +159,18 @@ describe('WatchService', () => {
       notifyAlertParticipants: jest.fn(),
     };
 
+    travel = {
+      peopleOf: jest.fn().mockResolvedValue([]),
+      endPlan: jest
+        .fn()
+        .mockResolvedValue({ forAll: 'RESERVE', perPerson: new Map() }),
+      endOfTrip: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WatchService,
+        { provide: TravelCircleService, useValue: travel },
         { provide: PrismaService, useValue: prisma },
         { provide: AlertService, useValue: alerts },
       ],
@@ -149,12 +189,12 @@ describe('WatchService', () => {
       },
     });
 
-    it('creates the watched trip, its first step and its first travel circle', async () => {
+    it('creates the watched trip, its first step and its circle if asked', async () => {
       prisma.alert.findFirst
         .mockResolvedValueOnce(null) // no trip running
         .mockResolvedValueOnce(trip()); // the result
 
-      await service.createTrip('lea', dto());
+      await service.createTrip('lea', { ...dto(), travelCircle: true });
 
       expect(prisma.alert.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -175,7 +215,7 @@ describe('WatchService', () => {
       );
       expect(prisma.circle.create).toHaveBeenCalledWith({
         data: {
-          label: 'Cercle du voyage 1',
+          label: 'Tour du lac',
           circleType: CircleType.BASIC,
           userCompanionId: 'lea',
           tripId: 'trip-1',
@@ -184,6 +224,30 @@ describe('WatchService', () => {
       // Same rule as raising an alert about yourself.
       expect(alerts.loadFirstCircleForAlert).toHaveBeenCalledWith('lea');
       expect(alerts.assertAlertCanBeAnswered).toHaveBeenCalled();
+    });
+
+    it('plans every step given, and no circle unless asked', async () => {
+      prisma.alert.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(trip());
+
+      await service.createTrip('lea', {
+        ...dto(),
+        moreSteps: [
+          {
+            placeName: 'Refuge',
+            expectedAt: inHours(5).toISOString(),
+            delayMinutes: 360,
+          },
+        ],
+      });
+
+      expect(prisma.travelCheckpoint.create).toHaveBeenCalledTimes(2);
+      expect(written(prisma.travelCheckpoint.create, 1).data).toMatchObject({
+        placeName: 'Refuge',
+        alertId: 'trip-1',
+      });
+      expect(prisma.circle.create).not.toHaveBeenCalled();
     });
 
     it('needs a subscription', async () => {
@@ -443,8 +507,48 @@ describe('WatchService', () => {
       prisma.alert.findFirst.mockResolvedValue(trip());
 
       await expect(
-        service.updateWatch('lea', 'trip-1', { delayMinutes: 60 }),
+        service.updateWatch('lea', 'trip-1', {
+          schedule: { kind: 'DAILY', before: '20:00' },
+        }),
       ).rejects.toThrow('Only for the All Good Check');
+    });
+
+    it('a trip: the delay moves every step still ahead', async () => {
+      const ahead = step({ id: 'ahead', expectedAt: inHours(4) });
+      prisma.alert.findFirst.mockResolvedValue(
+        trip({
+          checkpoints: [step({ id: 'done', validatedAt: new Date() }), ahead],
+        }),
+      );
+
+      await service.updateWatch('lea', 'trip-1', { delayMinutes: 360 });
+
+      expect(prisma.travelCheckpoint.update).toHaveBeenCalledTimes(1);
+      expect(prisma.travelCheckpoint.update).toHaveBeenCalledWith({
+        where: { id: 'ahead' },
+        data: { alertAt: new Date(ahead.expectedAt.getTime() + 6 * HOUR) },
+      });
+    });
+
+    it('renames the trip and its circles with it', async () => {
+      prisma.alert.findFirst.mockResolvedValue(trip());
+      prisma.circle.findMany.mockResolvedValueOnce([
+        { id: 'c1', label: 'Tour du lac' },
+        { id: 'c2', label: 'Groupe Tour du lac' },
+        { id: 'c3', label: 'Les copains' },
+      ]);
+
+      await service.updateWatch('lea', 'trip-1', { name: 'Lac Bleu' });
+
+      expect(prisma.circle.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { label: 'Lac Bleu' },
+      });
+      expect(prisma.circle.update).toHaveBeenCalledWith({
+        where: { id: 'c2' },
+        data: { label: 'Groupe Lac Bleu' },
+      });
+      expect(prisma.circle.update).toHaveBeenCalledTimes(2);
     });
 
     it('moves the next deadline to the new rhythm', async () => {
@@ -516,21 +620,61 @@ describe('WatchService', () => {
   });
 
   describe('endWatch', () => {
-    it('ends the watch and closes the travel circles nobody joined', async () => {
+    it('ends a trip, its people going where the person chose', async () => {
       prisma.alert.findFirst.mockResolvedValue(trip());
+      const plan = { forAll: 'END', perPerson: new Map() };
+      travel.endPlan.mockResolvedValueOnce(plan);
 
-      await service.endWatch('lea', 'trip-1');
+      await service.endWatch('lea', 'trip-1', { forAll: 'END' });
 
+      expect(travel.endPlan).toHaveBeenCalledWith('lea', 'trip-1', {
+        forAll: 'END',
+      });
       expect(prisma.alert.update).toHaveBeenCalledWith({
         where: { id: 'trip-1' },
         data: { closedAt: expect.any(Date), closedById: 'lea' },
       });
-      expect(prisma.circle.updateMany).toHaveBeenCalledWith({
-        where: expect.objectContaining({
-          tripId: 'trip-1',
-          status: CircleStatus.ACTIVE,
-        }),
-        data: { status: CircleStatus.CLOSED, closedAt: expect.any(Date) },
+      expect(travel.endOfTrip).toHaveBeenCalledWith(
+        prisma,
+        'lea',
+        'trip-1',
+        plan,
+        expect.any(Date),
+      );
+    });
+
+    it('ends an All Good Check without any circle to sort out', async () => {
+      prisma.alert.findFirst.mockResolvedValue(allGood());
+      prisma.alert.findUniqueOrThrow.mockResolvedValueOnce({
+        userCompanionId: 'lea',
+        alertType: AlertType.NOCONTACT,
+      });
+
+      await service.endWatch('lea', 'ag-1');
+
+      expect(travel.endPlan).not.toHaveBeenCalled();
+      expect(travel.endOfTrip).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('confirmBySms', () => {
+    it('validates as planned without asking for the next step', async () => {
+      const watch = trip();
+      prisma.user.findUniqueOrThrow.mockResolvedValue({
+        timeZone: null,
+        language: 'en',
+      });
+
+      const done = await service.confirmBySms(watch as never);
+
+      expect(written(prisma.travelCheckpoint.update).where).toEqual({
+        id: 'cp-1',
+      });
+      expect(done).toEqual({
+        mode: 'TRIP',
+        next: null,
+        timeZone: 'Europe/Zurich',
+        language: 'en',
       });
     });
   });
@@ -546,6 +690,24 @@ describe('WatchService', () => {
       expect(watch.pausedBecause).toBe('SUBSCRIPTION');
       expect(watch.schedule).toEqual({ kind: 'DAILY', before: '20:00' });
       expect(watch.currentCheckpointId).toBe('cp-1');
+    });
+  });
+
+  describe('renameTravelCircle', () => {
+    it('follows the trip name, numbers and groups included', () => {
+      expect(renameTravelCircle('Col du Lac', 'Col du Lac', 'Lac Bleu')).toBe(
+        'Lac Bleu',
+      );
+      expect(renameTravelCircle('Col du Lac 2', 'Col du Lac', 'Lac Bleu')).toBe(
+        'Lac Bleu 2',
+      );
+      expect(
+        renameTravelCircle('Groupe Col du Lac', 'Col du Lac', 'Lac Bleu'),
+      ).toBe('Groupe Lac Bleu');
+      // Renamed by the person: left alone.
+      expect(renameTravelCircle('Les copains', 'Col du Lac', 'Lac Bleu')).toBe(
+        'Les copains',
+      );
     });
   });
 });

@@ -140,6 +140,18 @@ export class CreateTripDto extends WatchSharingDto {
   @ValidateNested()
   @Type(() => TripStepDto)
   firstStep: TripStepDto;
+
+  // The other steps already known.
+  @IsOptional()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => TripStepDto)
+  moreSteps?: TripStepDto[];
+
+  // The trip's own circle, named after it (more can be added later).
+  @IsOptional()
+  @IsBoolean()
+  travelCircle?: boolean;
 }
 
 export class StartAllGoodDto extends WatchSharingDto {
@@ -177,7 +189,8 @@ export class UpdateWatchDto extends WatchSharingDto {
   @Type(() => CheckInScheduleDto)
   schedule?: CheckInScheduleDto;
 
-  // All Good only: the delay of the next deadline (and the following ones).
+  // The delay before the alert: a trip's every step still ahead, or the
+  // next All Good deadline (and the following ones).
   @IsOptional()
   @IsInt()
   @Min(MIN_DELAY_MINUTES)
@@ -188,6 +201,67 @@ export class UpdateWatchDto extends WatchSharingDto {
   @IsOptional()
   @IsDateString()
   pausedUntil?: string | null;
+}
+
+// ---- Travel circles ------------------------------------------------------
+
+// "Nouveau cercle du voyage" / "Nouveau groupe de voyage" (a mutual
+// group: the people travelling together watch over each other).
+export class CreateTravelCircleDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  label?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  group?: boolean;
+}
+
+// One of the person's Sentinels comes on the trip: they stay in their own
+// circle and are counted in this travel circle for the trip only.
+export class AddTravellerDto {
+  @IsString()
+  linkId: string;
+
+  @IsString()
+  circleId: string;
+}
+
+// End of a trip: what becomes of the people added for it. Existing
+// Sentinels keep their place whatever is chosen.
+// - RESERVE: into the reserve circle (the default);
+// - END: the link ends;
+// - KEEP: they stay in the trip's circle, which becomes a normal circle;
+// - CIRCLE: into another of the person's circles (not the 1st: that one
+//   needs their consent, through the usual membership move).
+const END_CHOICES = ['RESERVE', 'END', 'KEEP', 'CIRCLE'] as const;
+export type EndChoice = (typeof END_CHOICES)[number];
+
+export class PersonEndChoiceDto {
+  @IsString()
+  linkId: string;
+
+  @IsIn(END_CHOICES)
+  choice: EndChoice;
+
+  @ValidateIf((o: PersonEndChoiceDto) => o.choice === 'CIRCLE')
+  @IsString()
+  circleId?: string;
+}
+
+export class EndWatchDto {
+  // "Pour les 4": everyone at once…
+  @IsOptional()
+  @IsIn(['RESERVE', 'END', 'KEEP'])
+  forAll?: Exclude<EndChoice, 'CIRCLE'>;
+
+  // …or "Ou pour chaque Sentinelle".
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => PersonEndChoiceDto)
+  perPerson?: PersonEndChoiceDto[];
 }
 
 // "Je suis là, comme prévu" / "Je suis ailleurs, mais tout va bien" — and
@@ -225,8 +299,14 @@ export class ValidateWatchDto {
   @Type(() => TripStepDto)
   nextStep?: TripStepDto;
 
-  // …or say this was the last one.
+  // …or say this was the last one…
   @IsOptional()
   @IsBoolean()
   endTrip?: boolean;
+
+  // …and what becomes of the people added for the trip (EndWatchDto).
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EndWatchDto)
+  endChoices?: EndWatchDto;
 }

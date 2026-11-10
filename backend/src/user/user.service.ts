@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -19,6 +20,7 @@ import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { CircleType, LinkStatus, UserType, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { isValidTimeZone } from '../watch/zoned-time';
 import { NOT_A_WATCH } from '../common/running-alert';
 import { DEFAULT_CIRCLES } from '../sentinel/default-circles';
 import { DELETED_ACCOUNT_LABEL } from './user-status.util';
@@ -74,6 +76,7 @@ const PROFILE_SELECT = {
   termsVersion: true,
   gender: true,
   language: true,
+  timeZone: true,
   alertContactSharing: true,
 } as const;
 
@@ -158,6 +161,9 @@ export class UserService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
+    if (dto.timeZone !== undefined && !isValidTimeZone(dto.timeZone)) {
+      throw new BadRequestException('Unknown time zone');
+    }
     if (dto.userName) {
       const current = await this.prisma.user.findUnique({
         where: { id: userId },

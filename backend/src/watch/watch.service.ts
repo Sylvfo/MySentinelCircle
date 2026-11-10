@@ -9,7 +9,6 @@ import {
   AlertStatus,
   CircleStatus,
   CircleType,
-  LinkStatus,
   MessageType,
   Prisma,
   UserType,
@@ -27,18 +26,20 @@ import {
 import { timeZoneOrDefault } from './zoned-time';
 import {
   ALL_GOOD_LABEL,
-  FIRST_TRAVEL_CIRCLE_LABEL,
   WatchMode,
   currentCheckpoint,
   delayMs,
   isPending,
   modeOf,
   pauseReason,
+  travelCircleLabel,
   watchType,
 } from './watch-rules';
+import { TravelCircleService } from './travel-circles.service';
 import {
   CheckInScheduleDto,
   CreateTripDto,
+  EndWatchDto,
   StartAllGoodDto,
   TripStepDto,
   UpdateTripStepDto,
@@ -60,12 +61,13 @@ type WatchWithCheckpoints = Prisma.AlertGetPayload<{
 // regular "all is well"). A watch is an Alert in SENT — watched, nobody
 // told — whose deadlines are TravelCheckpoints; a missed one opens a
 // separate, real alert (WatchScheduler). Only the person themself manages
-// their watch; what their circles see of it comes later (plan, slice 6).
+// their watch; what others see of it is WatchViewsService.
 @Injectable()
 export class WatchService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly alerts: AlertService,
+    private readonly travel: TravelCircleService,
   ) {}
 
   // ---- Reads ------------------------------------------------------------
@@ -104,7 +106,9 @@ export class WatchService {
   async createTrip(userId: string, dto: CreateTripDto) {
     const now = new Date();
     const { circleId } = await this.assertCanStart(userId, 'TRIP');
-    const firstStep = stepData(dto.firstStep, now);
+    const steps = [dto.firstStep, ...(dto.moreSteps ?? [])].map((step) =>
+      stepData(step, now),
+    );
 
     const trip = await this.prisma.$transaction(async (tx) => {
       const created = await tx.alert.create({
@@ -121,18 +125,22 @@ export class WatchService {
             dto.shareValidationsWithFirstCircle ?? false,
         },
       });
-      await tx.travelCheckpoint.create({
-        data: { ...firstStep, alertId: created.id },
-      });
-      // The people who travel with them go here (plan, slice 6).
-      await tx.circle.create({
-        data: {
-          label: FIRST_TRAVEL_CIRCLE_LABEL,
-          circleType: CircleType.BASIC,
-          userCompanionId: userId,
-          tripId: created.id,
-        },
-      });
+      for (const step of steps) {
+        await tx.travelCheckpoint.create({
+          data: { ...step, alertId: created.id },
+        });
+      }
+      // The people who travel with them go here, if asked.
+      if (dto.travelCircle) {
+        await tx.circle.create({
+          data: {
+            label: travelCircleLabel(dto.name.trim(), false),
+            circleType: CircleType.BASIC,
+            userCompanionId: userId,
+            tripId: created.id,
+          },
+        });
+      }
       return created;
     });
     return this.getWatch(userId, trip.id);
@@ -184,9 +192,7 @@ export class WatchService {
     const watch = await this.findRunningOwnWatch(userId, watchId);
     const mode = modeOf(watch.alertType);
     const allGoodOnly =
-      dto.schedule !== undefined ||
-      dto.delayMinutes !== undefined ||
-      dto.pausedUntil !== undefined;
+      dto.schedule !== undefined || dto.pausedUntil !== undefined;
     if (mode === 'TRIP' && allGoodOnly) {
       throw new BadRequestException('Only for the All Good Check');
     }
@@ -229,8 +235,24 @@ export class WatchService {
       }),
     ];
 
+    // A trip's delay is the whole trip's: every step still ahead moves.
+    if (mode === 'TRIP' && dto.delayMinutes !== undefined) {
+      const delay = dto.delayMinutes * MINUTE_MS;
+      for (const step of watch.checkpoints.filter(isPending)) {
+        ops.push(
+          this.prisma.travelCheckpoint.update({
+            where: { id: step.id },
+            data: { alertAt: new Date(step.expectedAt.getTime() + delay) },
+          }),
+        );
+      }
+    }
+
     // A new rhythm or delay moves the next deadline right away.
-    if (dto.schedule || dto.delayMinutes !== undefined) {
+    if (
+      mode === 'ALL_GOOD' &&
+      (dto.schedule || dto.delayMinutes !== undefined)
+    ) {
       const pending = watch.checkpoints.find(isPending);
       const schedule = dto.schedule
         ? toSchedule(dto.schedule)
@@ -261,15 +283,35 @@ export class WatchService {
         );
       }
     }
+    // The trip's circles carry its name: they follow a rename.
+    const newName = dto.name?.trim();
+    if (mode === 'TRIP' && newName && newName !== watch.label) {
+      const circles = await this.prisma.circle.findMany({
+        where: { tripId: watch.id, status: CircleStatus.ACTIVE },
+        select: { id: true, label: true },
+      });
+      for (const c of circles) {
+        const renamed = renameTravelCircle(c.label, watch.label, newName);
+        if (renamed !== c.label) {
+          ops.push(
+            this.prisma.circle.update({
+              where: { id: c.id },
+              data: { label: renamed },
+            }),
+          );
+        }
+      }
+    }
     await this.prisma.$transaction(ops);
     return this.getWatch(userId, watch.id);
   }
 
   // "Terminer le voyage" / "Désactiver" — final. A running alert it opened
-  // goes on: it is closed by whoever handles it.
-  async endWatch(userId: string, watchId: string) {
+  // goes on: it is closed by whoever handles it. A trip: what becomes of
+  // the people added for it (TravelCircleService.endOfTrip).
+  async endWatch(userId: string, watchId: string, dto: EndWatchDto = {}) {
     const watch = await this.findRunningOwnWatch(userId, watchId);
-    await this.closeWatch(watch.id, userId);
+    await this.closeWatch(watch.id, userId, dto);
     return this.getWatch(userId, watch.id);
   }
 
@@ -406,7 +448,11 @@ export class WatchService {
     }
     await this.prisma.$transaction(ops);
     if (mode === 'TRIP' && dto.endTrip) {
-      await this.closeWatch(watch.id, watch.userCompanionId);
+      await this.closeWatch(
+        watch.id,
+        watch.userCompanionId,
+        dto.endChoices ?? {},
+      );
     }
 
     // An alert this watch opened is running: its 1st circle reads the news
@@ -462,26 +508,90 @@ export class WatchService {
     };
   }
 
-  // Ends a watch. A trip's travel circles nobody joined go too; the others
-  // wait for the end-of-trip choices (plan, slice 6).
-  async closeWatch(watchId: string, closedById: string | null) {
+  // Ends a watch; for a trip, its people go where the person chose.
+  async closeWatch(
+    watchId: string,
+    closedById: string | null,
+    choices: EndWatchDto = {},
+  ) {
     const now = new Date();
-    await this.prisma.$transaction([
-      this.prisma.alert.update({
+    const watch = await this.prisma.alert.findUniqueOrThrow({
+      where: { id: watchId },
+      select: { userCompanionId: true, alertType: true },
+    });
+    const plan =
+      modeOf(watch.alertType) === 'TRIP'
+        ? await this.travel.endPlan(watch.userCompanionId, watchId, choices)
+        : null;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.alert.update({
         where: { id: watchId },
         data: { closedAt: now, closedById },
-      }),
-      this.prisma.circle.updateMany({
-        where: {
-          tripId: watchId,
-          status: CircleStatus.ACTIVE,
-          userSentinels: {
-            none: { status: { in: [LinkStatus.PENDING, LinkStatus.ACCEPTED] } },
-          },
-        },
-        data: { status: CircleStatus.CLOSED, closedAt: now },
-      }),
-    ]);
+      });
+      if (plan) {
+        await this.travel.endOfTrip(
+          tx,
+          watch.userCompanionId,
+          watchId,
+          plan,
+          now,
+        );
+      }
+    });
+  }
+
+  // ---- "OK" by SMS ----------------------------------------------------------
+
+  // What this number can confirm by SMS: its own watches whose current
+  // deadline was already reminded (an "OK" before that would be a guess).
+  async smsChecksByPhone(phone: string) {
+    const owner = await this.prisma.user.findUnique({
+      where: { phone },
+      select: { id: true },
+    });
+    if (!owner) return [];
+    const watches = await this.prisma.alert.findMany({
+      where: { userCompanionId: owner.id, ...RUNNING_WATCH },
+      include: WITH_CHECKPOINTS,
+    });
+    const checks: WatchWithCheckpoints[] = [];
+    for (const watch of watches) {
+      const running = await this.prisma.alert.findMany({
+        where: { tripId: watch.id, alertStatus: RUNNING_ALERT },
+        select: { id: true },
+      });
+      const current = currentCheckpoint(
+        watch.checkpoints,
+        running.map((a) => a.id),
+      );
+      if (current?.remindedAt) checks.push(watch);
+    }
+    return checks;
+  }
+
+  // "OK" = as planned, no position. A trip with no step left stays
+  // watched without a deadline: the reply says to plan the next one.
+  // Returns the deadline now ahead, for the acknowledgement.
+  async confirmBySms(watch: WatchWithCheckpoints) {
+    await this.validateCurrent(
+      watch,
+      { kind: 'AS_PLANNED' },
+      { requireWhatNext: false },
+    );
+    const next = await this.prisma.travelCheckpoint.findFirst({
+      where: { alertId: watch.id, validatedAt: null, missedAt: null },
+      orderBy: { expectedAt: 'asc' },
+    });
+    const owner = await this.prisma.user.findUniqueOrThrow({
+      where: { id: watch.userCompanionId },
+      select: { timeZone: true, language: true },
+    });
+    return {
+      mode: modeOf(watch.alertType),
+      next,
+      timeZone: timeZoneOrDefault(owner.timeZone),
+      language: owner.language,
+    };
   }
 
   // ---- Guards and helpers --------------------------------------------------
@@ -589,6 +699,10 @@ export class WatchService {
       currentCheckpointId: current?.id ?? null,
       // Alerts this watch opened that are still running.
       runningAlertIds: runningAlerts.map((a) => a.id),
+      travelCircles:
+        modeOf(watch.alertType) === 'TRIP'
+          ? await this.travel.peopleOf(watch.id, watch.userCompanionId)
+          : [],
     };
   }
 }
@@ -629,6 +743,24 @@ function toSchedule(dto: CheckInScheduleDto): CheckInSchedule {
     };
   }
   return { kind: 'DAILY', before: dto.before };
+}
+
+// "Col du Lac 2" -> "Lac Bleu 2", "Groupe Col du Lac" -> "Groupe Lac Bleu";
+// a circle the person renamed themself is left alone.
+export function renameTravelCircle(
+  label: string,
+  oldName: string,
+  newName: string,
+): string {
+  for (const prefix of ['Groupe ', '']) {
+    const base = `${prefix}${oldName}`;
+    if (label === base) return `${prefix}${newName}`;
+    const rest = label.slice(base.length);
+    if (label.startsWith(base) && /^ \d+$/.test(rest)) {
+      return `${prefix}${newName}${rest}`;
+    }
+  }
+  return label;
 }
 
 function lastValidatedDeadline(watch: WatchWithCheckpoints): Date | null {

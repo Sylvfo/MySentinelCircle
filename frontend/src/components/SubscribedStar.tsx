@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 // chosen by Sylvie 2026-11-06): an alert can always be raised for them.
 // Top-right of the figure, opposite the pause badge "||" (top-left).
 // Shown to the people linked to them only — they're the ones who get it.
-const STAR = 'M12 1.8 L15 8.3 L22 9 L16.7 13.8 L18.2 20.8 L12 17.2 L5.8 20.8 L7.3 13.8 L2 9 L9 8.3 Z';
+export const STAR = 'M12 1.8 L15 8.3 L22 9 L16.7 13.8 L18.2 20.8 L12 17.2 L5.8 20.8 L7.3 13.8 L2 9 L9 8.3 Z';
 
 export function SubscribedStar({ className = '' }: { className?: string }) {
   return (

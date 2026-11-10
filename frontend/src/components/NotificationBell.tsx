@@ -34,6 +34,13 @@ function destinationFor(item: NotificationItem): string {
   // targetId = the companion the death notice is about: report / confirm /
   // reject and the announcement live on their page.
   if (item.type.startsWith('DEATH_NOTICE_') && item.targetId) return `/people/${item.targetId}?from=companion`;
+  // Watch Mode. A deadline of mine: validate it (targetId = the watch).
+  if (item.type === 'WATCH_CHECK_DUE' && item.targetId) return `/watch/${item.targetId}/validate`;
+  // Someone takes me on their trip: their page shows it.
+  if (item.type === 'TRAVEL_CIRCLE_ADDED' && actor) return `/people/${actor}?from=companion`;
+  // My subscription ends during my watch: the plans. Someone of my 1st
+  // circle's ends (actor = them): their page, where a year can be offered.
+  if (item.type === 'WATCH_PAUSE_SOON') return actor ? `/people/${actor}?from=companion` : '/plans';
   // Invitations received (SENTINEL_INVITATION_RECEIVED) are answered there.
   return '/companions';
 }
@@ -48,6 +55,8 @@ function translationKey(item: NotificationItem): string {
   if (item.type === 'CIRCLE_MOVE_ANSWERED') {
     return item.accepted ? 'CIRCLE_MOVE_ACCEPTED' : 'CIRCLE_MOVE_DECLINED';
   }
+  // Mine (no actor) vs someone of my 1st circle's.
+  if (item.type === 'WATCH_PAUSE_SOON') return item.actorUserId ? 'WATCH_PAUSE_SOON_CIRCLE' : 'WATCH_PAUSE_SOON';
   return item.type;
 }
 

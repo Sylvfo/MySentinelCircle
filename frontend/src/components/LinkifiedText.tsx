@@ -27,7 +27,7 @@ export function LinkifiedText({ text }: { text: string }) {
 
 // Official "open this place" links of each maps service: on a phone they
 // open the app if it's installed, else the website — none needs a login.
-function MapChoice({ lat, lng }: { lat: string; lng: string }) {
+export function MapChoice({ lat, lng }: { lat: string; lng: string }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);

@@ -70,6 +70,14 @@ export class UpdateProfileDto {
   @IsIn(['fr', 'en'])
   language?: 'fr' | 'en';
 
+  // My time zone (IANA, e.g. "Europe/Zurich"), sent by the browser: the
+  // All Good Check deadlines and the times in my SMS follow it.
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timeZone?: string;
+
   // May my Sentinels give each other a phone number or an email during an
   // alert about me? Off: such messages are refused in my alert chats.
   @ApiProperty({ required: false })

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AlertStatus, LinkStatus, UserStatus, UserType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RUNNING_ALERT } from '../common/running-alert';
 import { RetentionService } from './retention.service';
 import { stripPositions } from './redaction';
 
@@ -11,6 +12,7 @@ describe('RetentionService', () => {
   let prisma: {
     alert: { findMany: jest.Mock; update: jest.Mock };
     message: { updateMany: jest.Mock };
+    travelCheckpoint: { updateMany: jest.Mock };
     notification: { deleteMany: jest.Mock };
     user: {
       findMany: jest.Mock;
@@ -29,6 +31,9 @@ describe('RetentionService', () => {
     prisma = {
       alert: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
       message: { updateMany: jest.fn() },
+      travelCheckpoint: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       notification: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       user: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -56,6 +61,29 @@ describe('RetentionService', () => {
           'Je pars\nPosition partagée : https://maps/x\nPosition mise à jour (± 3 km) : https://maps/y',
         ),
       ).toBe('Je pars\nPosition supprimée\nPosition supprimée');
+    });
+  });
+
+  describe('purgeWatchPositions', () => {
+    it('erases step positions 30 days after the watch ended, never while its alert runs', async () => {
+      prisma.travelCheckpoint.updateMany.mockResolvedValue({ count: 2 });
+
+      await expect(service.purgeWatchPositions(now)).resolves.toBe(2);
+
+      expect(prisma.travelCheckpoint.updateMany).toHaveBeenCalledWith({
+        where: {
+          alert: {
+            alertStatus: AlertStatus.SENT,
+            closedAt: { lt: daysAgo(30) },
+            tripAlerts: { none: { alertStatus: RUNNING_ALERT } },
+          },
+          OR: [
+            { validatedLatitude: { not: null } },
+            { validatedLongitude: { not: null } },
+          ],
+        },
+        data: { validatedLatitude: null, validatedLongitude: null },
+      });
     });
   });
 

@@ -333,6 +333,9 @@ export class GroupService {
               label: invitation.groupRoot.label,
               circleType: CircleType.GROUP,
               groupRootId: invitation.groupRootId,
+              // A travel group (Watch Mode): every member's circle belongs
+              // to the trip, so it closes with it.
+              tripId: invitation.groupRoot.tripId,
             },
           });
 

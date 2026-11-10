@@ -1,11 +1,12 @@
 ## Database Schema
 
-Updated: 2026-11-02 10:41
+Updated: 2026-11-11 00:40
 
-> Reflète l'état actuel de `schema.prisma`.
+> Reflète l'état actuel de `schema.prisma`. Les diagrammes montrent les champs utiles à la compréhension, pas chaque colonne technique (`createdAt`/`updatedAt`, hash d'OTP, etc.).
 
-Modèles actifs : `User`, `Circle`, `LinkSentinels`, `SentinelGroupInvitation`, `LinkSentinelsEvent`, `Alert`, `AlertParticipant`, `Conversation`, `ConversationParticipant`, `Message`, `Notification`.
-Principe central : rien n'est jamais vraiment supprimé — `User`/`Circle`/`LinkSentinels` se ferment ou s'anonymisent, mais restent référençables pour toujours. Pas de tables-copies (`CircleAlert`/`LinkSentinelAlert` n'existent plus), pas de journal d'événements séparé (`AlertEvent` a été remplacé par des timestamps d'étape directement sur `Alert`).
+Modèles actifs : `User`, `Circle`, `LinkSentinels`, `SentinelGroupInvitation`, `LinkSentinelsEvent`, `Alert`, `AlertParticipant`, `AlertQuestion`, `Conversation`, `ConversationParticipant`, `Message`, `Notification`, `TravelCheckpoint`, `LoginEvent`, et pour le labo de test uniquement `LabSms`, `LabFeedback`.
+Mode veille (2026-11-10) : une veille (voyage ou Check tout va bien) est un `Alert` en `SENT` pour toute sa vie (`closedAt` = sa fin) ; ses échéances sont des `TravelCheckpoint` ; une échéance manquée ouvre une vraie alerte séparée, liée par `Alert.tripId`. Les cercles du voyage sont des `Circle` avec `tripId`.
+Principe central : rien n'est jamais vraiment supprimé — `User`/`Circle`/`LinkSentinels` se ferment ou s'anonymisent, mais restent référençables pour toujours. Pas de tables-copies (`CircleAlert`/`LinkSentinelAlert` n'existent plus), pas de journal d'événements séparé pour l'alerte (des timestamps d'étape directement sur `Alert`).
 
 ```mermaid
 erDiagram
@@ -13,17 +14,17 @@ erDiagram
   User               ||--o{ LinkSentinels            : "companion (SentinelCompanion)"
   User               ||--o{ LinkSentinels            : "sentinel (LinkAsSentinel)"
   User               ||--o{ Alert                    : "companion (MyAlertsAsCompanion)"
-  User               ||--o{ Alert                    : "launchedBy? / closedBy?"
+  User               ||--o{ Alert                    : "launchedBy? / closedBy? / paidBy?"
   User               ||--o{ Alert                    : "statusUpdatedBy? / labelUpdatedBy?"
   User               ||--o{ AlertParticipant          : "requestedBy?"
+  User               ||--o{ AlertQuestion             : "askedBy"
   User               ||--o{ ConversationParticipant  : "user"
   User               ||--o{ Message                  : "sender"
   User               ||--o{ Notification             : "recipient"
   User               ||--o{ Notification             : "actor?"
-  User               ||--o{ User                      : "deathReportedBy? (self)"
-  User               ||--o{ User                      : "deathConfirmedBy? (self)"
-  User               ||--o{ SentinelGroupInvitation    : "invited? (GroupInvited)"
-  User               ||--o{ SentinelGroupInvitation    : "invitedBy? (GroupInviter)"
+  User               ||--o{ LoginEvent                : "loginEvents"
+  User               ||--o{ User                      : "deathReportedBy? / deathConfirmedBy? (self)"
+  User               ||--o{ SentinelGroupInvitation    : "invited / invitedBy"
   Circle             ||--o{ LinkSentinels             : "circle"
   Circle             ||--o{ Alert                     : "firstCircle"
   Circle             ||--o{ AlertParticipant           : "circle (figé)"
@@ -32,52 +33,74 @@ erDiagram
   LinkSentinels      ||--o{ LinkSentinelsEvent        : "events"
   LinkSentinels      ||--o{ AlertParticipant          : "alertParticipations"
   Alert              ||--o{ AlertParticipant          : "participants"
+  AlertParticipant   ||--o{ AlertQuestion             : "questions"
   Alert              ||--o{ Conversation              : "conversations"
   Conversation        ||--o{ ConversationParticipant  : "participants"
   Conversation        ||--o{ Message                  : "messages"
+  Alert              ||--o{ TravelCheckpoint          : "checkpoints (TripCheckpoints)"
+  Alert              ||--o| TravelCheckpoint          : "openedByCheckpoint (CheckpointOpenedAlert)"
+  Alert              ||--o{ Alert                     : "trip? (self, TripAlerts)"
+  Alert              ||--o{ Circle                    : "tripCircles (TripCircles)"
 
   User {
     string id PK
+    enum   status "ACTIVE/DELETED/DECEASED"
+    enum   userType "ONLY_SMS/ACCOUNT/ORGANISATION/UNCOMPLETE"
     string firstName
+    string lastName "nullable"
+    string email UK "nullable"
     string phone UK "nullable, anonymisable"
-    enum   status "ACTIVE/PAUSED/DELETED/DECEASED"
-    enum   userType
-    string passwordResetTokenHash UK "nullable, SHA-256, TTL 60min"
-    boolean allowMessagingByDefault "défaut compagnon pour le canal permanent"
+    datetime phoneVerifiedAt "nullable"
+    string pendingPhone "nullable, changement ou récupération de téléphone"
+    datetime phoneRecoveryRequestedAt "nullable, téléphone perdu"
+    string phoneRecoveryConfirmedById "nullable, 1re confirmation du 1er cercle"
+    string language "nullable, fr/en (textes et SMS)"
+    string timeZone "nullable, IANA, envoyé par le navigateur (Mode veille)"
+    enum   gender "nullable, FEMALE/MALE/NEUTRAL (accords des textes)"
+    string connectCode UK "nullable, code du QR code"
+    boolean alertChatWithFirstCircle "interrupteur général : mes cercles extérieurs peuvent écrire au 1er cercle pendant une alerte"
+    boolean alertContactSharing "coordonnées autorisées dans mes chats d'alerte"
+    boolean pausedForMe "personne ne peut lancer d'alerte sur moi"
+    boolean pausedForOthers "je ne suis pas sollicité.e pour les autres"
+    datetime paidUntil "nullable, abonnement"
+    datetime deathNoticePurchasedAt "nullable"
+    datetime sessionsValidAfter "nullable, déconnexion partout"
+    datetime termsAcceptedAt "nullable"
     datetime deceasedAt "nullable, posé à la 2e confirmation"
     string deathAnnouncementMessage "nullable, rédigé par Me de son vivant"
     datetime deathReportedAt "nullable, signalement en attente"
-    string deathReportedById FK "optional, doit être un Lead Sentinel du 1er cercle"
+    string deathReportedById FK "optional"
     string deathConfirmedById FK "optional, doit différer du reporter"
   }
 
   Circle {
     string id PK
     string label
-    enum   circleType
-    enum   status
-    string companionId FK
-    boolean canMessageMe "nullable, hérite du défaut compagnon ; sans effet sur FIRST"
+    enum   circleType "BASIC/FIRST/ORGANISATION/RESERVED/GROUP"
+    enum   status "ACTIVE/CLOSED"
+    datetime closedAt "nullable"
+    string userCompanionId FK
+    boolean alertChatWithFirstCircle "ce cercle peut écrire au 1er cercle pendant une alerte ; sans effet sur FIRST"
     string groupRootId FK "nullable, self ; null = ce Circle EST la racine du groupe"
+    string tripId FK "optional, cercle d'un voyage (Mode veille)"
   }
 
   LinkSentinels {
     string id PK
-    string sentinelId FK
-    string companionId FK
+    string userSentinelId FK
+    string userCompanionId FK
     string circleId FK
-    string proposedCircleId
-    enum   status
+    string proposedCircleId "nullable"
+    enum   status "PENDING/ACCEPTED/DECLINED/REMOVED/BLOCKED"
     enum   sentinelType
-    enum   initiatedBy
+    enum   initiatedBy "COMPANION/SENTINEL"
     boolean requestedAsLead
-    enum   leadSlot
-    int    callOrder "nullable, rang d'appel manuel en cercle extérieur ; null = ordre pseudo-aléatoire stable"
-    boolean canMessageOwnCircle
-    enum   firstCircleMessagingMode
-    boolean canMessageMe "nullable, priorité la plus haute, canal permanent"
-    boolean notifyOnDeath "défaut false, opt-in du compagnon comme destinataire de son annonce de décès"
-    string deathPersonalMessage "nullable, texte libre spécifique à ce destinataire"
+    enum   leadSlot "nullable, LEAD_1/2/3"
+    int    callOrder "nullable, rang d'appel manuel en cercle extérieur"
+    boolean canSendPhone "défaut false ; seulement figé sur AlertParticipant, lu nulle part"
+    int    smsSlot "nullable, code de réponse SMS 1<slot> d'une invitation"
+    boolean notifyOnDeath
+    string deathPersonalMessage "nullable"
     datetime deathNotifiedAt "nullable"
   }
 
@@ -86,13 +109,13 @@ erDiagram
     string groupRootId FK
     string invitedUserId FK
     string invitedById FK
-    enum   status "PENDING/ACCEPTED/DECLINED"
+    enum   status "LinkStatus"
   }
 
   LinkSentinelsEvent {
     string id PK
-    string linkSentinelsId FK
-    enum   fromStatus
+    string userSentinelsId FK
+    enum   fromStatus "nullable"
     enum   toStatus
     datetime occurredAt
   }
@@ -101,42 +124,80 @@ erDiagram
     string id PK
     string label
     string messageAlert
-    string statusByCompanion "nullable, note libre côté compagnon"
-    string statusByFirstCircle "nullable, note libre côté 1er cercle"
-    enum   alertStatus
+    string statusByCompanion "nullable"
+    string statusByFirstCircle "nullable"
+    enum   alertStatus "SENT/LAUNCHED/ACTIVE/CLOSING/RESOLVED"
     enum   alertType
     datetime launchedAt
     datetime activatedAt
     datetime closingAt
     datetime closedAt
-    string companionId FK
+    string userCompanionId FK
     string firstCircleId FK
-    string launchedById FK "optional"
+    string launchedById FK "optional, null = ouverte par l'app (veille)"
     string closedById FK "optional"
-    string statusUpdatedById FK "optional, dernier auteur de statusByFirstCircle"
+    string paidById FK "optional, qui a payé cette alerte"
+    string statusUpdatedById FK "optional"
     datetime statusUpdatedAt
     string labelUpdatedById FK "optional"
     datetime labelUpdatedAt
+    string tripId FK "optional, alerte ouverte par une échéance de veille manquée"
+    boolean shareItineraryWithFirstCircle "veille : le 1er cercle voit le voyage"
+    boolean shareValidationsWithFirstCircle "veille : idem (cochés ensemble)"
+    string checkInSchedule "nullable, Check tout va bien : rythme en JSON"
+    datetime pausedUntil "nullable, veille en pause jusqu'à"
+  }
+
+  TravelCheckpoint {
+    string id PK
+    string alertId FK "la veille"
+    datetime expectedAt
+    datetime alertAt "expectedAt + délai"
+    string placeName "nullable"
+    float latitude "nullable"
+    float longitude "nullable"
+    datetime remindedAt "nullable"
+    datetime validatedAt "nullable"
+    float validatedLatitude "nullable"
+    float validatedLongitude "nullable"
+    string validatedPlace "nullable, ailleurs : où"
+    string validatedNote "nullable, journal de bord"
+    datetime missedAt "nullable"
+    string openedAlertId FK "optional, unique, l'alerte ouverte"
   }
 
   AlertParticipant {
     string id PK
     string alertId FK
-    string linkSentinelsId FK
+    string userSentinelsId FK
     string circleId FK
     string circleName "figé"
-    enum   status
+    enum   status "WAITING/CONTACTED/RESPONDED/ACTIVE/DECLINED/UNAVAILABLE/CLOSED"
+    datetime contactedAt "nullable"
+    datetime answeredAt "nullable"
+    datetime closedAt "nullable"
+    string response "nullable, dernière réponse"
     boolean isLead
-    datetime leadAssignedAt "nullable, repurposé : dernier claim actif (AlertService.claimLead), pas juste un freeze de contact"
+    datetime leadAssignedAt "nullable, dernier claim actif"
     string requestedById FK "optional, qui a déclenché ce contact"
-    boolean canSendPhoneAtAlert
-    boolean canMessageOwnCircleAtAlert
-    enum   firstCircleMessagingModeAtAlert
+    boolean canSendPhoneAtAlert "nullable, figé"
+    boolean alertChatWithFirstCircleAtAlert "nullable, figé"
+  }
+
+  AlertQuestion {
+    string id PK
+    string alertParticipantId FK
+    string askedById FK
+    string kind "CAN_VISIT/LAST_NEWS/SEEMED_OK/WHERE_SEEN"
+    string response "nullable, code de réponse ou texte libre"
+    datetime answeredAt "nullable"
+    int    smsSlot "nullable, code SMS 2<slot><choix>"
   }
 
   Conversation {
     string id PK
     string alertId FK "optional"
+    datetime closedAt "nullable"
   }
 
   ConversationParticipant {
@@ -144,28 +205,62 @@ erDiagram
     string conversationId FK
     string userId FK
     datetime joinedAt
-    datetime leftAt
+    datetime leftAt "nullable"
   }
 
   Message {
     string id PK
     string body
-    enum   type
+    enum   type "TEXT/IMAGE/SYSTEM"
     string senderId FK
     string conversationId FK
+    datetime deletedAt "nullable"
   }
 
   Notification {
     string id PK
     enum   type
     string userId FK "destinataire"
-    string actorId FK "optional, qui a déclenché l'event"
+    string actorUserId FK "optional, qui a déclenché l'event"
     string actorLabel "optional, figé"
     boolean accepted "optional, SENTINEL_LINK_ANSWERED seulement"
-    string targetId "optional, non typé — l'id d'un Alert/Conversation/LinkSentinels selon type"
+    string targetId "optional, non typé"
     datetime readAt "optional, null = non lu"
   }
+
+  LoginEvent {
+    string id PK
+    string userId FK
+    enum   method "EMAIL_PASSWORD/PHONE_PASSWORD/GOOGLE/SMS_CODE"
+    boolean success
+    string ipPrefix "nullable, IP tronquée"
+    string userAgent "nullable"
+  }
 ```
+
+Labo de test (hors du domaine, utilisé seulement avec `ALLOW_DEV_ROUTES=true`, sans relation) :
+
+```mermaid
+erDiagram
+  LabSms {
+    string id PK
+    string phone
+    enum   direction "OUT/IN"
+    string body
+  }
+  LabFeedback {
+    string id PK
+    string testerName
+    string scenario
+    string tags "ex. ok,idea,lost"
+    string text "nullable"
+    string screenshotPath "nullable"
+    datetime readAt "nullable, lu sur la page Admin"
+  }
+```
+
+- `LabSms` : copie de chaque SMS envoyé (`OUT`, écrit par `ConsoleSmsSender`) ou reçu (`IN`, réponse tapée dans le labo) pour les numéros de test.
+- `LabFeedback` : l'avis d'un.e testeur.euse sur un scénario, lu sur la page Admin.
 
 ---
 
@@ -181,30 +276,31 @@ erDiagram
   LinkSentinels     ||--o{ AlertParticipant   : "alertParticipations"
   AlertParticipant  }o--||  Alert             : "alert"
   AlertParticipant  }o--||  Circle            : "circle (figé)"
+  AlertParticipant  ||--o{ AlertQuestion      : "questions"
 
   User {
     string id PK
+    boolean pausedForOthers
   }
   LinkSentinels {
     string id PK
-    string sentinelId FK
-    string companionId FK
+    string userSentinelId FK
+    string userCompanionId FK
     string circleId FK
     string proposedCircleId
     enum   status
     enum   sentinelType
     boolean requestedAsLead
     enum   leadSlot
-    boolean canMessageOwnCircle
-    enum   firstCircleMessagingMode
-    boolean canMessageMe
+    boolean canSendPhone
+    int    smsSlot
     boolean notifyOnDeath
     string deathPersonalMessage
     datetime deathNotifiedAt
   }
   Circle {
     string id PK
-    string companionId FK
+    string userCompanionId FK
   }
   LinkSentinelsEvent {
     string id PK
@@ -220,21 +316,30 @@ erDiagram
     boolean isLead
     datetime leadAssignedAt
     string requestedById FK "optional"
+    boolean alertChatWithFirstCircleAtAlert
+  }
+  AlertQuestion {
+    string id PK
+    string kind
+    string response
+    int    smsSlot
   }
   Alert {
     string id PK
-    string companionId FK
+    string userCompanionId FK
   }
 ```
 
 - `LinkAsSentinel` : les cercles où ce `User` est enregistré comme sentinelle.
-- `AlertParticipant.requestedById` : qui a déclenché ce contact précis — "Me" qui s'auto-alerte, une autre sentinelle qui lève l'alerte en son nom, ou qui dans le 1er cercle a sollicité ce cercle extérieur via `requestCircle`. Visible uniquement par le compagnon et le 1er cercle (`GET /alert/:id`) — jamais par les autres sentinelles sollicitées, qui ne savent pas qui d'autre a été contacté.
+- `AlertParticipant.requestedById` : qui a déclenché ce contact précis — "Me" qui s'auto-alerte, une autre sentinelle qui lève l'alerte, ou qui dans le 1er cercle a sollicité ce cercle extérieur via `requestCircle`. Visible uniquement par le compagnon et le 1er cercle (`GET /alert/:id`) — jamais par les autres sentinelles sollicitées.
+- Une sentinelle hors du 1er cercle qui lance elle-même une alerte en devient participante via son propre lien (`CONTACTED`, son cercle figé) : l'alerte apparaît dans ses alertes et son historique (`AlertService.addRaiserAsParticipant`).
 - `alertParticipations` : l'historique de toutes les alertes où ce `User` a été sollicité — via son `LinkSentinels`, sans copier son identité. `circleId`/`circleName` figent le cercle tel qu'il était à ce moment, car `LinkSentinels.circleId` peut changer après coup.
-- `isLead`/`leadAssignedAt` : n'importe quel Lead Sentinel peut réclamer (`claimLead`, `POST /alert/:id/claim-lead`) le pilotage actif d'une alerte à tout moment, y compris en le reprenant à un autre Lead — pas de fenêtre d'attente, pas d'ordre de succession, pas d'automatisme (choix délibéré de Sylvie, plus simple que l'idée de handoff minuté initialement dans `plan.txt`). Il n'y a pas de "lead actuel" stocké séparément : c'est, parmi les participants `isLead: true`, celui dont `leadAssignedAt` est le plus récent — déduit à la lecture (`getAlert`).
-- `canMessageOwnCircle` (bool, défaut `true`) / `firstCircleMessagingMode` (`NONE`/`INDIVIDUAL`/`GROUP`, défaut `NONE`) : réglages *liés à une alerte* posés par "Me" sur ce lien — respectivement la capacité de cette sentinelle à échanger avec le reste de son propre cercle pendant une alerte, et sa capacité à ouvrir un chat isolé avec le 1er cercle une fois sollicitée (`GET /alert/:id/circle-chat` ; `GROUP` se comporte aujourd'hui comme `INDIVIDUAL`, pas encore différencié). Ne concernent que les sentinelles avec compte — sans objet pour une Sentinel SMS (`userType ONLY_SMS`), qui reste limitée aux réponses prédéfinies. Figés au moment T sur `AlertParticipant.canMessageOwnCircleAtAlert`/`firstCircleMessagingModeAtAlert` quand une alerte démarre ou qu'un cercle est sollicité — modifier le réglage après coup n'affecte jamais une alerte déjà en cours.
-- `LinkSentinels.canMessageMe` : réglage *hors alerte*, distinct des deux ci-dessus — autorise ou bloque le canal permanent Me↔Sentinel (`GET /messaging/direct/:userId`) pour ce lien précis. `null` = hérite de `Circle.canMessageMe`, qui lui-même hérite de `User.allowMessagingByDefault` si `null` — le réglage le plus spécifique l'emporte, résolu à la lecture (`SentinelService.canSendDirectMessage()`), jamais réécrit en masse quand le défaut change (un changement de défaut n'efface jamais une dérogation déjà posée). Toujours autorisé sur le 1er circle, sans dérogation possible.
-- `notifyOnDeath`/`deathPersonalMessage`/`deathNotifiedAt` : ce destinataire-sentinelle a-t-il été choisi par "Me" (de son vivant, `PATCH /user/death-notice/recipients`) pour recevoir l'annonce de décès si elle se confirme un jour, avec un message personnel optionnel en plus du texte générique (`User.deathAnnouncementMessage`). `deathNotifiedAt` se pose au moment du fan-out (`SentinelService.fanOutDeathAnnouncement`), best-effort comme les notifications d'alerte.
-- Ce `User` reçoit aussi des `Notification` comme destinataire (invitation/demande reçue, réponse à l'une d'elles, alerte levée/élargie/répondue/clôturée le concernant) — voir le modèle `Notification` dans le diagramme global ci-dessus et la légende en bas de page.
+- `AlertQuestion` : chaque question posée à une sentinelle de cercle extérieur pendant une alerte (`requestCircle`, puis `POST /alert/:id/questions`), avec sa réponse. `smsSlot` donne le code de réponse SMS (`211`/`212`/`213`, ou `21 <texte>`) ; il se libère quand l'alerte se ferme. Même principe pour `LinkSentinels.smsSlot` et les invitations (`111`/`112`).
+- `isLead`/`leadAssignedAt` : n'importe quel Lead Sentinel peut réclamer (`POST /alert/:id/claim-lead`) le pilotage actif à tout moment, y compris en le reprenant à un autre Lead. Pas de "lead actuel" stocké : c'est, parmi les participants `isLead: true`, celui dont `leadAssignedAt` est le plus récent — déduit à la lecture.
+- `alertChatWithFirstCircleAtAlert` : figé au moment où le cercle est sollicité, à partir de `User.alertChatWithFirstCircle` (interrupteur général du compagnon) ET `Circle.alertChatWithFirstCircle`. Autorise le chat isolé avec le 1er cercle (`GET /alert/:id/circle-chat`). Modifier le réglage après coup n'affecte jamais une alerte déjà en cours.
+- `canSendPhone` / `canSendPhoneAtAlert` : même principe de gel, mais le réglage n'est encore lu nulle part (toujours `false`).
+- `notifyOnDeath`/`deathPersonalMessage`/`deathNotifiedAt` : ce destinataire a-t-il été choisi par "Me" (`PATCH /user/death-notice/recipients`) pour recevoir l'annonce de décès, avec un message personnel optionnel. `deathNotifiedAt` se pose au moment de l'envoi.
+- Ce `User` reçoit aussi des `Notification` comme destinataire — voir la légende en bas de page.
 
 ## Vue "Companion"
 
@@ -250,10 +355,15 @@ erDiagram
   Circle        ||--o{ Alert              : "firstCircle"
   Alert         ||--o{ AlertParticipant   : "participants"
   Alert         ||--o{ Conversation       : "conversations"
+  Alert         ||--o{ TravelCheckpoint   : "checkpoints (veille)"
   Conversation  ||--o{ Message            : "messages"
 
   User {
     string id PK
+    boolean alertChatWithFirstCircle
+    boolean alertContactSharing
+    boolean pausedForMe
+    datetime paidUntil "nullable"
     datetime deceasedAt "nullable"
     string deathAnnouncementMessage "nullable"
     datetime deathReportedAt "nullable"
@@ -264,14 +374,15 @@ erDiagram
     string id PK
     string label
     enum   circleType
-    string companionId FK
-    boolean canMessageMe "nullable"
+    string userCompanionId FK
+    boolean alertChatWithFirstCircle
     string groupRootId FK "nullable, self ; seulement pour circleType GROUP"
+    string tripId FK "optional, cercle d'un voyage"
   }
   LinkSentinels {
     string id PK
-    string sentinelId FK
-    string companionId FK
+    string userSentinelId FK
+    string userCompanionId FK
     enum   status
   }
   Alert {
@@ -283,14 +394,21 @@ erDiagram
     enum   alertType
     datetime launchedAt
     datetime closedAt
-    string companionId FK
+    string userCompanionId FK
     string firstCircleId FK
+    string tripId FK "optional"
   }
   AlertParticipant {
     string id PK
-    string linkSentinelsId FK
+    string userSentinelsId FK
     enum   status
     string requestedById FK "optional"
+  }
+  TravelCheckpoint {
+    string id PK
+    datetime expectedAt
+    datetime validatedAt "nullable"
+    datetime missedAt "nullable"
   }
   Conversation {
     string id PK
@@ -303,21 +421,23 @@ erDiagram
 ```
 
 - `MyCirclesAsCompanion` : les cercles que ce `User` possède.
-- `MyAlertsAsCompanion` : les alertes que ce `User` a déclenchées.
-- `firstCircle` sur `Alert` pointe directement sur `Circle` (permanent) — plus besoin de snapshot.
-- `Alert.launchedBy`/`closedBy` pointent directement sur `User` — couvre aussi bien le cas où c'est le companion lui-même (`AlertType.BYCOMPANION`) que le cas où c'est une sentinelle.
-- `statusByCompanion`/`statusByFirstCircle` : deux notes de statut libres et indépendantes, pas un champ partagé — le compagnon écrit la première, n'importe quelle sentinelle acceptée du 1er cercle écrit la seconde (`statusUpdatedBy`/`statusUpdatedAt` gardent trace du dernier auteur côté 1er cercle uniquement — côté compagnon, l'auteur est toujours évident). Les deux restent modifiables même après que l'alerte soit `RESOLVED`, contrairement au chat du 1er cercle qui se verrouille à la fermeture de sa `Conversation`. Visibles par tout le monde, y compris les sentinelles de cercles extérieurs sollicitées (via `GET /alert/:id/my-participation`), qui ne voient en revanche jamais la liste des autres participants.
-- `circleType` (`BASIC | FIRST | ORGANISATION | RESERVED | GROUP`) : `FIRST` et `RESERVED` sont tous deux gérés automatiquement (un seul par companion, créé à la demande, jamais supprimable). `RESERVED` regroupe les liens `LinkSentinels` acceptés mais pas actuellement dans un cercle réel — une sentinelle mise en pause, ou les survivantes d'un cercle supprimé (`deleteCircle` les y déplace au lieu de bloquer la suppression). Une sentinelle n'y atterrit jamais directement à la création (invitation ou demande) — seulement par déplacement manuel ou suppression de cercle.
-- `GROUP` (ex. une chorale) n'a pas de table dédiée : juste `CircleType.GROUP` + l'auto-relation nullable `groupRootId`. Le `Circle` du fondateur a `groupRootId: null` et EST la racine du groupe ; chaque membre a son propre `Circle` (`groupRootId` = celui du fondateur), qui reste stable même si le fondateur part ensuite. Rejoindre crée un maillage complet — chaque nouveau membre devient Sentinel de chaque membre déjà présent, et réciproquement, donc plusieurs `LinkSentinels` posées en une seule acceptation (`respondToGroupInvitation`), pas une seule. `SentinelGroupInvitation` est la seule table ajoutée pour ce besoin : comme rejoindre exige déjà un lien accepté avec l'inviteur, cette paire a déjà sa ligne `LinkSentinels` (unique pour toujours par paire) ailleurs, donc l'invitation en attente ne peut pas en être une deuxième. Quitter ne défait que les relations créées par le groupe lui-même (une relation antérieure, ou vivant dans un autre cercle, reste intacte) ; le fondateur peut à la place supprimer tout le groupe (`deleteGroup`), qui se propage pareil à chaque membre. Fonder exige `User.hasPaid` ; rejoindre le groupe de quelqu'un d'autre reste gratuit.
-- `LinkSentinels.proposedCircleId` : référence transitoire (pas une vraie relation Prisma, comme `AlertParticipant.circleId`/`circleName`) posée par `updateMembership` quand "Me" déplace une sentinelle déjà acceptée vers le 1er cercle — le lien reste actif dans son cercle actuel le temps que la sentinelle réponde (`respondToCircleMove`, ou OUI/NON par SMS). Accepté : `circleId` devient `proposedCircleId`, qui repasse à `null`. Refusé : `proposedCircleId` repasse juste à `null`, rien d'autre ne change. Déplacer vers n'importe quel autre cercle (`BASIC`/`RESERVED`) reste immédiat, sans consentement — juste une notification.
-- Mort annoncée (`UserStatus.DECEASED`) : double confirmation, jamais une seule personne. Un Lead Sentinel du 1er cercle signale (`reportDeath` → `deathReportedAt`/`deathReportedById`) ; un autre Lead — ou, si le 1er cercle n'a qu'un seul Lead, n'importe quelle autre sentinelle acceptée de ce cercle — confirme (`confirmDeath`, reporter ≠ confirmateur) avant que quoi que ce soit ne se diffuse. Confirmer pose `status: DECEASED` + `deceasedAt` + `deathConfirmedById` et déclenche le fan-out (`fanOutDeathAnnouncement`) vers chaque `LinkSentinels.notifyOnDeath` opté-in. Rejeter (`rejectDeathReport`) remet juste `deathReportedAt`/`deathReportedById` à `null`, rien d'autre ne change. `DECEASED` gèle le compte ensuite (`assertNotDeceased`) : plus d'alerte, plus d'invitation/demande de lien, plus de nouveau message — les données existantes restent lisibles. Zéro nouvelle table : tout vit en champs plats sur `User` (report/confirm/announcement) et `LinkSentinels` (opt-in/message perso par destinataire) — une "chorale du souvenir" a été envisagée et rejetée, `LinkSentinels` n'autorisant qu'une seule relation par paire pour toujours.
-- Ce `User` reçoit aussi des `Notification` comme destinataire (alerte levée/élargie/répondue/clôturée le concernant, réponse à une invitation/demande qu'il a lui-même initiée) — voir le modèle `Notification` dans le diagramme global ci-dessus et la légende en bas de page.
+- `MyAlertsAsCompanion` : les alertes à son sujet (et ses veilles, en `SENT`).
+- `firstCircle` sur `Alert` pointe directement sur `Circle` (permanent) — pas de snapshot.
+- `Alert.launchedBy`/`closedBy` pointent directement sur `User` — le companion lui-même (`AlertType.BYCOMPANION`) ou une sentinelle ; `launchedBy` est `null` pour une alerte ouverte par l'app (échéance de veille manquée).
+- `statusByCompanion`/`statusByFirstCircle` : deux notes de statut libres et indépendantes — le compagnon écrit la première, n'importe quelle sentinelle acceptée du 1er cercle la seconde (`statusUpdatedBy`/`statusUpdatedAt` gardent le dernier auteur côté 1er cercle). Les deux restent modifiables après `RESOLVED`. Visibles par les sentinelles de cercles extérieurs sollicitées (`GET /alert/:id/my-participation`), qui ne voient jamais la liste des autres participants.
+- `circleType` (`BASIC | FIRST | ORGANISATION | RESERVED | GROUP`) : `FIRST` et `RESERVED` sont gérés automatiquement (un seul par companion, jamais supprimable). `RESERVED` regroupe les liens acceptés pas actuellement dans un cercle réel — une sentinelle mise de côté (par le compagnon ou par elle-même, `POST /sentinel/memberships/:id/reserve`), les survivantes d'un cercle supprimé, ou les personnes ajoutées pour un voyage terminé.
+- Cercle de voyage (Mode veille) : un `Circle` `BASIC` ou `GROUP` avec `tripId`, nommé d'après le voyage et renommé avec lui. À la fin du voyage, ses personnes vont en réserve, restent, ou partent (choix par personne).
+- `GROUP` (ex. une chorale) n'a pas de table dédiée : juste `CircleType.GROUP` + l'auto-relation `groupRootId`. Le `Circle` du fondateur a `groupRootId: null` et EST la racine ; chaque membre a son propre `Circle` (`groupRootId` = celui du fondateur). Rejoindre crée un maillage complet (plusieurs `LinkSentinels` en une acceptation). `SentinelGroupInvitation` est la seule table ajoutée pour ce besoin. Quitter ne défait que les relations créées par le groupe ; le fondateur peut supprimer tout le groupe (`deleteGroup`). Fonder exige un abonnement (`paidUntil`) ; rejoindre reste gratuit.
+- `LinkSentinels.proposedCircleId` : référence transitoire posée quand "Me" déplace une sentinelle acceptée vers le 1er cercle — le lien reste dans son cercle actuel le temps qu'elle réponde (app ou SMS). Accepté : `circleId` devient `proposedCircleId`. Refusé : `proposedCircleId` repasse à `null`. Les autres déplacements restent immédiats.
+- Mort annoncée (`UserStatus.DECEASED`) : double confirmation, jamais une seule personne. Un Lead Sentinel du 1er cercle signale (`deathReportedAt`/`deathReportedById`) ; une autre personne du 1er cercle confirme (reporter ≠ confirmateur). Confirmer pose `DECEASED` + `deceasedAt` + `deathConfirmedById` et envoie l'annonce à chaque `LinkSentinels.notifyOnDeath`. Rejeter remet juste le signalement à `null`. `DECEASED` gèle le compte : plus d'alerte, plus d'invitation, plus de nouveau message — les données restent lisibles.
+- Téléphone perdu : `pendingPhone` + `phoneRecoveryRequestedAt`, puis deux confirmations du 1er cercle (`phoneRecoveryConfirmedById` garde la première, au moins un Lead), puis un code envoyé au nouveau numéro. Zéro nouvelle table.
+- Ce `User` reçoit aussi des `Notification` comme destinataire — voir la légende en bas de page.
 
 ---
 
 ## Schéma "avant alerte"
 
-Le monde vivant : cercles, liens sentinelles (jamais fermés/recréés, juste transitionnés), leur journal minimal, et la messagerie 1:1 permanente.
+Le monde vivant : cercles, liens sentinelles (jamais fermés/recréés, juste transitionnés), leur journal minimal, la messagerie 1:1 permanente, et les veilles en cours.
 
 ```mermaid
 erDiagram
@@ -330,31 +450,33 @@ erDiagram
   ConversationParticipant }o--|| Conversation  : "conversation"
   Conversation  ||--o{ Message             : "messages"
   User          ||--o{ Message             : "sender"
+  User          ||--o{ Alert               : "veilles (SENT)"
+  Alert         ||--o{ TravelCheckpoint    : "checkpoints"
 
   User {
     string id PK
     string firstName
     string phone UK "nullable"
+    string connectCode UK "nullable"
     enum   status
-    boolean allowMessagingByDefault
   }
   Circle {
     string id PK
     string label
     enum   circleType
     enum   status
-    string companionId FK
-    boolean canMessageMe "nullable"
+    string userCompanionId FK
+    string tripId FK "optional"
   }
   LinkSentinels {
     string id PK
-    string sentinelId FK
-    string companionId FK
+    string userSentinelId FK
+    string userCompanionId FK
     string circleId FK
     string proposedCircleId
     enum   status
     enum   sentinelType
-    boolean canMessageMe "nullable"
+    int    smsSlot "nullable, invitation en attente"
   }
   LinkSentinelsEvent {
     string id PK
@@ -375,15 +497,28 @@ erDiagram
     string body
     string senderId FK
   }
+  Alert {
+    string id PK
+    enum   alertStatus "SENT pour une veille"
+    string checkInSchedule "nullable"
+    datetime pausedUntil "nullable"
+  }
+  TravelCheckpoint {
+    string id PK
+    datetime expectedAt
+    datetime alertAt
+  }
 ```
 
-Chaque transition de statut (`PENDING→ACCEPTED`, `ACCEPTED→REMOVED`...) crée une ligne `LinkSentinelsEvent` — seule trace d'historique hors alerte, et elle sert aussi de déclencheur de notification ("Anna a quitté ton 1er cercle"). Une conversation hors alerte a `alertId = null` ; on la retrouve en cherchant, via `ConversationParticipant`, une conversation sans alerte partagée par exactement ces 2 users — créée à la volée au premier message (`GET /messaging/direct/:userId`), jamais à l'avance.
+Chaque transition de statut (`PENDING→ACCEPTED`, `ACCEPTED→REMOVED`...) crée une ligne `LinkSentinelsEvent` — seule trace d'historique hors alerte, qui sert aussi de déclencheur de notification. Une conversation hors alerte a `alertId = null` ; on la retrouve en cherchant, via `ConversationParticipant`, une conversation sans alerte partagée par exactement ces 2 users — créée à la volée (`GET /messaging/direct/:userId`), jamais à l'avance. Le droit d'y écrire : un lien accepté entre les deux personnes, dans un sens ou dans l'autre (`SentinelService.canSendDirectMessage()`), revérifié à chaque envoi.
 
-Avant de créer/retrouver cette conversation, le droit d'envoyer est résolu via la cascade `LinkSentinels.canMessageMe` → `Circle.canMessageMe` → `User.allowMessagingByDefault` (premier non-`null` rencontré gagne, toujours vrai sur le 1er cercle) — calculée à chaque lecture, jamais stockée ni réécrite en masse : changer le défaut du compagnon ne touche aucune dérogation déjà posée sur un cercle ou un lien précis.
+`User.connectCode` : le code du QR code « ajouter quelqu'un » (`/connect/<code>`), créé au premier besoin, renouvelable (les anciens QR codes cessent alors de fonctionner).
+
+Une veille est un `Alert` en `SENT` jusqu'à sa fin (`closedAt`) : jamais comptée comme alerte en cours (filtres partagés dans `common/running-alert.ts`). `WatchScheduler` passe chaque minute sur les `TravelCheckpoint` : rappel à `expectedAt` (`remindedAt`), puis à `alertAt` une vraie alerte liée (`openedAlertId`, `Alert.tripId`) si l'échéance n'est pas validée (`missedAt`).
 
 ## Schéma "pendant alerte"
 
-Ce qui se déclenche une fois une alerte lancée : qui a participé (référence directe au lien permanent, pas de copie), les étapes franchies, et les conversations scopées à l'alerte.
+Ce qui se déclenche une fois une alerte lancée : qui a participé (référence directe au lien permanent, pas de copie), les questions posées, les étapes franchies, et les conversations scopées à l'alerte.
 
 ```mermaid
 erDiagram
@@ -394,7 +529,9 @@ erDiagram
   Circle             ||--o{ Alert              : "firstCircle"
   Circle             ||--o{ AlertParticipant   : "circle (figé)"
   Alert              ||--o{ AlertParticipant   : "participants"
+  AlertParticipant   ||--o{ AlertQuestion      : "questions"
   Alert              ||--o{ Conversation       : "conversations"
+  Alert              ||--o{ Alert              : "trip? (veille d'origine)"
   LinkSentinels      ||--o{ AlertParticipant   : "alertParticipations"
   Conversation        ||--o{ ConversationParticipant : "participants"
   Conversation        ||--o{ Message           : "messages"
@@ -417,12 +554,13 @@ erDiagram
     datetime activatedAt
     datetime closingAt
     datetime closedAt
-    string companionId FK
+    string userCompanionId FK
     string firstCircleId FK
     string launchedById FK "optional"
     string closedById FK "optional"
     string statusUpdatedById FK "optional"
     string labelUpdatedById FK "optional"
+    string tripId FK "optional"
   }
   LinkSentinels {
     string id PK
@@ -431,16 +569,24 @@ erDiagram
   AlertParticipant {
     string id PK
     string alertId FK
-    string linkSentinelsId FK
+    string userSentinelsId FK
     string circleId FK
     string circleName
     enum   status
+    datetime contactedAt
+    datetime answeredAt
+    string response
     boolean isLead
     datetime leadAssignedAt "nullable"
     string requestedById FK "optional"
     boolean canSendPhoneAtAlert
-    boolean canMessageOwnCircleAtAlert
-    enum   firstCircleMessagingModeAtAlert
+    boolean alertChatWithFirstCircleAtAlert
+  }
+  AlertQuestion {
+    string id PK
+    string kind
+    string response
+    int    smsSlot
   }
   Conversation {
     string id PK
@@ -456,24 +602,29 @@ erDiagram
   }
 ```
 
-`AlertParticipant.linkSentinelsId` est obligatoire — il pointe toujours sur le lien vivant, jamais une copie. Le cas "companion s'auto-alerte" (`AlertType.BYCOMPANION`) n'a pas besoin de `AlertParticipant` : `Alert.launchedBy` pointe directement sur `User`. Une alerte peut porter plusieurs `Conversation` (`Alert.conversations[]`, pas de limite à une seule) : le chat de groupe du 1er cercle (créé à `raise`, un seul par alerte), et une par sentinelle de cercle extérieur ayant ouvert un chat isolé avec le 1er cercle (`GET /alert/:id/circle-chat`, une par demandeur, jamais partagée entre demandeurs). Aucune des deux n'est typée en DB — elles se distinguent uniquement par leurs `ConversationParticipant` (présence ou non d'un participant hors 1er cercle), une question de logique backend, pas de schéma. `Message` n'a pas non plus de garde d'accès dédiée pour le compagnon : `GET /alert/:id` inclut directement `conversations[].messages` (et `conversations[].participants`, pour distinguer les genres côté client) dans sa réponse, donnant au compagnon une lecture complète de l'historique de chaque conversation sans qu'il en soit `ConversationParticipant` (il reste 403 sur les routes `messaging` elles-mêmes).
+`AlertParticipant.userSentinelsId` est obligatoire — il pointe toujours sur le lien vivant, jamais une copie. Le cas "companion s'auto-alerte" (`AlertType.BYCOMPANION`) n'a pas besoin d'`AlertParticipant` pour lui : `Alert.launchedBy` pointe directement sur `User`. Une alerte peut porter plusieurs `Conversation` : le salon du 1er cercle (créé à `raise`, un seul par alerte, où le compagnon écrit aussi), et une par sentinelle de cercle extérieur ayant ouvert un chat isolé avec le 1er cercle (`GET /alert/:id/circle-chat`). Aucune n'est typée en DB — elles se distinguent par leurs `ConversationParticipant`. `GET /alert/:id` inclut `conversations[].messages` pour le compagnon et le 1er cercle. Les coordonnées (numéros, emails) sont filtrées dans ces chats sauf si `User.alertContactSharing` les autorise.
 
-Solliciter un cercle extérieur (`POST /alert/:id/request-circle`) n'appelle jamais tout le cercle d'un coup : au plus 2 `LinkSentinels` à la fois (`pickNextCircleBatch`), triées par `callOrder` quand "Me" en a fixé un manuellement, sinon par un ordre pseudo-aléatoire stable par alerte (hash déterministe, pas cryptographique — juste reproductible). Le 1er cercle peut en demander 2 de plus à tout moment, sans attente imposée ; la seule automatisation est une notification unique après 4h de silence lui suggérant d'essayer plus de monde — jamais un contact automatique. Le 1er cercle lui-même reste à part : il est toujours notifié en entier, jamais par batch.
+Solliciter un cercle extérieur (`POST /alert/:id/request-circle`) n'appelle jamais tout le cercle d'un coup : au plus 2 `LinkSentinels` à la fois (`pickNextCircleBatch`), triées par `callOrder` si "Me" en a fixé un, sinon par un ordre pseudo-aléatoire stable par alerte. Chaque personne contactée reçoit une `AlertQuestion` (type de question prédéfini). Le 1er cercle peut en demander plus à tout moment ; la seule automatisation est une notification unique après 4h de silence. Le 1er cercle lui-même est toujours notifié en entier.
 
-`isLead`/`leadAssignedAt` : n'importe quel Lead Sentinel peut réclamer (`claimLead`, `POST /alert/:id/claim-lead`) le pilotage actif à tout moment, y compris en le reprenant à un autre Lead — pas de fenêtre d'attente, pas de succession automatique. Pas de "lead actuel" stocké séparément : c'est, parmi les participants `isLead: true`, celui dont `leadAssignedAt` est le plus récent, déduit à la lecture (`getAlert`).
+Alerte ouverte par une veille : `launchedById` null, `tripId` = la veille. Le 1er cercle voit alors tout le voyage (étapes, validations), et peut requalifier l'alerte (`PATCH /alert/:id/type` : disparition, urgence, ou retour au type de la veille). Un cercle de voyage peut être sollicité comme un cercle extérieur, avec les sentinelles comptées sur le voyage.
 
 ---
 
 ## Légende — les différents mécanismes d'historique
 
-- **`LinkSentinels`** : lien vivant User↔Circle, une seule ligne par paire, jamais supprimée — juste son `status` change (`PENDING`/`ACCEPTED`/`REMOVED`/`BLOCKED`...).
+- **`LinkSentinels`** : lien vivant User↔Circle, une seule ligne par paire et par sens, jamais supprimée — juste son `status` change (`PENDING`/`ACCEPTED`/`DECLINED`/`REMOVED`/`BLOCKED`).
 - **`LinkSentinelsEvent`** : journal append-only de chaque transition de statut — trace minimale de qui est entré/sorti d'un cercle, indépendamment de toute alerte.
-- **`AlertParticipant`** : ce qui s'est passé pour un `LinkSentinels` donné pendant une alerte donnée (contacté, répondu, lead, qui a déclenché ce contact via `requestedById`, réglages de messagerie au moment T via `canSendPhoneAtAlert`/`canMessageOwnCircleAtAlert`/`firstCircleMessagingModeAtAlert`, cercle figé via `circleId`/`circleName`) — remplace l'ancien `LinkSentinelAlert`, sans jamais copier l'identité (nom/téléphone restent uniquement dans `User`).
-- **Étapes de l'alerte** : `Alert.launchedAt`/`activatedAt`/`closingAt`/`closedAt` — un timestamp par étape franchie, directement sur `Alert` (pas de table d'événements séparée ; ne garde que le dernier passage si une étape est revisitée).
-- **Attribution "dernier auteur"** : `Alert.statusUpdatedById`/`statusUpdatedAt` (côté 1er cercle uniquement — `statusByCompanion` n'a pas besoin d'attribution, son auteur est toujours évident), `Alert.labelUpdatedById`/`labelUpdatedAt`, `AlertParticipant.requestedById`, `AlertParticipant.leadAssignedAt` (repurposé : dernier claim actif du lead, pas un freeze de contact) — pas un journal d'événements, juste qui a écrit la valeur *actuelle* en dernier. Choix délibéré de Sylvie (plus simple qu'une table `AlertEvent` dédiée) : pas d'historique complet si une valeur est réécrite plusieurs fois, seulement le dernier passage.
-- **`SentinelGroupInvitation`** : la seule table ajoutée par les cercles `GROUP` — un `LinkSentinels` n'existant qu'une seule fois pour toujours par paire, l'invitation à rejoindre un groupe (qui suppose déjà un lien accepté avec l'inviteur) ne peut pas être une deuxième ligne `LinkSentinels` pour cette même paire. Le groupe lui-même n'est qu'une auto-relation sur `Circle` (`groupRootId`), pas une table — voir la vue "Companion" ci-dessus.
-- **Mort annoncée** : pas un journal non plus — double confirmation posée en champs plats sur `User` (`deathReportedAt`/`deathReportedById` → `deathConfirmedById`/`deceasedAt`, ou retour à `null` si rejetée) et sur `LinkSentinels` (`notifyOnDeath`/`deathPersonalMessage`/`deathNotifiedAt` par destinataire). Zéro nouvelle table, même logique que le reste : un rapport en attente est un état transitoire qu'on écrase (confirmé ou rejeté), pas un événement qu'on empile.
-- **`Conversation` / `ConversationParticipant` / `Message`** : fil générique, réutilisable pour n'importe quel groupe de `User` à n'importe quel moment. `alertId` (optionnel) dit juste si elle est scopée à une alerte ou pas — le "genre" de conversation (1:1 permanent, groupe 1er cercle, sentinelle isolée d'un cercle extérieur) n'est pas stocké : il se déduit des participants, côté backend. `Message.type` (`TEXT`/`IMAGE`/`SYSTEM`) : `TEXT` et `IMAGE` sont tous deux en usage — pour `IMAGE`, `body` contient juste le nom de fichier stocké sous `uploads/messages/` (même principe que `User.avatarPath`), jamais une URL complète. `SYSTEM` reste dans l'enum mais rien ne le pose encore.
-- **`Notification`** : mécanisme à part des précédents — ce n'est pas un journal du système, juste une boîte de réception persistée par destinataire (`userId`), pour que `message:new`/`alert:changed`/`notification:new` (WebSocket, éphémères — rien n'est gardé si le destinataire n'est pas connecté au moment de l'émission) aient un équivalent durable que le frontend peut lister et marquer lu (`readAt`). Volontairement pas de FK typée vers `Alert`/`Conversation`/`LinkSentinels` : `targetId` est une simple colonne texte, son sens dépend de `type` — même choix que pour les autres règles jugées trop fluides pour une contrainte DB (voir `CLAUDE.md`). `actorId`/`actorLabel` suivent le même principe de gel que `AlertParticipant.circleName` : `actorLabel` fige le nom de l'auteur au moment T, pour ne pas dépendre d'un `User` qui pourrait être renommé/anonymisé ensuite. La création est toujours sautée quand `userId === actorId` (personne n'a besoin d'être notifié de sa propre action).
+- **`AlertParticipant`** : ce qui s'est passé pour un `LinkSentinels` donné pendant une alerte donnée (contacté, répondu, lead, qui a déclenché ce contact via `requestedById`, réglages figés via `canSendPhoneAtAlert`/`alertChatWithFirstCircleAtAlert`, cercle figé via `circleId`/`circleName`) — sans jamais copier l'identité (nom/téléphone restent uniquement dans `User`).
+- **`AlertQuestion`** : chaque question posée à un participant et sa réponse — l'historique des échanges avec les cercles extérieurs.
+- **Étapes de l'alerte** : `Alert.launchedAt`/`activatedAt`/`closingAt`/`closedAt` — un timestamp par étape franchie, directement sur `Alert`.
+- **Étapes d'une veille** : `TravelCheckpoint.remindedAt`/`validatedAt`/`missedAt` — même principe, un timestamp par étape, pas d'enum de statut.
+- **Attribution "dernier auteur"** : `Alert.statusUpdatedById`/`statusUpdatedAt`, `Alert.labelUpdatedById`/`labelUpdatedAt`, `AlertParticipant.requestedById`, `AlertParticipant.leadAssignedAt` — pas un journal, juste qui a écrit la valeur *actuelle* en dernier (choix de Sylvie, plus simple qu'une table `AlertEvent`).
+- **`SentinelGroupInvitation`** : la seule table ajoutée par les cercles `GROUP` — l'invitation à rejoindre un groupe ne peut pas être une deuxième ligne `LinkSentinels` pour la même paire. Le groupe lui-même n'est qu'une auto-relation sur `Circle` (`groupRootId`).
+- **Mort annoncée** et **téléphone perdu** : pas des journaux — des champs plats sur `User` (et `LinkSentinels` pour les destinataires de l'annonce), un état transitoire qu'on écrase (confirmé ou rejeté), pas un événement qu'on empile.
+- **`Conversation` / `ConversationParticipant` / `Message`** : fil générique, réutilisable pour n'importe quel groupe de `User`. `alertId` (optionnel) dit juste si elle est scopée à une alerte — le "genre" de conversation se déduit des participants, côté backend. `Message.type` : `TEXT` et `IMAGE` en usage (pour `IMAGE`, `body` = nom de fichier sous `uploads/messages/`) ; `SYSTEM` reste dans l'enum mais rien ne le pose encore.
+- **`Notification`** : boîte de réception persistée par destinataire (`userId`), équivalent durable des événements WebSocket éphémères (`message:new`/`alert:changed`/`notification:new`). `targetId` est une simple colonne texte, son sens dépend de `type`. `actorLabel` fige le nom de l'auteur au moment T. Jamais créée pour l'auteur de l'action lui-même.
+- **`LoginEvent`** : une ligne par tentative de connexion (réussie ou non), montrée à la personne dans ses Paramètres et comptée sur la page Admin. IP tronquée. Gardée 90 jours (`RetentionService`).
 
-Anonymisation : quand un `User` supprime son compte, `status → DELETED` + ses champs identifiants sont vidés/anonymisés, mais son `id` reste — `Message.senderId`, `AlertParticipant`, `ConversationParticipant` continuent de fonctionner sans casser l'historique. `DECEASED` est différent : rien n'est anonymisé, juste gelé (`assertNotDeceased` bloque les nouvelles actions) — les données restantes restent lisibles telles quelles, volontairement, pour celles et ceux qui reçoivent l'annonce.
+Rétention (`RetentionService`, nLPD/RGPD) : `LoginEvent` 90 jours ; positions GPS (alertes et étapes de veille) effacées 30 jours après la fin de l'alerte ou de la veille ; `Notification` ~6 mois ; personnes invitées sans compte jamais réclamées ~6 mois.
+
+Anonymisation : quand un `User` supprime son compte, `status → DELETED` + ses champs identifiants sont vidés (dont `connectCode`, `timeZone`), ses veilles se terminent et leurs positions GPS sont effacées, mais son `id` reste — `Message.senderId`, `AlertParticipant`, `ConversationParticipant` continuent de fonctionner. `DECEASED` est différent : rien n'est anonymisé, juste gelé — les données restent lisibles, volontairement, pour celles et ceux qui reçoivent l'annonce.

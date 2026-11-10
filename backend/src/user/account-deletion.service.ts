@@ -278,6 +278,8 @@ export class AccountDeletionService {
           loginLockedUntil: null,
           deathAnnouncementMessage: null,
           gender: null,
+          connectCode: null,
+          timeZone: null,
         },
       }),
     ]);

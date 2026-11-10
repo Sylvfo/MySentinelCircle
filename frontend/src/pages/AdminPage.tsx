@@ -5,6 +5,7 @@ import { getAdminStats } from '../api/admin';
 import { useAuth } from '../auth/AuthContext';
 import { useLoad } from '../useLoad';
 import { Loading } from '../components/Loading';
+import { LabFeedbackList } from '../components/LabFeedbackList';
 
 // /admin — for the accounts listed in ADMIN_EMAILS only (the server refuses
 // everyone else): how the app is used and whether someone is trying to get
@@ -95,6 +96,8 @@ export function AdminPage() {
           </ul>
         )}
       </div>
+
+      <LabFeedbackList />
 
       <AdminSection title={t('admin.server.title')}>
         <Stat label={t('admin.server.uptime')} value={t('admin.server.uptimeValue', { days, hours })} />

@@ -21,7 +21,8 @@ import {
   Gender,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { RUNNING_ALERT } from '../common/running-alert';
+import { NOT_A_WATCH, RUNNING_ALERT } from '../common/running-alert';
+import { WatchViewsService } from '../watch/watch-views.service';
 import { SMS_SENDER } from '../sms/sms-sender.interface';
 import type { SmsSender } from '../sms/sms-sender.interface';
 import { NotificationService } from '../notification/notification.service';
@@ -50,6 +51,7 @@ import {
 } from './sentinel-helpers';
 import { smsLang } from '../sms/messages';
 import { pendingRecoveryPhone } from './phone-recovery.service';
+import { SMS_CATEGORY, freeSlot, replyCode } from '../sms/sms-reply-code';
 
 const ACTIVE_STATUSES: LinkStatus[] = [LinkStatus.PENDING, LinkStatus.ACCEPTED];
 // A 1st circle handles an alert together, live: kept small (Sylvie's call).
@@ -83,6 +85,7 @@ export class SentinelService {
     private readonly prisma: PrismaService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
     private readonly notifications: NotificationService,
+    private readonly watchViews: WatchViewsService,
   ) {}
 
   // ---- Circles (companion side) ----------------------------------------------
@@ -135,6 +138,9 @@ export class SentinelService {
           },
           orderBy: { createdAt: 'asc' },
         },
+        // A travel circle (Watch Mode): its trip, shown as "Voyage <name>";
+        // once the trip is over (closedAt) it is a normal circle.
+        trip: { select: { id: true, label: true, closedAt: true } },
       },
     });
     // Enum ordering can't express FIRST-first/RESERVED-last via orderBy;
@@ -244,9 +250,29 @@ export class SentinelService {
       requestedAsLead: dto.requestedAsLead,
     });
 
+    // Its SMS reply code: 1<slot> (111 yes / 112 no), the slot free among
+    // this number's other invitations still waiting.
+    const waiting = await this.prisma.linkSentinels.findMany({
+      where: {
+        userSentinelId: sentinelUser.id,
+        status: LinkStatus.PENDING,
+        id: { not: link.id },
+        smsSlot: { not: null },
+      },
+      select: { smsSlot: true },
+    });
+    const slot = freeSlot(waiting.map((l) => l.smsSlot));
+    await this.prisma.linkSentinels.update({
+      where: { id: link.id },
+      data: { smsSlot: slot },
+    });
     await this.sms.send(
       phone,
-      sentinelInvitationSms(userLabel(inviter), smsLang(sentinelUser.language)),
+      sentinelInvitationSms(
+        userLabel(inviter),
+        smsLang(sentinelUser.language),
+        replyCode(SMS_CATEGORY.INVITATION, slot),
+      ),
     );
     await this.notifications.create({
       userId: sentinelUser.id,
@@ -548,6 +574,8 @@ export class SentinelService {
             id: true,
             label: true,
             circleType: true,
+            // Added for their trip: "En voyage avec vous".
+            trip: { select: { id: true, label: true, closedAt: true } },
             userCompanion: {
               select: {
                 id: true,
@@ -693,9 +721,16 @@ export class SentinelService {
       by: ['userCompanionId'],
       where: {
         userCompanionId: { in: links.map((l) => l.circle.userCompanion.id) },
+        alertStatus: NOT_A_WATCH,
       },
       _count: { _all: true },
     });
+    // Their watches I may know about (Watch Mode): the "En voyage · …" /
+    // "Check tout va bien" pill, and "En voyage avec vous".
+    const watchViews = await this.watchViews.viewsFor(
+      userId,
+      links.map((l) => l.circle.userCompanion.id),
+    );
     const alertCountByCompanion = new Map(
       alertCounts.map((c) => [c.userCompanionId, c._count._all]),
     );
@@ -730,7 +765,9 @@ export class SentinelService {
           isReserve: l.circle.circleType === CircleType.RESERVED,
           // A group link is left by leaving the group, not via the reserve.
           isGroup: l.circle.circleType === CircleType.GROUP,
+          trip: l.circle.trip,
         },
+        watches: watchViews.filter((v) => v.companionId === companion.id),
         proposedCircle: l.proposedCircleId
           ? (proposedById.get(l.proposedCircleId) ?? null)
           : null,

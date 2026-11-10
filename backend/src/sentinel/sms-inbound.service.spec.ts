@@ -2,6 +2,7 @@ import { SmsInboundService } from './sms-inbound.service';
 import { SentinelService } from './sentinel.service';
 import { OuterCirclesService } from '../alert/outer-circles.service';
 import { RetentionService } from '../privacy/retention.service';
+import { WatchService } from '../watch/watch.service';
 
 const link = (firstName: string, userType = 'ONLY_SMS') => ({
   userCompanion: { firstName },
@@ -32,6 +33,7 @@ describe('SmsInboundService', () => {
     listOpenQuestionsByPhone: jest.Mock;
     answerQuestion: jest.Mock;
   };
+  let watches: { smsChecksByPhone: jest.Mock; confirmBySms: jest.Mock };
   let sms: { send: jest.Mock };
   let retention: { eraseStubIfUnused: jest.Mock };
   let service: SmsInboundService;
@@ -48,11 +50,16 @@ describe('SmsInboundService', () => {
       listOpenQuestionsByPhone: jest.fn().mockResolvedValue([]),
       answerQuestion: jest.fn().mockResolvedValue(replied),
     };
+    watches = {
+      smsChecksByPhone: jest.fn().mockResolvedValue([]),
+      confirmBySms: jest.fn(),
+    };
     sms = { send: jest.fn().mockResolvedValue(undefined) };
     retention = { eraseStubIfUnused: jest.fn().mockResolvedValue(true) };
     service = new SmsInboundService(
       sentinel as unknown as SentinelService,
       alert as unknown as OuterCirclesService,
+      watches as unknown as WatchService,
       retention as unknown as RetentionService,
       sms,
     );
@@ -203,7 +210,11 @@ describe('SmsInboundService', () => {
       });
       expect(alert.answerQuestion).not.toHaveBeenCalled();
       expect(sentinel.answerInvitation).not.toHaveBeenCalled();
-      expect(sms.send.mock.calls[0][1]).toContain('Gabriel 1 ou Johan OUI');
+      // Each with its reply code.
+      expect(sms.send.mock.calls[0][1]).toContain(
+        'Gabriel : 211 Oui, 212 Plus tard, 213 Non',
+      );
+      expect(sms.send.mock.calls[0][1]).toContain('Johan : 111 Oui, 112 Non');
     });
 
     it('answers the alert question named in the reply', async () => {
@@ -273,6 +284,136 @@ describe('SmsInboundService', () => {
       await service.handle(phone, 'encore');
 
       expect(sms.send).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Watch Mode', () => {
+    const trip = { id: 'trip-1', label: 'Tour du lac', alertType: 'TRAVEL' };
+
+    it('validates a reminded step on OK and says what comes next', async () => {
+      watches.smsChecksByPhone.mockResolvedValueOnce([trip]);
+      watches.confirmBySms.mockResolvedValueOnce({
+        mode: 'TRIP',
+        next: {
+          placeName: 'Col du Lac',
+          expectedAt: new Date(Date.now() + 2 * 3_600_000),
+        },
+        timeZone: 'Europe/Zurich',
+        language: 'fr',
+      });
+
+      await expect(service.handle(phone, 'ok')).resolves.toEqual({
+        matched: true,
+        action: 'watch_confirmed',
+      });
+      expect(watches.confirmBySms).toHaveBeenCalledWith(trip);
+      expect(sms.send.mock.calls[0][1]).toContain(
+        'Prochaine etape : "Col du Lac"',
+      );
+    });
+
+    it('asks to plan the next step when none is left', async () => {
+      watches.smsChecksByPhone.mockResolvedValueOnce([trip]);
+      watches.confirmBySms.mockResolvedValueOnce({
+        mode: 'TRIP',
+        next: null,
+        timeZone: 'Europe/Zurich',
+        language: 'en',
+      });
+
+      await service.handle(phone, 'OK');
+
+      expect(sms.send.mock.calls[0][1]).toContain(
+        'Remember to plan your next step',
+      );
+    });
+
+    it('leaves anything else than OK alone', async () => {
+      watches.smsChecksByPhone.mockResolvedValueOnce([trip]);
+
+      await service.handle(phone, 'peut-etre');
+
+      expect(watches.confirmBySms).not.toHaveBeenCalled();
+    });
+
+    it('comes after an alert question of the same number', async () => {
+      alert.listOpenQuestionsByPhone.mockResolvedValueOnce([question('Lea')]);
+      watches.smsChecksByPhone.mockResolvedValueOnce([trip]);
+
+      await service.handle(phone, 'OK');
+
+      // Two things to answer: the person is asked which one.
+      expect(watches.confirmBySms).not.toHaveBeenCalled();
+      expect(sms.send.mock.calls[0][1]).toContain(
+        'Tour du lac : 311 Tout va bien',
+      );
+    });
+  });
+
+  describe('reply codes', () => {
+    it('answers exactly the question its code names', async () => {
+      const first = { ...question('Gabriel'), smsSlot: 1 };
+      const second = { ...question('Johan'), smsSlot: 2 };
+      alert.listOpenQuestionsByPhone.mockResolvedValueOnce([first, second]);
+
+      await service.handle(phone, '223');
+
+      expect(alert.answerQuestion).toHaveBeenCalledWith(second, phone, '3');
+    });
+
+    it('reads a free answer after the code', async () => {
+      const where = { ...question('Gabriel', null, 'WHERE_SEEN'), smsSlot: 1 };
+      alert.listOpenQuestionsByPhone.mockResolvedValueOnce([where]);
+
+      await service.handle(phone, '21 au marché');
+
+      expect(alert.answerQuestion).toHaveBeenCalledWith(
+        where,
+        phone,
+        'au marché',
+      );
+    });
+
+    it('accepts or declines the invitation its code names', async () => {
+      const johan = { ...link('Johan'), smsSlot: 1 };
+      const marc = { ...link('Marc'), smsSlot: 2 };
+      sentinel.listInvitationsByPhone.mockResolvedValue([johan, marc]);
+
+      await service.handle(phone, '122');
+      expect(sentinel.answerInvitation).toHaveBeenCalledWith(marc, false);
+
+      await service.handle(phone, '111');
+      expect(sentinel.answerInvitation).toHaveBeenCalledWith(johan, true);
+    });
+
+    it('confirms a Watch Mode deadline with 311', async () => {
+      const trip = { id: 'trip-1', label: 'Tour du lac', alertType: 'TRAVEL' };
+      watches.smsChecksByPhone.mockResolvedValueOnce([trip]);
+      watches.confirmBySms.mockResolvedValueOnce({
+        mode: 'TRIP',
+        next: null,
+        timeZone: 'Europe/Zurich',
+        language: 'fr',
+      });
+
+      await service.handle(phone, '311');
+
+      expect(watches.confirmBySms).toHaveBeenCalledWith(trip);
+    });
+
+    it('a code nothing waits for falls back to the usual reading', async () => {
+      alert.listOpenQuestionsByPhone.mockResolvedValueOnce([
+        question('Gabriel'),
+      ]);
+
+      await service.handle(phone, '291');
+
+      // Not "29": the only question gets the whole text.
+      expect(alert.answerQuestion).toHaveBeenCalledWith(
+        expect.anything(),
+        phone,
+        '291',
+      );
     });
   });
 });

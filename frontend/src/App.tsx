@@ -30,6 +30,16 @@ import { LegalPage } from './pages/legal/LegalPage';
 import { PlansPage } from './pages/PlansPage';
 import { NewCompanionPage } from './pages/NewCompanionPage';
 import { AdminPage } from './pages/AdminPage';
+import { WatchModePage } from './pages/watch/WatchModePage';
+import { NewTripPage } from './pages/watch/NewTripPage';
+import { TripPage } from './pages/watch/TripPage';
+import { ValidateStepPage } from './pages/watch/ValidateStepPage';
+import { AllGoodPage } from './pages/watch/AllGoodPage';
+import { EndTripPage } from './pages/watch/EndTripPage';
+import { ConnectPage } from './pages/connect/ConnectPage';
+import { ConnectPersonPage } from './pages/connect/ConnectPersonPage';
+import { LabPage } from './pages/lab/LabPage';
+import { LabFramePage } from './pages/lab/LabFramePage';
 
 function App() {
   return (
@@ -40,6 +50,9 @@ function App() {
         <Route path="/otp" element={<OtpVerifyPage />} />
         <Route path="/welcome" element={<WelcomePage />} />
         <Route path="/a" element={<SentinelHomePage />} />
+        {/* Test lab (dev only: its backend routes exist only then). */}
+        <Route path="/lab" element={<LabPage />} />
+        <Route path="/lab/frame" element={<LabFramePage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/recover-phone" element={<RecoverPhonePage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -65,6 +78,16 @@ function App() {
             <Route path="/running-alert/:alertId" element={<RunningAlertPage />} />
             {/* The alert's chats live in Messages now: old links redirect. */}
             <Route path="/running-alert/:alertId/chat" element={<AlertChatRedirect />} />
+            {/* Watch Mode: a trip or an All Good Check. */}
+            <Route path="/watch" element={<WatchModePage />} />
+            <Route path="/watch/trip/new" element={<NewTripPage />} />
+            <Route path="/watch/all-good" element={<AllGoodPage />} />
+            <Route path="/watch/:watchId" element={<TripPage />} />
+            <Route path="/watch/:watchId/validate" element={<ValidateStepPage />} />
+            <Route path="/watch/:watchId/end" element={<EndTripPage />} />
+            {/* Code QR: add someone (my code, scan, or a number). */}
+            <Route path="/connect" element={<ConnectPage />} />
+            <Route path="/connect/:code" element={<ConnectPersonPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/history/:alertId" element={<HistoryPage />} />
             <Route path="/messages" element={<MessagesPage />} />

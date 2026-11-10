@@ -64,12 +64,20 @@ export function AlertsPage() {
             <p>{t('alerts.tiles.assistance.hint')}</p>
           </Tile>
         </Link>
-        {/* Not built yet — shown so people know it's coming, not clickable. */}
-        <Tile className="tile-soon" title={t('alerts.tiles.travel.title')}>
-          <p>{t('alerts.tiles.travel.hint')}</p>
-          <span className="badge">{t('alerts.tiles.soon')}</span>
-          {tilesPlan && !tilesPlan.hasPaid && <PaidPill feature="travel" />}
-        </Tile>
+        {/* Watch Mode: green, after the three alerts. */}
+        <Link to="/watch" className="tile-link">
+          <Tile
+            className="tile-watch"
+            title={
+              <h2>
+                {t('alerts.tiles.watch.title')}
+                {tilesPlan?.hasPaid ? <IncludedStar /> : tilesPlan && <PaidPill feature="travel" />}
+              </h2>
+            }
+          >
+            <p>{t('alerts.tiles.watch.hint')}</p>
+          </Tile>
+        </Link>
       </div>
     </div>
   );

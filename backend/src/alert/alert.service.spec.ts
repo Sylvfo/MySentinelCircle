@@ -52,6 +52,8 @@ describe('AlertService', () => {
     };
     alertQuestion: {
       createMany: jest.Mock;
+      create: jest.Mock;
+      findFirst: jest.Mock;
       findMany: jest.Mock;
       update: jest.Mock;
     };
@@ -115,7 +117,9 @@ describe('AlertService', () => {
       },
       alertQuestion: {
         createMany: jest.fn(),
-        findMany: jest.fn(),
+        create: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn(),
       },
       conversation: {
@@ -302,6 +306,44 @@ describe('AlertService', () => {
           `Position de Bob (qui a lance l'alerte) : ${link}`,
         ),
       );
+    });
+
+    it('makes a raiser from an outer circle a participant of their own circle', async () => {
+      prisma.alert.findFirst.mockResolvedValueOnce(null);
+      prisma.circle.findFirst.mockResolvedValueOnce(circle);
+      prisma.linkSentinels.findFirst
+        .mockResolvedValueOnce({ id: 'link' }) // assertCanRaise
+        .mockResolvedValueOnce({
+          id: 'bob-link',
+          circleId: 'family-circle',
+          canSendPhone: true,
+          circle: { label: 'Famille', alertChatWithFirstCircle: true },
+          userCompanion: { alertChatWithFirstCircle: true },
+        });
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([linkRow()]);
+      prisma.user.findUnique
+        .mockResolvedValueOnce({ status: 'ACTIVE' })
+        .mockResolvedValueOnce({ paidUntil: SUBSCRIBED })
+        .mockResolvedValueOnce({ firstName: 'Alice', phone: '+41790000000' })
+        .mockResolvedValueOnce({ firstName: 'Bob' });
+      prisma.alert.create.mockResolvedValueOnce({ id: 'alert-1' });
+
+      await service.raiseAlert('bob-id', {
+        companionId: 'alice-id',
+        alertType: AlertType.INCIDENT,
+        reason: 'Elle est tombée',
+      });
+
+      expect(prisma.alertParticipant.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          alertId: 'alert-1',
+          userSentinelsId: 'bob-link',
+          circleId: 'family-circle',
+          circleName: 'Famille',
+          status: 'CONTACTED',
+          alertChatWithFirstCircleAtAlert: true,
+        }),
+      });
     });
 
     it('rejects a position sent by someone raising another kind of alert for another person', async () => {
@@ -1199,6 +1241,56 @@ describe('AlertService', () => {
       ...overrides,
     });
 
+    it('counts in a travel circle the Sentinels who came on the trip, not those already on the alert', async () => {
+      prisma.alert.findUnique
+        .mockResolvedValueOnce(alertRow({ tripId: 'trip-1' }))
+        .mockResolvedValueOnce({
+          userCompanionId: 'alice-id',
+          participants: [],
+        })
+        .mockResolvedValueOnce({ ...alertRow(), participants: [] });
+      prisma.circle.findFirst.mockResolvedValueOnce({
+        ...outerCircle,
+        id: 'travel-1',
+        label: 'Cercle du voyage 1',
+        tripId: 'trip-1',
+      });
+      prisma.alertParticipant.findMany
+        // Counted on the trip in this travel circle…
+        .mockResolvedValueOnce([
+          { userSentinelsId: 'came-along' },
+          { userSentinelsId: 'first-circle-link' },
+        ])
+        // …one of them already on the alert, in the 1st circle.
+        .mockResolvedValueOnce([{ userSentinelsId: 'first-circle-link' }])
+        .mockResolvedValueOnce([]);
+      prisma.linkSentinels.findMany.mockResolvedValueOnce([
+        outerLink({ id: 'came-along' }),
+      ]);
+      prisma.user.findUnique.mockResolvedValueOnce({ firstName: 'Alice' });
+
+      await outerCircles.requestCircle('alice-id', 'alert-1', {
+        circleId: 'travel-1',
+        questionKind: 'CAN_VISIT',
+      });
+
+      expect(prisma.alertParticipant.findMany).toHaveBeenNthCalledWith(2, {
+        where: {
+          alertId: 'alert-1',
+          userSentinelsId: { in: ['came-along', 'first-circle-link'] },
+          circleId: { not: 'travel-1' },
+        },
+        select: { userSentinelsId: true },
+      });
+      expect(prisma.linkSentinels.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: [{ circleId: 'travel-1' }, { id: { in: ['came-along'] } }],
+          }),
+        }),
+      );
+    });
+
     it('fans out to the chosen outer circle’s accepted Sentinels and activates the alert', async () => {
       prisma.alert.findUnique
         .mockResolvedValueOnce(alertRow()) // requestCircle's own lookup
@@ -2050,6 +2142,142 @@ describe('AlertService', () => {
     });
   });
 
+  describe('updateType', () => {
+    const watchAlert = (overrides: Record<string, unknown> = {}) => ({
+      id: 'alert-1',
+      userCompanionId: 'alice-id',
+      firstCircleId: 'circle-1',
+      alertStatus: AlertStatus.LAUNCHED,
+      alertType: AlertType.TRAVEL,
+      tripId: 'trip-1',
+      label: 'Alerte voyage',
+      labelUpdatedAt: null,
+      ...overrides,
+    });
+    // The alert, then the watch it was opened from.
+    const load = (
+      alert: ReturnType<typeof watchAlert>,
+      watchType: AlertType | null = AlertType.TRAVEL,
+    ) => {
+      prisma.alert.findUnique.mockResolvedValueOnce(alert);
+      if (watchType) {
+        prisma.alert.findUnique.mockResolvedValueOnce({ alertType: watchType });
+      }
+    };
+
+    beforeEach(() => {
+      jest.spyOn(service, 'getAlert').mockResolvedValue({} as never);
+    });
+
+    it('lets the 1st circle requalify a trip alert as an emergency, said in the room', async () => {
+      load(watchAlert());
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
+      prisma.conversation.findFirst.mockResolvedValueOnce({
+        id: 'room-1',
+        closedAt: null,
+      });
+
+      await service.updateType('sentinel-1', 'alert-1', {
+        alertType: AlertType.EMERGENCY,
+      });
+
+      expect(prisma.alert.update).toHaveBeenCalledWith({
+        where: { id: 'alert-1' },
+        data: { alertType: AlertType.EMERGENCY, label: 'Urgence' },
+      });
+      expect(prisma.message.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          conversationId: 'room-1',
+          senderId: 'sentinel-1',
+          body: 'Type d’alerte changé : Urgence',
+        }),
+      });
+    });
+
+    it('requalifies an All Good alert too, and back to no news', async () => {
+      load(watchAlert({ alertType: AlertType.NOCONTACT }), AlertType.NOCONTACT);
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
+      await service.updateType('sentinel-1', 'alert-1', {
+        alertType: AlertType.MISSING,
+      });
+      expect(prisma.alert.update).toHaveBeenLastCalledWith({
+        where: { id: 'alert-1' },
+        data: { alertType: AlertType.MISSING, label: 'Personne introuvable' },
+      });
+
+      load(watchAlert({ alertType: AlertType.MISSING }), AlertType.NOCONTACT);
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
+      await service.updateType('sentinel-1', 'alert-1', {
+        alertType: AlertType.NOCONTACT,
+      });
+      expect(prisma.alert.update).toHaveBeenLastCalledWith({
+        where: { id: 'alert-1' },
+        data: { alertType: AlertType.NOCONTACT, label: 'Sans nouvelles' },
+      });
+    });
+
+    it('never gives an alert the type of the other watch mode', async () => {
+      load(watchAlert(), AlertType.TRAVEL);
+
+      await expect(
+        service.updateType('sentinel-1', 'alert-1', {
+          alertType: AlertType.NOCONTACT,
+        }),
+      ).rejects.toThrow('This alert can’t take that type');
+    });
+
+    it('keeps a label the 1st circle chose', async () => {
+      load(watchAlert({ label: 'Léa au col', labelUpdatedAt: new Date() }));
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce({ id: 'link-1' });
+
+      await service.updateType('sentinel-1', 'alert-1', {
+        alertType: AlertType.MISSING,
+      });
+
+      expect(prisma.alert.update).toHaveBeenCalledWith({
+        where: { id: 'alert-1' },
+        data: { alertType: AlertType.MISSING },
+      });
+    });
+
+    it('is only for an alert opened by a watch', async () => {
+      load(watchAlert({ tripId: null, alertType: AlertType.MISSING }), null);
+
+      await expect(
+        service.updateType('sentinel-1', 'alert-1', {
+          alertType: AlertType.EMERGENCY,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('is only for the 1st circle, and only while it runs', async () => {
+      load(watchAlert());
+      prisma.linkSentinels.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.updateType('outer-1', 'alert-1', {
+          alertType: AlertType.EMERGENCY,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+
+      load(watchAlert({ alertStatus: AlertStatus.RESOLVED }), null);
+      await expect(
+        service.updateType('sentinel-1', 'alert-1', {
+          alertType: AlertType.EMERGENCY,
+        }),
+      ).rejects.toThrow('This alert is already closed');
+      expect(prisma.alert.update).not.toHaveBeenCalled();
+    });
+
+    it('never treats a watch as an alert', async () => {
+      load(watchAlert({ alertStatus: AlertStatus.SENT, tripId: null }), null);
+      await expect(
+        service.updateType('sentinel-1', 'trip-1', {
+          alertType: AlertType.EMERGENCY,
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('updateLabel', () => {
     const alertRow = (overrides: Record<string, unknown> = {}) => ({
       id: 'alert-1',
@@ -2135,7 +2363,7 @@ describe('AlertService', () => {
           participantIds: ['participant-1'],
         }),
       ).rejects.toThrow(BadRequestException);
-      expect(prisma.alertQuestion.createMany).not.toHaveBeenCalled();
+      expect(prisma.alertQuestion.create).not.toHaveBeenCalled();
       expect(sms.send).not.toHaveBeenCalled();
     });
 
@@ -2168,7 +2396,13 @@ describe('AlertService', () => {
             },
           },
         ])
-        .mockResolvedValueOnce([{ id: 'participant-1' }]);
+        .mockResolvedValueOnce([
+          {
+            id: 'participant-1',
+            userSentinelsId: 'link-1',
+            userSentinels: { linkAsSentinel: { phone: '+41793333333' } },
+          },
+        ]);
       prisma.user.findUnique.mockResolvedValueOnce({
         firstName: 'Marc',
         lastName: 'Dupont',
@@ -2182,18 +2416,22 @@ describe('AlertService', () => {
         participantIds: ['participant-1'],
       });
 
-      expect(prisma.alertQuestion.createMany).toHaveBeenCalledWith({
-        data: [
-          {
-            kind: 'WHERE_SEEN',
-            askedById: 'alice-id',
-            alertParticipantId: 'participant-1',
-          },
-        ],
+      // Nothing else waits on this number: reply code 21.
+      expect(prisma.alertQuestion.create).toHaveBeenCalledWith({
+        data: {
+          kind: 'WHERE_SEEN',
+          askedById: 'alice-id',
+          alertParticipantId: 'participant-1',
+          smsSlot: 1,
+        },
       });
       expect(sms.send).toHaveBeenCalledWith(
         '+41793333333',
         expect.stringContaining('alerte Marc Dupont'),
+      );
+      expect(sms.send).toHaveBeenCalledWith(
+        '+41793333333',
+        expect.stringContaining('21 puis votre reponse'),
       );
       expect(getAlert).toHaveBeenCalled();
     });
@@ -2281,7 +2519,7 @@ describe('AlertService', () => {
       expect(prisma.alertParticipant.update).not.toHaveBeenCalled();
       expect(sms.send).toHaveBeenCalledWith(
         '+41793333333',
-        expect.stringContaining('1 Oui, 2 Plus tard, 3 Non'),
+        expect.stringContaining('211 Oui, 212 Plus tard, 213 Non'),
       );
       expect(result).toEqual({
         matched: true,
@@ -2344,10 +2582,16 @@ describe('AlertService', () => {
                 firstName: true,
                 gender: true,
                 myCircles: expect.objectContaining({
-                  select: { id: true, label: true },
+                  select: { id: true, label: true, tripId: true },
                 }),
               },
             },
+            // The watch a missed deadline opened it from, if any.
+            trip: expect.objectContaining({
+              select: expect.objectContaining({
+                checkpoints: { orderBy: { expectedAt: 'asc' } },
+              }),
+            }),
             statusUpdatedBy: { select: { id: true, firstName: true } },
             labelUpdatedBy: { select: { id: true, firstName: true } },
             conversations: expect.objectContaining({

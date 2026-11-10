@@ -19,7 +19,11 @@ export type NotificationType =
   | 'SENTINEL_GROUP_INVITED'
   | 'DEATH_NOTICE_REPORTED'
   | 'DEATH_NOTICE_CONFIRMED'
-  | 'DEATH_NOTICE_REJECTED';
+  | 'DEATH_NOTICE_REJECTED'
+  // Watch Mode.
+  | 'TRAVEL_CIRCLE_ADDED'
+  | 'WATCH_CHECK_DUE'
+  | 'WATCH_PAUSE_SOON';
 
 export interface NotificationItem {
   id: string;

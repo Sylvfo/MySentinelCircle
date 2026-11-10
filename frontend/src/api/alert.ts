@@ -1,7 +1,16 @@
+import type { Checkpoint } from './watch';
 import type { Gender } from '../gender';
 import { apiGet, apiGetShared, apiPatch, apiPost } from './client';
 
-export type AlertType = 'BYCOMPANION' | 'LITTLEWORRY' | 'MISSING' | 'INCIDENT' | 'UNKNOWN' | 'EMERGENCY' | 'NOCONTACT';
+export type AlertType =
+  | 'BYCOMPANION'
+  | 'LITTLEWORRY'
+  | 'MISSING'
+  | 'INCIDENT'
+  | 'UNKNOWN'
+  | 'EMERGENCY'
+  | 'NOCONTACT'
+  | 'TRAVEL';
 export type AlertStatus = 'SENT' | 'LAUNCHED' | 'ACTIVE' | 'CLOSING' | 'RESOLVED';
 
 export const ALERT_QUESTION_KINDS = ['CAN_VISIT', 'LAST_NEWS', 'SEEMED_OK', 'WHERE_SEEN'] as const;
@@ -48,6 +57,8 @@ export interface AlertSummary {
   firstCircleId: string;
   launchedById: string | null;
   closedById: string | null;
+  // Opened by a missed Watch Mode deadline: the watch (trip or All Good).
+  tripId?: string | null;
 }
 
 // listAlerts() rows only: the caller's own participation (null on their own
@@ -107,7 +118,25 @@ export interface AlertParticipant {
 }
 
 export interface AlertDetail extends AlertSummary {
-  userCompanion: { id: string; firstName: string; gender?: Gender | null; myCircles: { id: string; label: string }[] };
+  userCompanion: {
+    id: string;
+    firstName: string;
+    gender?: Gender | null;
+    // tripId: a travel circle (Watch Mode).
+    myCircles: { id: string; label: string; tripId?: string | null }[];
+  };
+  // Opened by a missed Watch Mode deadline: the watch, seen in full by the
+  // 1st circle from now on.
+  trip?: {
+    id: string;
+    label: string;
+    alertType: AlertType;
+    messageAlert: string;
+    createdAt: string;
+    closedAt: string | null;
+    checkpoints: Checkpoint[];
+    tripCircles: { id: string; label: string }[];
+  } | null;
   // Who last wrote statusByFirstCircle (statusByCompanion is always the
   // companion, no ambiguity there) / renamed the alert — last writer only.
   statusUpdatedBy: { id: string; firstName: string } | null;
@@ -230,3 +259,8 @@ export const updateAlertStatus = (id: string, message: string) =>
 // label is the alert's name — any accepted 1st-circle Sentinel can set it.
 export const updateAlertLabel = (id: string, label: string) =>
   apiPatch<AlertSummary>(`/alert/${id}/label`, { label });
+
+// An alert opened by a missed Watch Mode deadline, requalified by the 1st
+// circle: a disappearance, an emergency, or back to its own type.
+export const updateAlertType = (alertId: string, alertType: AlertType) =>
+  apiPatch<AlertDetail>(`/alert/${alertId}/type`, { alertType });

@@ -378,6 +378,7 @@ describe('WatchScheduler', () => {
         userCompanionId: 'lea',
         userCompanion: {
           paidUntil: new Date(NOW.getTime() + daysLeft * DAY),
+          firstName: 'Léa',
         },
       },
     ];
@@ -413,6 +414,7 @@ describe('WatchScheduler', () => {
         userId: 'bob',
         type: NotificationType.WATCH_PAUSE_SOON,
         actorUserId: 'lea',
+        actorLabel: 'Léa',
         targetId: 'lea',
       });
       // Counted since the 7-day mark, not the 30-day one.

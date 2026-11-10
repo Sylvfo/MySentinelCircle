@@ -18,6 +18,9 @@ export interface Me {
   alertChatWithFirstCircle: boolean;
   // Language of the SMS I receive ("fr" / "en"; null = French until synced).
   language: 'fr' | 'en' | null;
+  // My time zone (IANA), sent by the browser: All Good deadlines and the
+  // times in my SMS follow it.
+  timeZone?: string | null;
   // May my Sentinels give each other a phone number or email during an
   // alert about me? Off: refused in my alert chats.
   alertContactSharing: boolean;
@@ -82,6 +85,7 @@ export const updateProfile = (
       | 'alertChatWithFirstCircle'
       | 'gender'
       | 'language'
+      | 'timeZone'
       | 'alertContactSharing'
     >
   >,

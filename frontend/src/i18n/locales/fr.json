@@ -41,7 +41,8 @@
     "settings": "Paramètres",
     "logout": "Déconnexion",
     "info": "Info",
-    "admin": "Admin"
+    "admin": "Admin",
+    "qr": "Code QR"
   },
   "auth": {
     "loginTitle": "Connexion",
@@ -146,11 +147,14 @@
         "thanks": "Merci, votre réponse a été transmise. Le 1er cercle s'occupe du reste.",
         "generic": "Regardez l'alerte et répondez si on vous le demande."
       }
+    },
+    "watch": {
+      "trip": "Mode voyage"
     }
   },
   "circles": {
     "title": "Mes cercles",
-    "intro": "Créez vos cercles (1er cercle, famille, travail...) et gérez les sentinelles qui vous surveillent.",
+    "intro": "Créez vos cercles (1er cercle, famille, travail...) et gérez les sentinelles qui veillent sur vous.",
     "empty": "Aucun cercle pour l'instant. Créez-en un pour commencer.",
     "newCircle": "Nouveau cercle",
     "firstCircle": "1er cercle",
@@ -255,8 +259,8 @@
   },
   "companions": {
     "title": "Companions",
-    "intro": "Les personnes dont vous êtes la sentinelle — celles que vous surveillez.",
-    "empty": "Vous ne surveillez personne pour l'instant.",
+    "intro": "Les personnes dont vous êtes la sentinelle — celles sur qui vous veillez.",
+    "empty": "Vous ne veillez sur personne pour l'instant.",
     "leave": "Ne plus veiller sur {{name}}",
     "confirmLeave": "Vous ne serez plus Sentinel de {{name}} : vous ne serez plus prévenu·e de ses alertes. {{name}} en sera informé·e.",
     "invitations": "Invitations reçues",
@@ -266,7 +270,7 @@
     "accept": "Accepter",
     "decline": "Refuser",
     "requestTitle": "Devenir la sentinelle de quelqu'un",
-    "requestIntro": "Entrez le numéro de la personne à surveiller ; elle recevra votre demande.",
+    "requestIntro": "Entrez le numéro de la personne sur qui vous voulez veiller ; elle recevra votre demande.",
     "targetPhone": "Téléphone de la personne (+33…)",
     "sendRequest": "Envoyer la demande",
     "requestSent": "Demande envoyée.",
@@ -316,11 +320,13 @@
     "groups": {
       "lead": "Vous êtes sa Sentinelle Lead",
       "firstCircle": "Vous êtes dans son 1er cercle",
+      "travel": "En voyage avec vous",
       "others": "Vous êtes sa Sentinelle"
     },
     "groupHints": {
       "lead": "Vous êtes responsable de cette personne en cas de problème : vous coordonnez l'alerte et les autres Sentinelles.",
       "firstCircle": "En cas de problème, vous faites partie du groupe qui gère l'alerte.",
+      "travel": "Vous êtes dans leur cercle du voyage : s'il y a un souci pendant le voyage, leur 1er cercle peut vous solliciter.",
       "others": "En cas de problème, son 1er cercle peut vous demander de l'aide : répondre à une question, aller voir…"
     },
     "leaveExplain": "Vous ne veillerez plus sur {{name}}. Ça ne change rien dans l'autre sens : si {{name}} veille sur vous, {{name}} reste votre Sentinelle.",
@@ -374,6 +380,10 @@
       "codeSent": "Deux personnes ont confirmé : le code est parti sur le nouveau numéro.",
       "needsLead": "Une Sentinelle Lead doit aussi confirmer : ni vous ni la première personne n'êtes Lead.",
       "numberTaken": "Ce nouveau numéro a déjà un compte : impossible de confirmer."
+    },
+    "watchPill": {
+      "trip": "En voyage",
+      "tripAt": "En voyage · {{place}}"
     }
   },
   "alerts": {
@@ -398,7 +408,7 @@
     "raiseForCompanion": "Alerter pour une personne proche",
     "raiseForCompanionIntro": "Déclenchez une alerte pour quelqu'un que vous protégez.",
     "companionLabel": "Personne concernée",
-    "noCompanions": "Vous ne surveillez personne pour l'instant.",
+    "noCompanions": "Vous ne veillez sur personne pour l'instant.",
     "reasonLabel": "Raison",
     "reasonPlaceholder": "Décrivez brièvement la situation",
     "submit": "Envoyer l'alerte",
@@ -410,7 +420,8 @@
       "INCIDENT": "Incident signalé",
       "EMERGENCY": "Urgence",
       "NOCONTACT": "Sans nouvelles",
-      "UNKNOWN": "Alerte"
+      "UNKNOWN": "Alerte",
+      "TRAVEL": "Alerte voyage"
     },
     "detail": {
       "show": "Détails",
@@ -531,11 +542,11 @@
         "title": "Quelqu'un a besoin d'aide",
         "hint": "Besoin de contacter ses proches."
       },
-      "travel": {
-        "title": "Mode voyage",
-        "hint": "Vos cercles veillent sur vous pendant un voyage."
-      },
-      "soon": "Bientôt disponible"
+      "soon": "Bientôt disponible",
+      "watch": {
+        "title": "Mode veille",
+        "hint": "Mode voyage ou Check tout va bien."
+      }
     },
     "self": {
       "situationLabel": "Qu'est-ce qui se passe ?",
@@ -755,11 +766,16 @@
   },
   "history": {
     "title": "Historique",
-    "intro": "Les alertes terminées auxquelles vous avez participé.",
+    "intro": "Les alertes terminées auxquelles vous avez participé, et vos veilles.",
     "empty": "Aucune alerte résolue pour l'instant.",
     "backToList": "← Retour à l'historique",
     "concerns": "Concerne : {{who}}",
-    "concernsMe": "vous"
+    "concernsMe": "vous",
+    "watch": {
+      "trip": "Voyage",
+      "running": "en cours",
+      "withOthers": "Voyages avec d'autres"
+    }
   },
   "runningAlertPage": {
     "title": "Alerte en cours",
@@ -841,7 +857,11 @@
       "CIRCLE_MOVE_DECLINED": "{{who}} a refusé de rejoindre votre 1er cercle",
       "SENTINEL_TO_RESERVE": "{{who}} est passé.e dans votre réserve pour l'instant",
       "SENTINEL_TO_RESERVE_female": "{{who}} est passée dans votre réserve pour l'instant",
-      "SENTINEL_TO_RESERVE_male": "{{who}} est passé dans votre réserve pour l'instant"
+      "SENTINEL_TO_RESERVE_male": "{{who}} est passé dans votre réserve pour l'instant",
+      "TRAVEL_CIRCLE_ADDED": "{{who}} vous emmène en voyage",
+      "WATCH_CHECK_DUE": "C'est l'heure : dites que tout va bien",
+      "WATCH_PAUSE_SOON": "Votre abonnement se termine bientôt : votre veille se mettra en pause",
+      "WATCH_PAUSE_SOON_CIRCLE": "{{who}} a une veille en arrière-plan : vous n'êtes prévenu.e que s'il y a un souci. Son abonnement se termine bientôt et cette veille se mettra en pause."
     }
   },
   "settings": {
@@ -1212,6 +1232,10 @@
         "send": "Envoyer l'invitation",
         "theyAsked": "{{name}} a demandé à veiller sur vous."
       }
+    },
+    "trip": {
+      "inMyCircle": "{{name}} voyage avec vous",
+      "inTheirCircle": "Vous êtes dans le cercle du voyage de {{name}}"
     }
   },
   "pause": {
@@ -1294,7 +1318,7 @@
         "alerts": "Alertes à votre sujet sans limite, SMS compris",
         "groups": "Créer des cercles de groupe",
         "deathNotice": "L'annonce de décès",
-        "travel": "Le mode voyage",
+        "travel": "Le mode veille : voyage et Check tout va bien",
         "noAds": "Sans publicité"
       },
       "renew": "Ajouter une année",
@@ -1313,7 +1337,8 @@
     "locked": {
       "alerts": "Vos alertes gratuites sont utilisées. Pour lancer d'autres alertes, il faut l'abonnement.",
       "groups": "Créer un cercle de groupe fait partie de l'abonnement. Rejoindre le groupe de quelqu'un d'autre reste gratuit.",
-      "deathNotice": "Préparer l'annonce de décès fait partie de l'abonnement, ou s'achète une seule fois à part."
+      "deathNotice": "Préparer l'annonce de décès fait partie de l'abonnement, ou s'achète une seule fois à part.",
+      "travel": "Le mode veille (voyage, Check tout va bien) fait partie de l'abonnement."
     },
     "payAlert": {
       "self": {
@@ -1330,7 +1355,7 @@
       "label": "Abonnement",
       "modalTitle": "Fait partie de l'abonnement",
       "groups": "Créer un cercle de groupe fait partie de l'abonnement. Rejoindre le groupe de quelqu'un d'autre reste gratuit.",
-      "travel": "L'alerte voyage fera partie de l'abonnement : vos proches sont prévenu.e.s si vous n'arrivez pas à destination à l'heure prévue.",
+      "travel": "Le mode veille fait partie de l'abonnement : en voyage ou au quotidien, votre 1er cercle est prévenu si vous ne donnez pas de nouvelles à l'heure prévue.",
       "deathNotice": "Préparer l'annonce de décès fait partie de l'abonnement, ou s'achète une seule fois à part.",
       "alerts": "Après votre alerte gratuite, les alertes à votre sujet font partie de l'abonnement."
     },
@@ -1421,5 +1446,294 @@
       "uptimeValue": "{{days}} j {{hours}} h",
       "version": "Version"
     }
+  },
+  "watch": {
+    "title": "Mode veille",
+    "intro": "Vous fixez des points de contrôle : à chacun, vous confirmez dans l'app que tout va bien. Un point de contrôle manqué, et votre 1er cercle est prévenu.",
+    "pill": {
+      "on": "Activé",
+      "tripOn": "En cours",
+      "tripAt": "En cours · {{place}}",
+      "paused": {
+        "SUBSCRIPTION": "En pause (abonnement terminé)",
+        "MANUAL": "En pause",
+        "TRIP": "En pause pendant le voyage"
+      }
+    },
+    "paused": {
+      "SUBSCRIPTION": "En pause : votre abonnement s'est terminé. Rien ne se passe aux heures prévues jusqu'au renouvellement.",
+      "MANUAL": "En pause pour l'instant, à votre demande.",
+      "TRIP": "En pause pendant votre voyage : ce sont les étapes du voyage qui comptent."
+    },
+    "todo": {
+      "nextStep": "Prochaine étape à valider",
+      "nextCheck": "Prochain check à valider",
+      "alertAt": "Sans nouvelles à {{at}}, une alerte sera déclenchée.",
+      "alertSent": "Alerte déclenchée : votre 1er cercle est prévenu.",
+      "sayAllGood": "Validez pour dire que tout va bien.",
+      "planNext": "Aucune étape prévue : prévoyez la suivante.",
+      "late": "À valider",
+      "before": "avant {{due}}"
+    },
+    "delay": {
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "hours_one": "{{count}} heure",
+      "hours_other": "{{count}} heures",
+      "days_one": "{{count}} jour",
+      "days_other": "{{count}} jours",
+      "weeks_one": "{{count}} semaine",
+      "weeks_other": "{{count}} semaines"
+    },
+    "trip": {
+      "title": "Voyage",
+      "hint": "Un rendez-vous à chaque étape de votre trajet.",
+      "running": "Voyage en cours",
+      "end": "Terminer le voyage",
+      "endTitle": "Terminer ce voyage ?",
+      "endText": "Plus personne ne veille sur votre trajet : il n'y a plus de relance ni d'alerte. Le voyage et son journal de bord passent dans l'historique. C'est définitif.",
+      "endPeople": "Les personnes de vos cercles du voyage restent vos Sentinelles : vous choisirez ensuite qui garder.",
+      "endConfirm": "Oui, terminer le voyage",
+      "ended": "Voyage {{name}} terminé ✓",
+      "settings": "Réglages du voyage"
+    },
+    "newTrip": {
+      "title": "Nouveau voyage",
+      "name": "Nom du voyage",
+      "namePlaceholder": "Ex. Col du Lac, Thaïlande…",
+      "firstStep": "Première étape",
+      "start": "Commencer la veille",
+      "stepN": "Étape {{n}}",
+      "withCircle": "Créer un cercle pour ce voyage"
+    },
+    "step": {
+      "place": "Lieu",
+      "placePlaceholder": "Ex. parking du col",
+      "pasteLink": "Coller un lien de carte",
+      "useLink": "Utiliser ce lien",
+      "linkNotUnderstood": "Ce lien ne donne pas de point sur la carte. Vous pouvez aussi écrire « 46.5, 6.6 ».",
+      "pointSet": "Point sur la carte :",
+      "removePoint": "Retirer le point",
+      "alertAfter": "Alerter après",
+      "day": "Jour",
+      "time": "Heure"
+    },
+    "instructions": {
+      "label": "Que faire si l'alerte est déclenchée ?",
+      "tripPlaceholder": "Ex. appeler le secours en montagne (112), ma voiture est…",
+      "allGoodPlaceholder": "Ex. passer à la maison : ma voisine du 2e étage a un double des clés."
+    },
+    "steps": {
+      "title": "Étapes",
+      "alertIfNothing": "alerte si rien à {{at}}",
+      "validated": "Validée à {{at}} ✓",
+      "validatedElsewhere": "Validée à {{at}}, ailleurs : {{place}} ✓",
+      "missed": "Pas validée à temps",
+      "isNext": "Prochaine étape",
+      "add": "Ajouter une étape",
+      "addConfirm": "Ajouter l'étape",
+      "after": "ensuite : {{place}}, {{at}}",
+      "noneAfter": "pas d'autre étape prévue"
+    },
+    "see": {
+      "shareTrip": "Mon 1er cercle peut voir mon voyage"
+    },
+    "circles": {
+      "newCircle": "Nouveau cercle du voyage",
+      "newGroup": "Nouveau groupe de voyage",
+      "ringTrip": "Voyage {{name}}"
+    },
+    "validate": {
+      "open": "Valider l'étape {{place}} · {{at}}",
+      "title": "Étape {{n}} : {{place}}",
+      "planned": "Prévue {{at}}. Sans nouvelles à {{alertAt}}, votre 1er cercle est prévenu.",
+      "alertRunning": "L'heure est passée et votre 1er cercle a été prévenu. Validez pour leur dire que tout va bien.",
+      "asPlanned": "Je suis là, comme prévu",
+      "elsewhere": "Je suis ailleurs, mais tout va bien",
+      "where": "Où êtes-vous ?",
+      "wherePlaceholder": "Ex. on dort au refuge du Pic",
+      "sharePosition": "Joindre ma position (GPS du téléphone)",
+      "logbook": "Journal de bord (facultatif)",
+      "logbookPlaceholder": "Un mot sur l'étape : météo, état de forme, changement de plan…",
+      "submit": "Valider l'étape",
+      "planNext": "Prévoir la prochaine étape",
+      "submitWithNext": "Valider et prévoir cette étape",
+      "lastStep": "C'était la dernière étape : terminer le voyage",
+      "done": "Étape validée ✓",
+      "doneAt": "À {{place}} à {{at}} ({{timing}}).",
+      "doneElsewhere": "Ailleurs, tout va bien : {{place}}.",
+      "withPosition": "Position jointe.",
+      "onTime": "à l'heure prévue",
+      "late_one": "{{count}} min après l'heure prévue",
+      "late_other": "{{count}} min après l'heure prévue",
+      "early_one": "{{count}} min avant l'heure prévue",
+      "early_other": "{{count}} min avant l'heure prévue",
+      "nextStillGood": "Votre prochaine étape est-elle toujours bonne ?",
+      "stillGood": "Oui, toujours bon",
+      "confirmed": "Confirmé ✓",
+      "addAnother": "Ajouter une autre étape",
+      "finish": "Terminé",
+      "confirmFirst": "Confirmez d'abord votre prochaine étape",
+      "nothing": "Il n'y a pas d'étape à valider pour l'instant."
+    },
+    "logbook": {
+      "title": "Journal de bord",
+      "entry": "Étape {{n}} · {{at}} (prévue {{planned}}) · {{place}}"
+    },
+    "allGood": {
+      "title": "Check tout va bien",
+      "hint": "Un rendez-vous régulier, au quotidien.",
+      "on": "Activé",
+      "nextBefore": "prochain check avant {{at}}",
+      "lastValidation": "Dernière validation : {{at}}",
+      "noValidationYet": "Pas encore de validation.",
+      "allGood": "Tout va bien ✓",
+      "early": "Vous pouvez valider dès le matin, avant l'heure.",
+      "when": "Quand ?",
+      "rhythm": {
+        "legend": "Rythme des checks",
+        "daily": "Tous les jours",
+        "weekdays": "Certains jours",
+        "every": "Tous les…"
+      },
+      "days": {
+        "1": "lundi",
+        "2": "mardi",
+        "3": "mercredi",
+        "4": "jeudi",
+        "5": "vendredi",
+        "6": "samedi",
+        "7": "dimanche"
+      },
+      "daysShort": {
+        "1": "L",
+        "2": "M",
+        "3": "M",
+        "4": "J",
+        "5": "V",
+        "6": "S",
+        "7": "D"
+      },
+      "everyLabel": "Tous les",
+      "howMany": "Combien",
+      "unit": "Unité",
+      "units": {
+        "DAY": "jour(s)",
+        "WEEK": "semaine(s)",
+        "MONTH": "mois"
+      },
+      "from": "À partir du",
+      "before": "Avant",
+      "delay": "Sans validation, on vous relance, puis on alerte après",
+      "pause": "Pause",
+      "pauseUntil": "Mettre en pause jusqu'au",
+      "pauseConfirm": "Mettre en pause",
+      "pausedUntil": "En pause jusqu'à {{at}}.",
+      "resume": "Reprendre maintenant",
+      "tripPause": "Pendant un voyage, le check se met en pause tout seul : ce sont les étapes du voyage qui comptent.",
+      "firstCircle": "Mon 1er cercle, avant une alerte",
+      "toggleKnown": "Sait que c'est activé (et l'heure)",
+      "toggleLast": "Voit ma dernière validation",
+      "start": "Activer le check",
+      "saved": "Enregistré ✓",
+      "stop": "Désactiver",
+      "stopConfirm": "Désactiver le Check tout va bien ? Plus personne ne sera prévenu si vous ne donnez pas de nouvelles."
+    },
+    "end": {
+      "title_one": "{{count}} nouvelle Sentinelle pendant ce voyage",
+      "title_other": "{{count}} nouvelles Sentinelles pendant ce voyage",
+      "intro": "Que faire ? Vos autres Sentinelles ne changent pas.",
+      "forAll_one": "Pour cette personne",
+      "forAll_other": "Pour les {{count}}",
+      "endLink": "Arrêter le lien",
+      "reserve": "Les mettre dans le cercle réserve",
+      "default": "par défaut",
+      "keep": "Garder le cercle de ce voyage",
+      "each": "Ou pour chaque Sentinelle",
+      "whatFor": "Ce que devient {{name}}",
+      "optionReserve": "Cercle réserve",
+      "optionKeep": "Cercle du voyage",
+      "groupsClose": "Un groupe de voyage se ferme avec le voyage : ses membres vont dans votre réserve, ou ailleurs si vous le choisissez.",
+      "finish": "Terminer le voyage"
+    },
+    "alert": {
+      "reachFirst": "D'abord, essayez de les joindre",
+      "callThem": "Appelez {{name}}.",
+      "callTravelCircle": "Appelez les personnes qui sont avec elle ou lui : {{circles}}. Vous pouvez aussi les solliciter depuis « Cercles ».",
+      "thenInstructions": "Personne ne répond : suivez les consignes, dans « À savoir ».",
+      "theTrip": "Le voyage",
+      "lastNews": "Dernières nouvelles :",
+      "noNews": "aucune validation pour l'instant.",
+      "planned": "prévue {{at}}",
+      "changeType": "Changer le type d'alerte",
+      "changeTypeHint": "Si la situation est plus grave, l'alerte peut devenir une disparition ou une urgence. Tout le monde le voit dans le salon."
+    }
+  },
+  "connect": {
+    "title": "Code QR",
+    "tabs": {
+      "mine": "Mon code",
+      "scan": "Scanner",
+      "phone": "Numéro"
+    },
+    "myCodeAlt": "Mon code QR",
+    "renew": "Changer mon code",
+    "watchesMe": "{{name}} veille sur moi",
+    "iWatch": "Je veille sur {{name}}",
+    "inCircle": "Dans le cercle",
+    "send": "Envoyer",
+    "sent": "Demande envoyée à {{name}}.",
+    "phone": "Numéro de téléphone",
+    "name": "Prénom",
+    "next": "Continuer",
+    "scan": {
+      "unsupported": "Ce navigateur ne peut pas utiliser la caméra : scannez avec l'appareil photo du téléphone.",
+      "denied": "La caméra n'est pas autorisée : scannez avec l'appareil photo du téléphone.",
+      "notOurs": "Ce code QR n'est pas un code MySentinelCircle."
+    }
+  },
+  "lab": {
+    "title": "Labo de test MySentinelCircle",
+    "notReal": "Version de test : rien n'est réel, aucun vrai SMS",
+    "start": "Commencer",
+    "scenarios": "Scénarios",
+    "scenario": {
+      "alert": "Lancer une alerte",
+      "trip": "Un voyage",
+      "allGood": "Check tout va bien",
+      "qr": "Ajouter quelqu'un par QR code",
+      "free": "Libre"
+    },
+    "opinion": "Votre avis sur ce scénario",
+    "tags": {
+      "ok": "Ça marche bien",
+      "idea": "Super idée",
+      "want": "Ça me donne envie",
+      "broken": "Ne marche pas",
+      "lost": "Je ne comprends pas",
+      "odd": "Pas logique"
+    },
+    "aWord": "Un mot ?",
+    "shot": "Joindre une capture d'écran",
+    "shotTaken": "Capture jointe ✓",
+    "shotFailed": "La capture n'a pas pu être prise.",
+    "send": "Envoyer",
+    "thanks": "Merci !",
+    "smsTitle": "SMS reçus · {{phone}}",
+    "reply": "Réponse",
+    "showOne": "Voir un seul téléphone",
+    "showFour": "Voir les 4 téléphones",
+    "advance": "Avancer le temps de 2 h",
+    "advanced": "2 heures plus tard…",
+    "reset": "Remettre à zéro",
+    "wasReset": "Les alertes en cours sont arrêtées.",
+    "admin": {
+      "title": "Avis du labo",
+      "markRead": "Marquer comme lu",
+      "screenshot": "Capture d'écran"
+    },
+    "identifier": "Identifiant",
+    "password": "Mot de passe",
+    "logout": "Se déconnecter"
   }
 }

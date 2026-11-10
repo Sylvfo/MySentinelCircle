@@ -1170,6 +1170,7 @@ async function main() {
     userName: 'msc_support',
   });
 
+  await seedLabTesters(lea);
   await seedDemoAvatars();
   await seedDemoStatuses();
 
@@ -1241,6 +1242,212 @@ const DEMO_STATUSES: { phone: string; status: string }[] = [
   { phone: '+41771334455', status: 'De retour lundi' },
   { phone: '+41781445588', status: 'Je parle français, allemand et anglais' },
 ];
+
+// Test lab testers (see backend/src/lab/lab.service.ts LAB_SETS), all
+// subscribed, all with made-up 079 999 numbers. Two groups that must never
+// be linked, not even through someone else:
+// - Zaza (Sylvie's mother): 1st circle Léa — so Sylvie can test with her
+//   from her own lab —, Gabriel, Chloé; her own Voisins / Sport / Amis.
+//   Her lab's phones: Zaza, Gabriel, Nicole (Voisins), Arthur (SMS only).
+// - Wiwil (Sylvie's father): his own group only — 1st circle Bernard,
+//   Josiane and Sam (Sylvie's account in his group); his own Voisins /
+//   Sport / Amis. His lab's phones: Wiwil, Bernard, Jean-Paul, Marcel.
+// Sylvie's lab: Léa, Sam, Mathis and Paul (SMS only, Léa's Sentinel).
+async function seedLabTesters(lea: { id: string }) {
+  const subscribe = (id: string) =>
+    prisma.user.update({
+      where: { id },
+      data: { paidUntil: oneYearFromNow() },
+    });
+  const byPhone = async (phone: string) =>
+    prisma.user.findUniqueOrThrow({ where: { phone } });
+
+  // ---- Zaza's group ----
+  const zaza = await upsertAccount({
+    firstName: 'Zaza',
+    lastName: null,
+    phone: '+41799990001',
+    email: 'zaza@testmsc.ch',
+    userName: 'zaza',
+  });
+  await subscribe(zaza.id);
+  const gabriel = await byPhone('+41761445566');
+  const chloe = await byPhone('+41791556677');
+  const arthur = await byPhone('+41761889900');
+  await fillCircle(zaza.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: lea, leadSlot: LeadSlot.LEAD_1 },
+    { sentinel: gabriel, leadSlot: LeadSlot.LEAD_2 },
+    { sentinel: chloe },
+  ]);
+  await fillCircle(zaza.id, 'Voisins', CircleType.BASIC, [
+    { sentinel: arthur },
+  ]);
+  // Zaza watches over them too.
+  await fillCircle(lea.id, 'Famille', CircleType.BASIC, [{ sentinel: zaza }]);
+  await fillCircle(chloe.id, 'Voisins', CircleType.BASIC, [{ sentinel: zaza }]);
+
+  // ---- Sylvie's SMS-only phone, Léa's Sentinel ----
+  const paul = await upsertSmsStub('Paul', '+41799990006');
+  await fillCircle(lea.id, 'Voisins', CircleType.BASIC, [{ sentinel: paul }]);
+
+  // ---- Wiwil's group: no link to anyone above ----
+  const wiwil = await upsertAccount({
+    firstName: 'Wiwil',
+    lastName: null,
+    phone: '+41799990101',
+    email: 'wiwil@testmsc.ch',
+    userName: 'wiwil',
+  });
+  const bernard = await upsertAccount({
+    firstName: 'Bernard',
+    lastName: 'Favre',
+    phone: '+41799990102',
+    email: 'bernard.favre@testmsc.ch',
+    userName: 'bernard_favre',
+  });
+  const josiane = await upsertAccount({
+    firstName: 'Josiane',
+    lastName: 'Rey',
+    phone: '+41799990103',
+    email: 'josiane.rey@testmsc.ch',
+    userName: 'josiane_rey',
+  });
+  const marcel = await upsertSmsStub('Marcel', '+41799990104');
+  const sam = await upsertAccount({
+    firstName: 'Sam',
+    lastName: null,
+    phone: '+41799990105',
+    email: 'sam@testmsc.ch',
+    userName: 'sam_test',
+  });
+  for (const u of [wiwil, sam]) await subscribe(u.id);
+  await fillCircle(wiwil.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: bernard, leadSlot: LeadSlot.LEAD_1 },
+    { sentinel: josiane, leadSlot: LeadSlot.LEAD_2 },
+    { sentinel: sam },
+  ]);
+  await fillCircle(wiwil.id, 'Voisins', CircleType.BASIC, [
+    { sentinel: marcel },
+  ]);
+  await fillCircle(bernard.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: josiane, leadSlot: LeadSlot.LEAD_1 },
+    { sentinel: wiwil },
+  ]);
+  await fillCircle(josiane.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: bernard, leadSlot: LeadSlot.LEAD_1 },
+    { sentinel: wiwil },
+  ]);
+  await fillCircle(sam.id, 'Premier cercle', CircleType.FIRST, [
+    { sentinel: wiwil, leadSlot: LeadSlot.LEAD_1 },
+  ]);
+  // Each tester's other circles, with people of their own (never shared):
+  // Voisins 3, Sport 5, Amis 4 — app accounts and a few SMS-only.
+  const person = (firstName: string, lastName: string, phone: string) => {
+    const userName = `${firstName}_${lastName}`
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[^a-z_]/g, '');
+    return upsertAccount({
+      firstName,
+      lastName,
+      phone,
+      email: `${userName.replace('_', '.')}@testmsc.ch`,
+      userName,
+    });
+  };
+  const circles = async (
+    owner: { id: string },
+    lists: Record<string, Promise<{ id: string }>[]>,
+  ) => {
+    for (const [label, people] of Object.entries(lists)) {
+      const members = await Promise.all(people);
+      await fillCircle(
+        owner.id,
+        label,
+        CircleType.BASIC,
+        members.map((m) => ({ sentinel: m })),
+      );
+    }
+  };
+  await circles(zaza, {
+    Voisins: [
+      person('Nicole', 'Pittet', '+41799990021'),
+      person('Roger', 'Monnier', '+41799990022'),
+      Promise.resolve(arthur),
+    ],
+    Sport: [
+      person('Anne', 'Clerc', '+41799990023'),
+      person('Luc', 'Fragnière', '+41799990024'),
+      person('Élodie', 'Python', '+41799990025'),
+      person('Marc', 'Gauthier', '+41799990026'),
+      upsertSmsStub('Brigitte', '+41799990027'),
+    ],
+    Amis: [
+      person('Françoise', 'Dubey', '+41799990028'),
+      person('Gérard', 'Cuche', '+41799990029'),
+      person('Monique', 'Vez', '+41799990030'),
+      upsertSmsStub('Denis', '+41799990031'),
+    ],
+  });
+  await circles(wiwil, {
+    Voisins: [
+      person('Jean-Paul', 'Rossier', '+41799990121'),
+      person('Claudine', 'Berset', '+41799990122'),
+      Promise.resolve(marcel),
+    ],
+    Sport: [
+      person('Yves', 'Mettraux', '+41799990123'),
+      person('Patrick', 'Ducret', '+41799990124'),
+      person('Daniel', 'Wyss', '+41799990125'),
+      person('Chantal', 'Rapin', '+41799990126'),
+      upsertSmsStub('René', '+41799990127'),
+    ],
+    Amis: [
+      person('Michel', 'Barras', '+41799990128'),
+      person('Christine', 'Jordan', '+41799990129'),
+      person('André', 'Baechler', '+41799990130'),
+      upsertSmsStub('Lucienne', '+41799990131'),
+    ],
+  });
+
+  // People the testers may add themselves (by number or QR code), linked to
+  // no one: Sylvie signs in as them to accept. Two for each tester, never
+  // shared, so the two groups stay apart.
+  for (const a of [
+    // For Zaza
+    {
+      firstName: 'Martine',
+      lastName: 'Blanc',
+      phone: '+41799990011',
+      userName: 'martine_blanc',
+    },
+    {
+      firstName: 'Jacques',
+      lastName: 'Morand',
+      phone: '+41799990012',
+      userName: 'jacques_morand',
+    },
+    // For Wiwil
+    {
+      firstName: 'Odile',
+      lastName: 'Perret',
+      phone: '+41799990111',
+      userName: 'odile_perret',
+    },
+    {
+      firstName: 'Pierre',
+      lastName: 'Jaquet',
+      phone: '+41799990112',
+      userName: 'pierre_jaquet',
+    },
+  ]) {
+    await upsertAccount({
+      ...a,
+      email: `${a.userName.replace('_', '.')}@testmsc.ch`,
+    });
+  }
+  console.log('[seed] Test lab testers: Zaza, Wiwil (and their groups)');
+}
 
 async function seedDemoStatuses() {
   let added = 0;

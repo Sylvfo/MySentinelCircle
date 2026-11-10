@@ -40,6 +40,10 @@ import { AlertLocationDto, CreateAlertDto } from './dto/create-alert.dto';
 import { UpdateAlertStatusDto } from './dto/update-alert-status.dto';
 import { UpdateAlertLabelDto } from './dto/update-alert-label.dto';
 import {
+  REQUALIFIED_ALERT_TYPES,
+  UpdateAlertTypeDto,
+} from './dto/update-alert-type.dto';
+import {
   NOT_PAUSED_SENTINEL,
   assertNotDeceased,
   assertNotPausedForMe,
@@ -153,6 +157,12 @@ export class AlertService {
       launchedById: callerId,
       paidById,
     });
+    await this.addRaiserAsParticipant(
+      alert.id,
+      callerId,
+      dto.companionId,
+      links,
+    );
 
     await this.notifyParticipants(alert.id, links, (lang) =>
       alertRaisedSms(
@@ -184,6 +194,50 @@ export class AlertService {
       actorId: callerId,
     });
     return alert;
+  }
+
+  // A Sentinel outside the 1st circle who raises an alert about someone
+  // takes part in it like any Sentinel of their own circle (Sylvie,
+  // 2026-11-11): it shows in their alerts and history, and they can
+  // follow it (getMyParticipation, isolated chat with the 1st circle).
+  // Already contacted, so a later request to their circle doesn't ask
+  // them the question again.
+  private async addRaiserAsParticipant(
+    alertId: string,
+    callerId: string,
+    companionId: string,
+    firstCircleLinks: { linkAsSentinel: { id: string } }[],
+  ) {
+    if (callerId === companionId) return;
+    if (firstCircleLinks.some((l) => l.linkAsSentinel.id === callerId)) return;
+    const link = await this.prisma.linkSentinels.findFirst({
+      where: {
+        userSentinelId: callerId,
+        userCompanionId: companionId,
+        status: LinkStatus.ACCEPTED,
+      },
+      include: {
+        circle: { select: { label: true, alertChatWithFirstCircle: true } },
+        userCompanion: { select: { alertChatWithFirstCircle: true } },
+      },
+    });
+    if (!link) return;
+    await this.prisma.alertParticipant.create({
+      data: {
+        status: AlertParticipantStatus.CONTACTED,
+        contactedAt: new Date(),
+        circleId: link.circleId,
+        circleName: link.circle.label,
+        canSendPhoneAtAlert: link.canSendPhone,
+        alertChatWithFirstCircleAtAlert:
+          link.userCompanion.alertChatWithFirstCircle &&
+          link.circle.alertChatWithFirstCircle,
+        isLead: false,
+        requestedById: callerId,
+        alertId,
+        userSentinelsId: link.id,
+      },
+    });
   }
 
   // The 1st circle an alert about this person goes to, and who in it to
@@ -580,10 +634,33 @@ export class AlertService {
             // requestCircle without a separate lookup (listCircles() only
             // works for the companion themself, not a Sentinel caller).
             myCircles: {
+              // Outer circles, travel groups included (Watch Mode).
               where: {
-                circleType: CircleType.BASIC,
                 status: CircleStatus.ACTIVE,
+                OR: [
+                  { circleType: CircleType.BASIC },
+                  { circleType: CircleType.GROUP, tripId: { not: null } },
+                ],
               },
+              // tripId: a travel circle (shown as "Voyage <name>").
+              select: { id: true, label: true, tripId: true },
+            },
+          },
+        },
+        // Opened by a missed Watch Mode deadline: the watch it comes from.
+        // From now on the 1st circle sees all of it (the sharing toggles
+        // only matter before an alert).
+        trip: {
+          select: {
+            id: true,
+            label: true,
+            alertType: true,
+            messageAlert: true,
+            createdAt: true,
+            closedAt: true,
+            checkpoints: { orderBy: { expectedAt: 'asc' } },
+            tripCircles: {
+              where: { status: CircleStatus.ACTIVE },
               select: { id: true, label: true },
             },
           },
@@ -690,6 +767,7 @@ export class AlertService {
   // Sentinel's own view (getMyParticipation) deliberately doesn't get one.
   private buildAlertTimeline(alert: {
     launchedAt: Date | null;
+    tripId: string | null;
     launchedBy: { firstName: string } | null;
     messageAlert: string;
     closedAt: Date | null;
@@ -722,7 +800,10 @@ export class AlertService {
       events.push({
         type: 'ALERT_RAISED',
         at: alert.launchedAt,
-        actorLabel: alert.launchedBy?.firstName ?? 'Sentinel',
+        // No launcher: opened by the app itself (a missed Watch Mode check).
+        actorLabel:
+          alert.launchedBy?.firstName ??
+          (alert.tripId ? 'MySentinelCircle' : 'Sentinel'),
         detail: alert.messageAlert,
       });
     }
@@ -1017,6 +1098,76 @@ export class AlertService {
     return updated;
   }
 
+  // An alert opened by a missed Watch Mode deadline (trip step or All Good
+  // Check) may turn out to be worse: the 1st circle requalifies it as a
+  // disappearance or an emergency, and back to its own type. The label
+  // follows unless the 1st circle renamed the alert.
+  async updateType(callerId: string, alertId: string, dto: UpdateAlertTypeDto) {
+    const alert = await this.findAlertOrThrow(alertId);
+    if (alert.alertStatus === AlertStatus.RESOLVED) {
+      throw new ConflictException('This alert is already closed');
+    }
+    const watch = alert.tripId
+      ? await this.prisma.alert.findUnique({
+          where: { id: alert.tripId },
+          select: { alertType: true },
+        })
+      : null;
+    if (!watch) {
+      throw new BadRequestException(
+        'Only an alert opened by a watch can change type',
+      );
+    }
+    if (
+      ![watch.alertType, ...REQUALIFIED_ALERT_TYPES].includes(dto.alertType)
+    ) {
+      throw new BadRequestException('This alert can’t take that type');
+    }
+    const link = await this.prisma.linkSentinels.findFirst({
+      where: {
+        userSentinelId: callerId,
+        circleId: alert.firstCircleId,
+        status: LinkStatus.ACCEPTED,
+      },
+    });
+    if (!link) {
+      throw new ForbiddenException(
+        'Only the 1st circle can change the type of this alert',
+      );
+    }
+    if (dto.alertType === alert.alertType) {
+      return this.getAlert(callerId, alertId);
+    }
+
+    await this.prisma.alert.update({
+      where: { id: alertId },
+      data: {
+        alertType: dto.alertType,
+        ...(alert.labelUpdatedAt
+          ? {}
+          : { label: ALERT_TYPE_LABELS[dto.alertType] }),
+      },
+    });
+    // Said in the room, so everyone sees who changed it and when.
+    const room = await this.prisma.conversation.findFirst({
+      where: { alertId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, closedAt: true },
+    });
+    if (room && !room.closedAt) {
+      await this.prisma.message.create({
+        data: {
+          conversationId: room.id,
+          senderId: callerId,
+          type: MessageType.TEXT,
+          body: `Type d’alerte changé : ${ALERT_TYPE_LABELS[dto.alertType]}`,
+        },
+      });
+    }
+    await this.notifyAlertParticipants(alertId);
+    return this.getAlert(callerId, alertId);
+  }
+
   // Pushes a live "this alert changed" ping to the companion and every
   // Sentinel ever contacted on it (any circle) — whoever might have the
   // alert open. The socket payload is just the alertId; clients refetch
@@ -1242,14 +1393,15 @@ export class AlertService {
 
   // ---- Notifications ------------------------------------------------------
 
-  // `text`: the same for everyone, or written in each one's language.
+  // `text`: the same for everyone, or written for each one (their
+  // language, their own SMS reply code).
   async notifyParticipants(
     alertId: string,
     links: {
       id: string;
       linkAsSentinel: { phone: string | null; language?: string | null };
     }[],
-    text: string | ((lang: SmsLang) => string),
+    text: string | ((lang: SmsLang, linkId: string) => string),
   ) {
     await Promise.allSettled(
       links
@@ -1259,7 +1411,7 @@ export class AlertService {
             l.linkAsSentinel.phone as string,
             typeof text === 'string'
               ? text
-              : text(smsLang(l.linkAsSentinel.language)),
+              : text(smsLang(l.linkAsSentinel.language), l.id),
           ),
         ),
     );

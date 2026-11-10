@@ -48,11 +48,8 @@ export function PlansPage() {
           <ul>
             {PAID.map((k) => (
               <li key={k}>
-                {/* Subscribed: a star on what I already have (not on what's
-                    still to come). */}
-                {current === 'paid' && k !== 'travel' && <IncludedStar />}{' '}
-                {t(`plans.paid.items.${k}`)}
-                {k === 'travel' && <span className="plan-soon"> {t('plans.soon')}</span>}
+                {/* Subscribed: a star on what I already have. */}
+                {current === 'paid' && <IncludedStar />} {t(`plans.paid.items.${k}`)}
               </li>
             ))}
           </ul>

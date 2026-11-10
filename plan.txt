@@ -71,9 +71,8 @@ ACCOUNTS & BILLING
     Companion, free forever — payment required beyond that. Lets someone
     experience a real alert escalating before committing money, important
     for trust in a safety app.
-  - Paid: being an ongoing Companion beyond the 1-alert trial; the
-    `AlertType.TRAVEL` type (added to the schema, not yet migrated) as a
-    specialized/premium alert type; **founding** a Group Circle (see
+  - Paid: being an ongoing Companion beyond the 1-alert trial; Watch
+    Mode (trip and All Good Check, see WATCH MODE below); **founding** a Group Circle (see
     GROUP CIRCLES below) — joining someone *else's* group circle stays
     free (you're the Sentinel-equivalent there), founding one requires
     paid Companion status (you're the Companion-equivalent for that group).
@@ -85,7 +84,7 @@ ACCOUNTS & BILLING
       `User.paidUntil` (replaced `hasPaid`), active while in the future;
       renewing adds a year from the current end. Includes unlimited
       alerts with SMS included (fair use), founding group circles, the
-      death notice, travel mode (not built yet), no ads.
+      death notice, Watch Mode (trip, All Good Check), no ads.
     - Offering: anyone can offer a year to someone they're linked with
       (`POST /user/me/subscription-year { forUserId }`). No family plan
       (Sylvie's call, 2026-11-06).
@@ -137,7 +136,9 @@ CIRCLES & PERMISSIONS
   Sentinels help the Lead Sentinel(s) but don't drive.
 - Role of the other circles (work, sport, neighbors, friends...): their
   Sentinels can ONLY raise the initial alert to the 1st circle (e.g. "haven't
-  seen José at work for 5 days"). They never manage or close it. From there
+  seen José at work for 5 days"). They never manage or close it. The one
+  who raised it takes part in it like any Sentinel of their circle (it shows
+  in their alerts and history; they can follow it). From there
   the 1st circle runs the whole thing: it can send questions to a specific
   outer circle ("is José home?") which its members answer yes/no by SMS or
   by in-app messaging IF that member's link is authorized for it (see
@@ -555,16 +556,23 @@ messages; the lists live in backend/src/alert/alert-replies.ts.
   batch by request-circle, then to anyone already contacted by
   POST /alert/:id/questions. Several questions per person are allowed; each
   is one AlertQuestion row. Limits to decide later: each question costs an SMS.
-    CAN_VISIT   1 Oui, 2 Plus tard, 3 Non
-    LAST_NEWS   1 Aujourd'hui, 2 Cette semaine, 3 Avant
-    SEEMED_OK   1 Oui, 2 Non, 3 Je ne sais pas
-    WHERE_SEEN  free text
+    CAN_VISIT   211 Oui, 212 Plus tard, 213 Non
+    LAST_NEWS   211 Aujourd'hui, 212 Cette semaine, 213 Avant
+    SEEMED_OK   211 Oui, 212 Non, 213 Je ne sais pas
+    WHERE_SEEN  free text ("21 …")
 - With one request waiting, an SMS reply answers it. The latest answer wins
   until the alert closes.
-- With several people waiting (alert questions or invitations), the reply
-  starts with at least 3 letters of the first name: "Gabriel 1", "Gab 1",
-  "Johan OUI". Without a name, nothing is recorded and an SMS explains how to
-  answer. Two identical first names can only be told apart on /a.
+- Reply codes (2026-11-10): every SMS that waits for an answer carries a
+  code, <category><slot><choice>, so a reply says exactly what it answers:
+  1 = invitation (111 Oui, 112 Non), 2 = alert question (211, 212, 213; a
+  free answer starts with the code: "21 au marche"), 3 = Watch Mode (311
+  trip, 321 All Good Check: "Tout va bien"). The slot (LinkSentinels /
+  AlertQuestion.smsSlot) only changes when several things wait at once on
+  the same number (a second alert: 221…). Plain ASCII, commas: "211 Oui,
+  212 Plus tard, 213 Non". backend/src/sms/sms-reply-code.ts.
+- With several things waiting and a reply without a code, nothing is
+  recorded and an SMS lists each one with its codes. The old first-name
+  prefix ("Gabriel 1") is still read. Words still work: OUI, NON, OK.
 - Every Sentinel message offers both ways: log in, or reply by SMS.
 - Keywords, from any Sentinel at any time: INFO lists the people followed;
   STOP / QUITTER / ARRETER removes them (STOP 2 picks one among several). A
@@ -622,6 +630,62 @@ GENDER (how texts speak about someone)
 - Texts addressed to me agree with MY gender through the `{{_e}}` i18n
   variable ("e" / "" / ".e", set from the profile in AuthContext).
 
+WATCH MODE
+------------------
+(Mode veille, 2026-11-10.) The person sets checkpoints; at each one they
+confirm in the app (or reply OK to the reminder SMS) that all is well. A
+missed checkpoint alerts their 1st circle. Two modes on one base, both
+part of the subscription:
+- Trip (Voyage): an itinerary of steps (place, day and time). One delay
+  before the alert for the whole trip (1 h … 5 days). Validating a step:
+  "as planned" (time recorded) or "somewhere else, all is well" (+ place),
+  optional GPS position and logbook note; then the next step must be
+  confirmed, or planned, or the trip ended.
+- All Good Check (Check tout va bien): a rhythm (every day / some days of
+  the week / every N days, weeks or months from a date) before a time of
+  day, in the person's time zone (User.timeZone, sent by the browser).
+  Each validation plans the next deadline. Pauses: by hand ("until …"),
+  and automatically while a trip runs.
+- Model: a watch is an Alert in SENT for its whole life (closedAt = its
+  end) — "watched, nobody told"; TRAVEL for a trip, NOCONTACT for All
+  Good; label = trip name, messageAlert = "what to do if the alert goes
+  off". Its deadlines are TravelCheckpoints. Watches never count as
+  running alerts (RUNNING_ALERT / NOT_A_WATCH, common/running-alert.ts)
+  and the alert routes treat them as not found. One trip and one All Good
+  Check at a time per person.
+- Deadlines (WatchScheduler, every minute): at the time, a reminder (SMS
+  + notification). At alertAt — never sooner than a full delay after a
+  late reminder — still nothing: a separate, real alert opens for the 1st
+  circle (LAUNCHED, launched by the app, linked by Alert.tripId), with the
+  instructions in its SMS. If another alert about the person is already
+  running, no second one: the news is posted in its room. The watch goes
+  on after that alert closes. Validating answers a running linked alert
+  (posted in its room).
+- Starting: same rule as raising an alert about yourself (verified phone,
+  a Lead with a phone, not every Lead paused) + a subscription. If the
+  subscription ends during a watch, it pauses (no reminder, no alert)
+  until renewed; reminders 30, 7, 1 days before to the person, 7 days
+  before to their 1st circle (only "a watch runs in the background").
+- Travel circles: real Circles with tripId, named after the trip
+  ("Col du Lac", "Col du Lac 2", "Groupe Col du Lac"), following a rename.
+  New people are invited into them the usual way; a travel group is a
+  normal group whose circles all carry the tripId. During the linked
+  alert the 1st circle may solicit them (requestCircle).
+- End of a trip: people added for it go to the reserve (default), or the
+  link ends, or they stay in the trip's circle (then a normal circle), or
+  go to another circle (never the 1st: that needs their consent). Pending
+  invitations end; a travel group always closes.
+- Visibility before an alert: nothing for the 1st circle unless the
+  person ticks "my 1st circle can see my trip"; travel-circle members see
+  the itinerary and validations, never the logbook or positions; outer
+  circles never. Once an alert opens, its 1st circle sees the whole watch
+  (getAlert). The 1st circle may requalify that alert as MISSING or
+  EMERGENCY, and back to its own type.
+- Deceased owner: watches end. Account deletion: watches end, step GPS
+  positions are erased. Retention: the GPS position given when validating
+  a step is erased 30 days after the watch ended (same delay as an
+  alert's position), never while an alert it opened still runs.
+
 PAUSE
 ------------------
 - Two independent switches in Settings, both can be on at once. Stored as
@@ -663,8 +727,7 @@ OPEN POINTS / TO REVISIT
 - Exact scope of what an Organization's staff can do beyond raising
   phone-only alerts (e.g. dashboard, alert history, managing multiple
   concurrent alerts) — TBD.
-- Whether to add scheduled check-ins later (explicitly deferred — MVP is
-  manual-trigger only).
+- Scheduled check-ins: DECIDED (2026-11-10) — Watch Mode, see WATCH MODE.
 - Push notifications on top of SMS for registered app users (nice-to-have,
   not blocking MVP).
 - Small AI assistant (later, not blocking MVP) — three roles: (1) answers

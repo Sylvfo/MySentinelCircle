@@ -6,6 +6,7 @@ import {
   PRIMARY_AVATAR_COLOR,
   PRIMARY_LEAD_COLOR,
   PRIMARY_RING_COLOR,
+  TRAVEL_PALETTE,
   circlePalette,
 } from '../theme';
 import { SentinelIcon } from './SentinelIcon';
@@ -80,6 +81,7 @@ export function CircleRing({
   isGroup,
   strongRing,
   showPhotos,
+  travel,
 }: {
   label: string;
   members: Membership[];
@@ -104,10 +106,16 @@ export function CircleRing({
   strongRing?: boolean;
   // A circle's own page: show profile photos instead of silhouettes.
   showPhotos?: boolean;
+  // A travel circle (Watch Mode): drawn green.
+  travel?: boolean;
 }) {
   const { t } = useTranslation();
   const generalAlertChatOn = useAuth().user?.alertChatWithFirstCircle ?? true;
-  const palette = isPrimary ? { color: PRIMARY_AVATAR_COLOR, ring: PRIMARY_RING_COLOR } : circlePalette(colorIndex);
+  const palette = isPrimary
+    ? { color: PRIMARY_AVATAR_COLOR, ring: PRIMARY_RING_COLOR }
+    : travel
+      ? TRAVEL_PALETTE
+      : circlePalette(colorIndex);
   const ringColor = strongRing ? `color-mix(in srgb, ${palette.color} 40%, transparent)` : palette.ring;
   const RING_BORDER_WIDTH = 5;
   // Exactly the ring stroke's centerline, so an avatar's center sits right

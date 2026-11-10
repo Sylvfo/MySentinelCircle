@@ -17,7 +17,17 @@ export function modeOf(alertType: AlertType): WatchMode {
 }
 
 export const ALL_GOOD_LABEL = 'Check tout va bien';
-export const FIRST_TRAVEL_CIRCLE_LABEL = 'Cercle du voyage 1';
+// A travel circle carries the trip's name, wherever it shows: "Col du
+// Lac", then "Col du Lac 2"…; a travel group "Groupe Col du Lac".
+// `index` counts from 1 among the trip's circles of that kind.
+export function travelCircleLabel(
+  tripName: string,
+  group: boolean,
+  index = 1,
+): string {
+  const base = group ? `Groupe ${tripName}` : tripName;
+  return index > 1 ? `${base} ${index}` : base;
+}
 
 // Why nothing happens at the deadlines right now (no reminder, no alert):
 // - SUBSCRIPTION: it ended, until someone pays;
