@@ -368,6 +368,14 @@ model Alert {
   closedById String?
   closedBy   User?   @relation("AlertClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
 
+  shareItineraryWithFirstCircle   Boolean @default(false) // trip only
+  shareValidationsWithFirstCircle Boolean @default(false) // trip only
+  tripId     String? // on an alert opened by a missed checkpoint: the trip (a TRAVEL alert in SENT)
+  trip       Alert?  @relation("TripAlerts", fields: [tripId], references: [id], onDelete: Restrict)
+  tripAlerts Alert[] @relation("TripAlerts")
+  checkpoints       TravelCheckpoint[] @relation("TripCheckpoints")
+  openedByCheckpoint TravelCheckpoint[] @relation("CheckpointOpenedAlert")
+
   participants  AlertParticipant[]
   conversations Conversation[]
 
@@ -520,6 +528,31 @@ model LoginEvent {
 
   @@index([userId, createdAt])
   @@index([createdAt])
+}
+
+// One row per checkpoint of a trip. Milestone timestamps instead of a status enum,
+// like Alert itself.
+model TravelCheckpoint {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expectedAt DateTime
+  alertAt    DateTime          // expectedAt + the delay the traveller chose
+  placeName  String?  @db.VarChar(191)
+  latitude   Float?
+  longitude  Float?
+  remindedAt  DateTime?
+  validatedAt DateTime?
+  validatedLatitude  Float?
+  validatedLongitude Float?
+  validatedNote      String? @db.VarChar(500) // "somewhere else, all is well"
+  missedAt    DateTime?
+  alertId String           // the trip
+  alert   Alert  @relation("TripCheckpoints", fields: [alertId], references: [id], onDelete: Restrict)
+  openedAlertId String?    // the alert this missed checkpoint opened
+  openedAlert   Alert?  @relation("CheckpointOpenedAlert", fields: [openedAlertId], references: [id], onDelete: Restrict)
+  @@index([alertId, expectedAt])
+  @@index([validatedAt, expectedAt])
 }
 
 /*

@@ -486,7 +486,7 @@ export class UserService {
     const link = `${this.config.get('FRONTEND_URL')}/confirm-email?token=${rawToken}`;
     await this.emailSender.send(
       newEmail,
-      'Confirme ta nouvelle adresse email',
+      'Confirmez votre nouvelle adresse email',
       link,
     );
     return { message: 'Confirmation link sent to the new email' };

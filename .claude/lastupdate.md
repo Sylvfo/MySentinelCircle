@@ -29,7 +29,7 @@ Then started the MVP plan (`/home/syl/.claude/plans/eager-roaming-fox.md`, items
   (`containsContactDetails`, 20-case spec). `messaging.service.ts` refuses phone numbers/emails in
   alert chats unless the sender is the companion or the companion turned on
   `alertContactSharing` (Settings → preferences toggle). Front maps the refusal in `ChatComposer`.
-- **Item 6 — lost phone, vouched for by the 1st circle**: done, e2e not yet run.
+- **Item 6 — lost phone, vouched for by the 1st circle**: done.
   `sentinel/phone-recovery.service.ts` + controller + DTOs. Public
   `POST /auth/phone-recovery/request|verify`, signed-in
   `POST /sentinel/companions/:id/phone-recovery/confirm|reject`. Two different 1st-circle
@@ -38,27 +38,20 @@ Then started the MVP plan (`/home/syl/.claude/plans/eager-roaming-fox.md`, items
   after approval resends a code; SMS login with the old number or adding a phone cancels it.
   `listCompanions` exposes `phoneRecovery` to the 1st circle. Front: `/recover-phone` page
   (`RecoverPhonePage.tsx`), link on `LoginPage`, "Téléphone perdu" block in `CompanionActions`,
-  i18n fr/en. Spec: `phone-recovery.service.spec.ts` (21 tests). E2E: new
+  i18n fr/en. Spec: `phone-recovery.service.spec.ts` (21 tests). E2E (passing): new
   `describe('Lost phone …')` in `test/sentinel.e2e-spec.ts` (helper `acceptedFirstCircleLink`
   hoisted to the outer scope).
 
 Backend: 564/564 unit tests, tsc + lint clean. Frontend: tsc, lint, build clean (only the old
-`AuthContext` warning). **E2E not run since items 4–6** (last run: 86/86).
+`AuthContext` warning). E2E: 88/88 (incl. the 2 new lost-phone tests).
 
 ## Next steps (in order)
 
-1. **Run the e2e tests** — needs Sylvie's fresh in-turn consent (resets `mysentinelcircle_test`):
-   `cd backend && env -u DATABASE_URL PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="<her exact message>" npm run test:e2e`.
-   Fix whatever fails (new lost-phone tests, and items 4/5 never e2e-tested).
-2. **Item 1 — cleanup**:
-   - GitHub writes are denied by permissions → give Sylvie the texts to paste: close #47 (forgotten
-     password), #48 (account deletion), #50, #29 (account deletion done) ; comment on #31
-     (Sentinel gating done via `assertCompleteAccount`, deletion done, the rest accepted/noted).
-   - Guided browser test with Sylvie: step-up, change email, change phone. Also worth clicking
-     through: lost-phone flow, contact-details toggle + refusal in an alert chat, English SMS.
-3. Restart the backend container after the migration (Docker serves old Prisma client otherwise).
-4. Offer a commit message (text only) for items 2, 4, 5, 6.
-5. Later: **item 7** desktop mode (first add a "top menu" variant to the mockup
+1. Commit (message already given to Sylvie, text only) — she commits herself.
+2. Guided browser test with Sylvie: lost-phone flow, contact-details toggle + refusal in an alert
+   chat, English SMS; and the older step-up / change email / change phone check.
+   (GitHub issues: Sylvie said not needed.)
+3. Later: **item 7** desktop mode (first add a "top menu" variant to the mockup
    https://claude.ai/artifact/98JZnhQqSmYqA3MtDoT5Qf so Sylvie can choose), **item 8** travel mode
    (framing session first).
 
