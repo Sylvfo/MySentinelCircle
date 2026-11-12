@@ -23,7 +23,8 @@ export interface LabPhone {
 
 // Each tester's own four phones (demo accounts from prisma/seed.ts,
 // seedLabTesters), keyed by the tester's account phone. The groups never
-// share a phone, and Zaza's and Wiwil's are never linked to each other.
+// share a phone, and Zaza's, Wiwil's and Solène's are never linked to each
+// other (Oliver is in Solène's group).
 export const LAB_SETS: Record<string, LabPhone[]> = {
   // Sylvie
   '+41791112233': [
@@ -38,6 +39,20 @@ export const LAB_SETS: Record<string, LabPhone[]> = {
     { phone: '+41761445566', name: 'Gabriel', app: true },
     { phone: '+41799990021', name: 'Nicole', app: true },
     { phone: '+41761889900', name: 'Arthur', app: false },
+  ],
+  // Solène
+  '+41799990201': [
+    { phone: '+41799990201', name: 'Solène', app: true },
+    { phone: '+41799990202', name: 'Antoine', app: true },
+    { phone: '+41799990221', name: 'Delphine', app: true },
+    { phone: '+41799990204', name: 'Raymond', app: false },
+  ],
+  // Oliver (Solène's group)
+  '+41799990241': [
+    { phone: '+41799990241', name: 'Oliver', app: true },
+    { phone: '+41799990242', name: 'Julien', app: true },
+    { phone: '+41799990243', name: 'Marie', app: true },
+    { phone: '+41799990244', name: 'Gilles', app: false },
   ],
   // Wiwil
   '+41799990101': [
@@ -204,7 +219,11 @@ export class LabService {
     for (const alert of running) {
       await this.alerts.closeAlert(alert.userCompanionId, alert.id);
     }
-    return { closed: running.length };
+    // After closing, so the "alert closed" SMS are cleared too.
+    const { count } = await this.prisma.labSms.deleteMany({
+      where: { phone: { in: tester.phones.map((p) => p.phone) } },
+    });
+    return { closed: running.length, smsCleared: count };
   }
 
   async feedback(

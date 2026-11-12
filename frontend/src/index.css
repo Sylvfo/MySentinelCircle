@@ -2884,3 +2884,140 @@ a.watch-pill { text-decoration: none; }
 .lab-feedback p { margin: 0.2rem 0; }
 .lab-shot-thumb { max-width: 240px; border-radius: 6px; border: 1px solid var(--border); }
 .lab-header .lab-logout { margin-left: 0.5rem; padding: 0.15rem 0.6rem; border: 1px solid rgba(255, 255, 255, 0.6); border-radius: 999px; background: none; color: #fff; font-size: 0.8rem; }
+
+/* Introduction after signing in (IntroPage): one screen at a time, titles
+   at the same height on every screen, big skip button. */
+.intro-page {
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  /* Same gradient as .app-shell, night mode included. */
+  --page-gradient: linear-gradient(180deg, #eef5fc 0%, #b9d4f0 100%);
+  background: var(--page-gradient) fixed;
+  font-family: var(--font-brand);
+}
+
+:root[data-theme='dark'] .intro-page {
+  --page-gradient: linear-gradient(180deg, #0f2236 0%, #081420 55%, #030507 100%);
+}
+
+.intro-card {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.intro-skip,
+.intro-prev,
+.intro-next {
+  min-height: 56px;
+  border-radius: 16px;
+  font: 700 1.25rem var(--font-brand);
+  cursor: pointer;
+}
+
+.intro-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.intro-skip,
+.intro-prev {
+  border: 2px solid var(--accent);
+  background: var(--bg);
+  color: var(--accent);
+}
+
+.intro-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 18vh 0 2rem;
+}
+
+.intro-body h1 {
+  margin: 0 0 0.5rem;
+  font-size: 2rem;
+  line-height: 1.15;
+  color: var(--accent);
+}
+
+.intro-body p {
+  margin: 0;
+  /* A \n in a text is a line break. */
+  white-space: pre-line;
+  font-size: 1.3rem;
+  line-height: 1.35;
+}
+
+.intro-body .intro-lead {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.intro-languages {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.intro-languages button {
+  min-height: 64px;
+  border-radius: 16px;
+  border: 2px solid var(--accent);
+  background: var(--bg);
+  color: var(--accent);
+  font: 700 1.4rem var(--font-brand);
+  cursor: pointer;
+}
+
+.intro-languages button.on {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.intro-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 1.25rem;
+}
+
+.intro-dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--border);
+}
+
+.intro-dots span.on {
+  width: 28px;
+  background: var(--accent);
+}
+
+.intro-next {
+  border: 0;
+  background: var(--accent);
+  /* var(--bg): white by day, dark on the light night accent. */
+  color: var(--bg);
+}
+
+/* Information page: reopen the introduction. */
+.info-see-intro {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 1.25rem;
+  margin: 0 0 1rem;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}

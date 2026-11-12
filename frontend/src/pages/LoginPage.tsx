@@ -42,7 +42,7 @@ export function LoginPage() {
           console.error('linkGoogle failed:', linkErr);
         });
       }
-      navigate('/dashboard');
+      navigate('/intro');
     });
   };
 
@@ -50,7 +50,7 @@ export function LoginPage() {
     void run(async () => {
       const { accessToken } = await loginGoogle(idToken);
       await applyToken(accessToken);
-      navigate('/dashboard');
+      navigate('/intro');
     });
   };
 

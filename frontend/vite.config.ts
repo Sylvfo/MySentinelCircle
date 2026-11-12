@@ -12,6 +12,8 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: true,
+    // Cloudflare quick tunnel for remote tests (random *.trycloudflare.com).
+    allowedHosts: ['.trycloudflare.com'],
     hmr: hmrClientPort
       ? { protocol: 'wss', host: 'localhost', clientPort: hmrClientPort }
       : undefined,

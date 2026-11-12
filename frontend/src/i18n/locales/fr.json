@@ -1050,6 +1050,7 @@
   },
   "info": {
     "title": "À propos de MySentinelCircle",
+    "seeIntro": "Revoir l'introduction",
     "intro": "Un filet de sécurité mutuel : vous choisissez les personnes en qui vous avez confiance et vous les rangez en cercles autour de vous. Si quelque chose ne va pas, elles sont alertées, les plus proches en premier.",
     "learnMore": "En savoir plus",
     "sections": {
@@ -1726,7 +1727,7 @@
     "advance": "Avancer le temps de 2 h",
     "advanced": "2 heures plus tard…",
     "reset": "Remettre à zéro",
-    "wasReset": "Les alertes en cours sont arrêtées.",
+    "wasReset": "Les alertes en cours sont arrêtées et les SMS effacés.",
     "admin": {
       "title": "Avis du labo",
       "markRead": "Marquer comme lu",
@@ -1735,5 +1736,70 @@
     "identifier": "Identifiant",
     "password": "Mot de passe",
     "logout": "Se déconnecter"
+  },
+  "intro": {
+    "language": "Langue",
+    "skip": "Passer l'introduction",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "start": "Commencer",
+    "slides": [
+      {
+        "lead": [
+          "Quelqu'un autour de vous a un problème ?",
+          "Prévenez ses proches."
+        ],
+        "lines": [
+          "Des personnes choisies à l'avance.",
+          "En toute discrétion."
+        ]
+      },
+      {
+        "title": "Contactez les bonnes personnes si…",
+        "lines": [
+          "Un ami manque plusieurs rendez-vous.",
+          "Une amie ne répond plus, ce n'est pas dans ses habitudes.",
+          "Un collègue se blesse au travail."
+        ]
+      },
+      {
+        "title": "Les cercles",
+        "lines": [
+          "Chaque personne choisit à l'avance ses proches de confiance.",
+          "Un premier cercle prend en charge les alertes.",
+          "D'autres cercles peuvent être ajoutés : famille, sport, ami.e.s, voisin.e.s, collègues…"
+        ]
+      },
+      {
+        "title": "Les alertes",
+        "lines": [
+          "Quelqu'un est injoignable ou a besoin d'aide ?",
+          "Lancez une alerte. Ses proches sont prévenu.e.s et peuvent s'organiser."
+        ]
+      },
+      {
+        "title": "Pendant une alerte",
+        "lines": [
+          "Le premier cercle peut contacter les autres cercles pour avoir des nouvelles ou chercher la personne.",
+          "La personne concernée a accès à tous les détails et à tous les messages de l'alerte."
+        ]
+      },
+      {
+        "title": "Pour vous aussi",
+        "lines": [
+          "Besoin d'aide ou simplement d'être rassuré{{_e}} ?",
+          "Déclenchez une alerte pour vous-même.",
+          "Mode voyage ou « Check tout va bien » : vos proches veillent sur vous."
+        ]
+      },
+      {
+        "title": "Nos valeurs",
+        "lines": [
+          "La confiance avant tout.",
+          "Vous gardez le contrôle des contacts et des informations partagées.",
+          "Vos proches, vos choix, vos données."
+        ]
+      }
+    ]
   }
 }

@@ -99,7 +99,7 @@ No global guard — each route is public unless marked JWT. Throttled 20 request
 | GET | `/user/lab/sms` | lab token | One phone's SMS (`?phone=`). |
 | POST | `/user/lab/sms` | lab token | Answer like from that phone (`phone`, `body`): stored, then handled by the inbound SMS logic. |
 | POST | `/user/lab/advance` | lab token | Move the set's clock forward (`hours`, 1–240) and run the Watch Mode deadlines for its people. The offset is kept in memory. |
-| POST | `/user/lab/reset` | lab token | Close every running alert about the set's people. Links are kept. |
+| POST | `/user/lab/reset` | lab token | Close every running alert about the set's people, then clear the set's lab SMS. Links are kept. |
 | POST | `/user/lab/feedback` | lab token | The tester's opinion: `scenario`, `tags`, `text?`, `screenshot?` (multipart, jpg/png/webp, 8MB). |
 | GET | `/user/lab/admin/feedback` | JWT + admin | Every opinion, newest first. |
 | GET | `/user/lab/admin/feedback/:id/screenshot` | JWT + admin | Its screenshot. |

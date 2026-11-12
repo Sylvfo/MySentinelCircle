@@ -1050,6 +1050,7 @@
   },
   "info": {
     "title": "About MySentinelCircle",
+    "seeIntro": "See the introduction again",
     "intro": "A mutual safety net: you choose the people you trust and arrange them in circles around you. If something goes wrong, they are alerted, the closest ones first.",
     "learnMore": "Learn more",
     "sections": {
@@ -1730,7 +1731,7 @@
     "advance": "Move time 2 h ahead",
     "advanced": "2 hours later…",
     "reset": "Reset",
-    "wasReset": "The alerts in progress are stopped.",
+    "wasReset": "The alerts in progress are stopped and the SMS cleared.",
     "admin": {
       "title": "Lab feedback",
       "markRead": "Mark as read",
@@ -1739,5 +1740,70 @@
     "identifier": "User name",
     "password": "Password",
     "logout": "Sign out"
+  },
+  "intro": {
+    "language": "Language",
+    "skip": "Skip the introduction",
+    "previous": "Back",
+    "next": "Next",
+    "start": "Get started",
+    "slides": [
+      {
+        "lead": [
+          "Someone around you is in trouble?",
+          "Let their loved ones know."
+        ],
+        "lines": [
+          "People chosen in advance.",
+          "Discreetly."
+        ]
+      },
+      {
+        "title": "Reach the right people if…",
+        "lines": [
+          "A friend misses several appointments.",
+          "A friend stops answering, and that's not like them.",
+          "A colleague gets hurt at work."
+        ]
+      },
+      {
+        "title": "Circles",
+        "lines": [
+          "Each person chooses their trusted people in advance.",
+          "A first circle handles the alerts.",
+          "More circles can be added: family, sports, friends, neighbours, colleagues…"
+        ]
+      },
+      {
+        "title": "Alerts",
+        "lines": [
+          "Someone can't be reached or needs help?",
+          "Raise an alert. Their loved ones are told and can get organised."
+        ]
+      },
+      {
+        "title": "During an alert",
+        "lines": [
+          "The first circle can contact the other circles to get news or to look for the person.",
+          "The person the alert is about can see every detail and every message of the alert."
+        ]
+      },
+      {
+        "title": "For you too",
+        "lines": [
+          "Need help, or just some reassurance?",
+          "Raise an alert for yourself.",
+          "Trip mode or \"All Good Check\": your loved ones look out for you."
+        ]
+      },
+      {
+        "title": "Our values",
+        "lines": [
+          "Trust comes first.",
+          "You stay in control of your contacts and of what you share.",
+          "Your people, your choices, your data."
+        ]
+      }
+    ]
   }
 }

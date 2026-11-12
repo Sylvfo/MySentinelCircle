@@ -75,6 +75,9 @@ export function InfoPage() {
   return (
     <div className="info-page">
       <h1>{t('info.title')}</h1>
+      <Link to="/intro" state={{ back: '/info' }} className="info-see-intro">
+        {t('info.seeIntro')}
+      </Link>
       <p className="info-intro">{t('info.intro')}</p>
 
       <div className="about-tiles">

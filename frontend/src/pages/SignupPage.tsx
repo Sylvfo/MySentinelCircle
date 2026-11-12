@@ -76,7 +76,7 @@ export function SignupPage() {
             );
 
       await applyToken(accessToken);
-      navigate('/dashboard');
+      navigate('/intro');
     });
   };
 

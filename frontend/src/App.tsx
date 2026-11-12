@@ -3,6 +3,7 @@ import { AuthProvider } from './auth/AuthContext';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { AppShell } from './components/AppShell';
 import { LoginPage } from './pages/LoginPage';
+import { IntroPage } from './pages/IntroPage';
 import { SignupPage } from './pages/SignupPage';
 import { OtpVerifyPage } from './pages/OtpVerifyPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
@@ -63,6 +64,7 @@ function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route path="/new-password" element={<NewPasswordPage />} />
+          <Route path="/intro" element={<IntroPage />} />
           <Route element={<AppShell />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/circles" element={<CirclesPage />} />
